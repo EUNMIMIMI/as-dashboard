@@ -9,15 +9,15 @@ import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'fi
 
 // --- Firebase 초기화 ---
 const isCanvasEnv = typeof __firebase_config !== 'undefined';
-const firebaseConfig = isCanvasEnv
-  ? JSON.parse(__firebase_config)
+const firebaseConfig = isCanvasEnv 
+  ? JSON.parse(__firebase_config) 
   : {
-      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-      appId: import.meta.env.VITE_FIREBASE_APP_ID
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_AUTH_DOMAIN",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_STORAGE_BUCKET",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
     };
 
 const app = initializeApp(firebaseConfig);
@@ -301,6 +301,9 @@ export default function App() {
   const [filterPtBoard, setFilterPtBoard] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   
+  const [currentPage, setCurrentPage] = useState(1); // 추가된 부분: 페이지네이션 상태
+  const itemsPerPage = 5; // 추가된 부분: 한 페이지당 보여줄 개수
+  
   const [selectedRow, setSelectedRow] = useState(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formData, setFormData] = useState(null);
@@ -455,20 +458,36 @@ export default function App() {
   const otherUnits = dynamicUnits.filter(unit => !FIXED_UNITS_ORDER.includes(unit));
   const businessUnits = ['전체', ...FIXED_UNITS_ORDER, ...otherUnits, '집계'];
   
-  const agencies = ['all', ...Array.from(new Set(processedData.map(d => d.agencyName).filter(Boolean)))];
-  const models = ['all', ...Array.from(new Set(processedData.map(d => d.model).filter(Boolean)))];
-
-  const filteredData = useMemo(() => {
+  // --- 1. 탭(사업부) 기준으로 먼저 필터링 ---
+  const tabFilteredData = useMemo(() => {
+    if (activeTab === '집계' || activeTab === '전체') return processedData;
     return processedData.filter(item => {
-      if (activeTab === '집계') return true; 
-      if (activeTab !== '전체' && item.businessUnit !== activeTab) return false;
+      if (item.businessUnit !== activeTab) return false;
       if (activeTab === 'PT' && filterPtBoard !== 'all') {
         if (item.ptBoardType !== filterPtBoard) return false;
       }
+      return true;
+    });
+  }, [processedData, activeTab, filterPtBoard]);
+
+  // --- 2. 해당 탭에 존재하는 데이터로만 상세 필터(대리점, 모델) 목록 생성 (가나다 정렬) ---
+  const agencies = useMemo(() => {
+    const list = Array.from(new Set(tabFilteredData.map(d => d.agencyName).filter(Boolean)));
+    return ['all', ...list.sort()];
+  }, [tabFilteredData]);
+
+  const models = useMemo(() => {
+    const list = Array.from(new Set(tabFilteredData.map(d => d.model).filter(Boolean)));
+    return ['all', ...list.sort()];
+  }, [tabFilteredData]);
+
+  // --- 3. 상세 필터 및 검색 적용 ---
+  const filteredData = useMemo(() => {
+    return tabFilteredData.filter(item => {
+      if (activeTab === '집계') return true; 
       if (filterCompliance !== 'all' && item.complianceStatus !== filterCompliance) return false;
       if (filterAgency !== 'all' && item.agencyName !== filterAgency) return false;
       if (filterModel !== 'all' && item.model !== filterModel) return false;
-      
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         return (
@@ -480,7 +499,19 @@ export default function App() {
       }
       return true;
     });
-  }, [processedData, activeTab, filterCompliance, filterAgency, filterModel, filterPtBoard, searchQuery]);
+  }, [tabFilteredData, activeTab, filterCompliance, filterAgency, filterModel, searchQuery]);
+
+  // --- 4. 페이지네이션 처리 ---
+  // 탭이나 필터, 검색어가 바뀌면 무조건 1페이지로 리셋
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, filterCompliance, filterAgency, filterModel, filterPtBoard, searchQuery]);
+
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const paginatedData = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredData.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredData, currentPage]);
 
   const renderStatusBadge = (status) => {
     switch (status) {
@@ -852,6 +883,13 @@ export default function App() {
                 onClick={() => {
                   setActiveTab(unit);
                   if (unit !== 'PT') setFilterPtBoard('all');
+                  
+                  // 탭 변경 시 상세 필터 및 페이지 자동 초기화
+                  setFilterCompliance('all');
+                  setFilterAgency('all');
+                  setFilterModel('all');
+                  setSearchQuery('');
+                  setCurrentPage(1);
                 }}
                 className={`whitespace-nowrap py-4 px-6 text-sm font-medium border-b-2 transition-colors duration-200 ${
                   activeTab === unit ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -1066,8 +1104,8 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredData.length > 0 ? (
-                    filteredData.map((row) => (
+                  {paginatedData.length > 0 ? (
+                    paginatedData.map((row) => (
                       <tr key={row.id} onClick={() => setSelectedRow(row)} className="hover:bg-blue-50 transition-colors cursor-pointer">
                         <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
                           {row.businessUnit}
@@ -1138,57 +1176,92 @@ export default function App() {
                 </tbody>
               </table>
             </div>
+
+            {/* 페이지네이션 컨트롤 바 추가 */}
+            {filteredData.length > 0 && (
+              <div className="px-6 py-4 flex items-center justify-between border-t border-gray-200 bg-white">
+                <div className="text-sm text-gray-700">
+                  총 <span className="font-bold text-gray-900">{filteredData.length}</span>건 중 
+                  <span className="font-medium ml-1">{(currentPage - 1) * itemsPerPage + 1}</span> - 
+                  <span className="font-medium mr-1">{Math.min(currentPage * itemsPerPage, filteredData.length)}</span> 표시
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    이전
+                  </button>
+                  <div className="flex gap-1 overflow-x-auto max-w-[200px] md:max-w-none hide-scrollbar">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`px-3 py-1.5 border rounded-md text-sm font-medium ${
+                          currentPage === page
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    다음
+                  </button>
+                </div>
+              </div>
+            )}
+
           </div>
 
         )}
       </div>
 
-      {selectedRow && !isFormOpen && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+      {/* 1. 상세 정보 모달 */}
+      {selectedRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0 bg-gray-50 rounded-t-2xl">
               <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                A/S 상세 정보 <span className="text-sm font-normal text-gray-500 ml-2">{selectedRow.asNumber}</span>
+                A/S 상세 정보
               </h2>
-              <button onClick={() => setSelectedRow(null)} className="p-2 hover:bg-gray-100 rounded-full"><X className="w-5 h-5 text-gray-500" /></button>
+              <button onClick={() => setSelectedRow(null)} className="p-2 hover:bg-gray-200 rounded-full"><X className="w-5 h-5 text-gray-500" /></button>
             </div>
             
-            <div className="p-6 overflow-y-auto space-y-6 flex-1">
-              <div className="bg-gray-50 p-4 rounded-xl flex items-center justify-between">
-                <div>
-                  <div className="text-sm text-gray-500 mb-1">현재 상태</div>
-                  <div className="flex items-center gap-3">
-                    {renderStatusBadge(selectedRow.complianceStatus)}
-                    <span className="text-sm font-medium text-gray-900">{selectedRow.processType || '미처리'}</span>
+            <div className="flex-1 overflow-y-auto p-6 space-y-8">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 space-y-6">
+                  <div className="flex justify-between items-end border-b pb-2">
+                    <h3 className="text-lg font-semibold text-gray-900">기본 정보</h3>
+                    <span className="text-sm font-medium text-blue-600">{selectedRow.asNumber}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-y-4 gap-x-6">
+                    <DetailItem label="사업부" value={selectedRow.businessUnit} />
+                    <DetailItem label="처리 방식" value={selectedRow.processType} />
+                    <DetailItem label="대리점명" value={selectedRow.agencyName} />
+                    <DetailItem label="업체명" value={selectedRow.companyName} />
+                    <DetailItem label="접수일" value={selectedRow.receiptDate} />
+                    <DetailItem label="납기요구일" value={selectedRow.reqDeliveryDate} />
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-sm text-gray-500 mb-1">납기 일정</div>
-                  <div className="text-sm font-medium text-gray-900">요구: <span className="text-red-600">{selectedRow.reqDeliveryDate}</span> / 완료: {selectedRow.processDate || '미정'}</div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-3 border-b pb-2">기본 정보</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <DetailItem label="사업부" value={selectedRow.businessUnit === 'PT' ? `${selectedRow.businessUnit} (${selectedRow.ptBoardType || 'N'})` : selectedRow.businessUnit} />
-                  <DetailItem label="대리점명" value={selectedRow.agencyName} />
-                  <DetailItem label="업체명" value={selectedRow.companyName} />
-                  <DetailItem label="접수번호" value={selectedRow.asNumber} />
-                  <DetailItem label="수주번호" value={selectedRow.orderNumber} />
-                  <DetailItem label="접수일" value={selectedRow.receiptDate} />
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-3 border-b pb-2">제품 및 수주 정보</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <DetailItem label="MODEL" value={selectedRow.model} />
-                  <DetailItem label="불량수량" value={`${selectedRow.qtyDefect}개`} />
-                  <DetailItem label="출고일자" value={selectedRow.releaseDate || '-'} />
-                  <DetailItem label="기존수주번호" value={selectedRow.originalOrderNumber || '-'} />
-                  <div className="col-span-2">
-                    <DetailItem label="Serial No." value={selectedRow.serialNo || '-'} isMultiline />
+                
+                <div className="space-y-6 bg-gray-50 p-5 rounded-xl border border-gray-100">
+                  <h3 className="text-sm font-semibold text-gray-900 border-b pb-2">제품 정보</h3>
+                  <div className="space-y-4">
+                    <DetailItem label="모델명" value={selectedRow.model} />
+                    <DetailItem label="불량 수량" value={`${selectedRow.qtyDefect} 개`} />
+                    <DetailItem label="출고 일자" value={selectedRow.releaseDate} />
+                    <DetailItem label="기존 주문번호" value={selectedRow.originalOrderNumber} />
+                    <div className="col-span-2">
+                      <DetailItem label="Serial No." value={selectedRow.serialNo || '-'} isMultiline />
+                    </div>
                   </div>
                 </div>
               </div>
