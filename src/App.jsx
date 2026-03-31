@@ -301,8 +301,8 @@ export default function App() {
   const [filterPtBoard, setFilterPtBoard] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   
-  const [currentPage, setCurrentPage] = useState(1); // 추가된 부분: 페이지네이션 상태
-  const itemsPerPage = 5; // 추가된 부분: 한 페이지당 보여줄 개수
+  const [currentPage, setCurrentPage] = useState(1); 
+  const itemsPerPage = 5; 
   
   const [selectedRow, setSelectedRow] = useState(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -340,7 +340,12 @@ export default function App() {
           await setDoc(doc(db, getCollectionPath(), String(record.id)), record);
         });
       } else {
-        records.sort((a, b) => b.id - a.id);
+        // 접수번호(asNumber) 기준으로 내림차순(최신순) 정렬되도록 수정
+        records.sort((a, b) => {
+          const numA = a.asNumber || '';
+          const numB = b.asNumber || '';
+          return numB.localeCompare(numA); 
+        });
         setData(records);
       }
     }, (error) => {
@@ -458,7 +463,6 @@ export default function App() {
   const otherUnits = dynamicUnits.filter(unit => !FIXED_UNITS_ORDER.includes(unit));
   const businessUnits = ['전체', ...FIXED_UNITS_ORDER, ...otherUnits, '집계'];
   
-  // --- 1. 탭(사업부) 기준으로 먼저 필터링 ---
   const tabFilteredData = useMemo(() => {
     if (activeTab === '집계' || activeTab === '전체') return processedData;
     return processedData.filter(item => {
@@ -470,7 +474,6 @@ export default function App() {
     });
   }, [processedData, activeTab, filterPtBoard]);
 
-  // --- 2. 해당 탭에 존재하는 데이터로만 상세 필터(대리점, 모델) 목록 생성 (가나다 정렬) ---
   const agencies = useMemo(() => {
     const list = Array.from(new Set(tabFilteredData.map(d => d.agencyName).filter(Boolean)));
     return ['all', ...list.sort()];
@@ -481,7 +484,6 @@ export default function App() {
     return ['all', ...list.sort()];
   }, [tabFilteredData]);
 
-  // --- 3. 상세 필터 및 검색 적용 ---
   const filteredData = useMemo(() => {
     return tabFilteredData.filter(item => {
       if (activeTab === '집계') return true; 
@@ -501,8 +503,6 @@ export default function App() {
     });
   }, [tabFilteredData, activeTab, filterCompliance, filterAgency, filterModel, searchQuery]);
 
-  // --- 4. 페이지네이션 처리 ---
-  // 탭이나 필터, 검색어가 바뀌면 무조건 1페이지로 리셋
   useEffect(() => {
     setCurrentPage(1);
   }, [activeTab, filterCompliance, filterAgency, filterModel, filterPtBoard, searchQuery]);
