@@ -675,44 +675,60 @@ export default function App() {
     }
   };
 
-  const parseCSVRow = (str) => {
-    const result = [];
+  const parseCSVText = (text) => {
+    const rows = [];
+    let currentRow = [];
+    let currentCell = '';
     let inQuotes = false;
-    let currentStr = '';
-    for (let i = 0; i < str.length; i++) {
-        const char = str[i];
-        if (char === '"' && str[i+1] === '"') {
-            currentStr += '"';
-            i++;
-        } else if (char === '"') {
-            inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
-            result.push(currentStr);
-            currentStr = '';
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          currentCell += '"';
+          i++; 
         } else {
-            currentStr += char;
+          inQuotes = !inQuotes;
         }
+      } else if (char === ',' && !inQuotes) {
+        currentRow.push(currentCell);
+        currentCell = '';
+      } else if ((char === '\n' || char === '\r') && !inQuotes) {
+        if (char === '\r' && nextChar === '\n') i++; 
+        currentRow.push(currentCell);
+        rows.push(currentRow);
+        currentRow = [];
+        currentCell = '';
+      } else {
+        currentCell += char;
+      }
     }
-    result.push(currentStr);
-    return result;
+    if (currentCell || currentRow.length > 0) {
+      currentRow.push(currentCell);
+      rows.push(currentRow);
+    }
+    
+    return rows.filter(row => row.length > 1 || (row.length === 1 && row[0].trim() !== ''));
   };
 
   const importFromCSV = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target.result;
-      const rows = text.split('\n');
+    const fileName = file.name.toUpperCase();
+    let defaultPtBoard = 'N';
+    if (fileName.includes('ZMDI')) defaultPtBoard = 'ZMDI';
+
+    const processText = (text) => {
+      const rows = parseCSVText(text);
       if (rows.length < 3) return alert('유효한 데이터가 부족합니다. (헤더 2줄 포함 필요)');
       
       const newRecords = [];
       for (let i = 2; i < rows.length; i++) {
-        const row = rows[i].trim();
-        if (!row) continue;
-        
-        const cols = parseCSVRow(row);
+        const cols = rows[i];
+        if (!cols[0] || !cols[0].trim()) continue;
         
         if (cols.length >= 20) {
           let processType = '';
@@ -733,7 +749,7 @@ export default function App() {
           let costRaw = (cols[20] || '').replace(/[₩\s,\-]/g, '');
           let cost = (costRaw && !isNaN(costRaw)) ? Number(costRaw) : null;
 
-          let bu = cols[25] || '';
+          let bu = cols[25] ? cols[25].trim() : '';
           if (!bu && cols[1]) {
             const orderNum = cols[1].toUpperCase();
             if (orderNum.startsWith('P1')) bu = 'PMD';
@@ -741,31 +757,36 @@ export default function App() {
             else if (orderNum.startsWith('P4')) bu = 'PT';
             else if (orderNum.startsWith('T')) bu = 'TMD';
             else if (orderNum.startsWith('F')) bu = 'FLD';
+            else bu = '기타사업부'; 
+          } else if (!bu) {
+            bu = '기타사업부';
           }
+
+          let ptBoard = cols[26] && cols[26].trim() ? cols[26].trim() : (bu === 'PT' ? defaultPtBoard : 'N');
 
           newRecords.push({
             id: Date.now() + i,
-            asNumber: cols[0] || '',
-            orderNumber: cols[1] || '',
-            agencyName: cols[2] || '',
-            companyName: cols[3] || '',
-            model: cols[4] || '',
+            asNumber: cols[0].trim(),
+            orderNumber: cols[1] ? cols[1].trim() : '',
+            agencyName: cols[2] ? cols[2].trim() : '',
+            companyName: cols[3] ? cols[3].trim() : '',
+            model: cols[4] ? cols[4].trim() : '',
             qtyDefect: parseInt(cols[5]) || 1,
-            defectContent: cols[6] || '',
-            serialNo: cols[7] || '',
-            releaseDate: cols[8] || '',
-            originalOrderNumber: cols[9] || '',
+            defectContent: cols[6] ? cols[6].trim() : '',
+            serialNo: cols[7] ? cols[7].trim() : '',
+            releaseDate: cols[8] ? cols[8].trim() : '',
+            originalOrderNumber: cols[9] ? cols[9].trim() : '',
             processType: processType,
-            receiptDate: cols[13] || '',
-            reqDeliveryDate: cols[14] || '',
-            processDate: cols[15] || '',
+            receiptDate: cols[13] ? cols[13].trim() : '',
+            reqDeliveryDate: cols[14] ? cols[14].trim() : '',
+            processDate: cols[15] ? cols[15].trim() : '',
             repairMethod: repairMethod,
             cost: cost,
             claimType: claimType,
-            causeAnalysis: cols[23] || '',
-            processDetails: cols[24] || '',
+            causeAnalysis: cols[23] ? cols[23].trim() : '',
+            processDetails: cols[24] ? cols[24].trim() : '',
             businessUnit: bu,
-            ptBoardType: cols[26] || 'N'
+            ptBoardType: ptBoard
           });
         }
       }
@@ -775,15 +796,30 @@ export default function App() {
            newRecords.forEach(async (record) => {
              await setDoc(doc(db, getCollectionPath(), String(record.id)), record);
            });
-           alert(`${newRecords.length}건의 데이터를 성공적으로 업로드 중입니다. (잠시 후 실시간으로 반영됩니다.)`);
+           alert(`${newRecords.length}건의 데이터를 성공적으로 업로드했습니다!`);
          } else {
            alert('데이터베이스 연결이 안되어 업로드할 수 없습니다.');
          }
       } else {
-         alert('업로드할 유효한 데이터 항목을 찾지 못했습니다.');
+         alert('업로드할 유효한 데이터 항목을 찾지 못했습니다. 파일 양식을 확인해주세요.');
+      }
+    };
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target.result;
+      // 인코딩 깨짐 감지 시 UTF-8로 재시도
+      if (text.includes('')) {
+        console.log("인코딩 문제 감지, UTF-8로 재시도합니다.");
+        const utf8Reader = new FileReader();
+        utf8Reader.onload = (e2) => processText(e2.target.result);
+        utf8Reader.readAsText(file, 'utf-8');
+      } else {
+        processText(text);
       }
     };
     
+    // 기본적으로 EUC-KR로 읽기 시도
     reader.readAsText(file, 'euc-kr');
     e.target.value = null;
   };
