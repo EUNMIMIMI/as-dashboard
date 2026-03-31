@@ -513,6 +513,13 @@ export default function App() {
     return filteredData.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredData, currentPage]);
 
+  // --- 페이지네이션 5개 단위 블록 계산 ---
+  const maxVisiblePages = 5;
+  const currentBlock = Math.ceil(currentPage / maxVisiblePages);
+  const startPage = (currentBlock - 1) * maxVisiblePages + 1;
+  const endPage = Math.min(startPage + maxVisiblePages - 1, totalPages);
+  const visiblePages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
+
   const renderStatusBadge = (status) => {
     switch (status) {
       case '준수': return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800"><CheckCircle className="w-3 h-3 mr-1" />준수</span>;
@@ -1194,7 +1201,15 @@ export default function App() {
                     이전
                   </button>
                   <div className="flex gap-1 overflow-x-auto max-w-[200px] md:max-w-none hide-scrollbar">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                    {currentBlock > 1 && (
+                      <button
+                        onClick={() => setCurrentPage(startPage - 1)}
+                        className="px-2 py-1.5 text-gray-500 hover:text-gray-700 bg-white font-bold"
+                      >
+                        ...
+                      </button>
+                    )}
+                    {visiblePages.map(page => (
                       <button
                         key={page}
                         onClick={() => setCurrentPage(page)}
@@ -1207,6 +1222,14 @@ export default function App() {
                         {page}
                       </button>
                     ))}
+                    {endPage < totalPages && (
+                      <button
+                        onClick={() => setCurrentPage(endPage + 1)}
+                        className="px-2 py-1.5 text-gray-500 hover:text-gray-700 bg-white font-bold"
+                      >
+                        ...
+                      </button>
+                    )}
                   </div>
                   <button
                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
