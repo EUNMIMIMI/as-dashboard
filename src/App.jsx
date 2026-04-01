@@ -157,12 +157,9 @@ const initialMockData = [
   }
 ];
 
-// TMD와 UHP 사이에 FLD 추가
 const FIXED_UNITS_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT'];
-// 차트 컬러 팔레트
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'];
 
-// 날짜 헬퍼 함수
 const parseDate = (dateStr) => {
   if (!dateStr) return 0;
   if (dateStr.includes('월') && dateStr.includes('일')) {
@@ -238,16 +235,14 @@ const generateNextAsNumber = (currentData) => {
   return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
 };
 
-// 미입력 데이터(결측치) 확인 헬퍼 함수
 const isIncomplete = (item) => {
-  // 기존주문정보(serialNo, releaseDate, originalOrderNumber) 및 조건부 비용(cost)을 제외한 나머지 열
-  const requiredFields = [
-    'asNumber', 'orderNumber', 'businessUnit', 'agencyName', 'companyName', 
-    'model', 'qtyDefect', 'defectContent', 'causeAnalysis', 
-    'processDetails', 'processType', 'repairMethod', 
-    'receiptDate', 'reqDeliveryDate', 'processDate', 'claimType'
+  // [수정 포인트] 너무 많은 데이터가 미입력으로 잡히지 않도록, 실제 A/S 처리에 필수적인 핵심 열만 검사하도록 완화했습니다.
+  const coreFields = [
+    'asNumber', 'businessUnit', 'agencyName', 'model', 
+    'defectContent', 'causeAnalysis', 'processDetails', 
+    'processType', 'repairMethod', 'receiptDate', 'processDate'
   ];
-  return requiredFields.some(field => {
+  return coreFields.some(field => {
     const val = item[field];
     return val === null || val === undefined || String(val).trim() === '';
   });
@@ -385,6 +380,7 @@ export default function App() {
   const [filterAgency, setFilterAgency] = useState('all');
   const [filterModel, setFilterModel] = useState('all');
   const [filterPtBoard, setFilterPtBoard] = useState('all');
+  const [filterExcludeReport, setFilterExcludeReport] = useState('all'); 
   const [searchQuery, setSearchQuery] = useState('');
   
   const [currentPage, setCurrentPage] = useState(1); 
@@ -523,7 +519,6 @@ export default function App() {
   const dynamicUnits = Array.from(new Set(processedData.map(d => d.businessUnit).filter(Boolean)));
   const otherUnits = dynamicUnits.filter(unit => !FIXED_UNITS_ORDER.includes(unit));
   
-  // 탭 목록 순서 변경 ('미입력'을 PT(otherUnits 포함)와 집계 사이로 이동)
   const businessUnits = ['전체', ...FIXED_UNITS_ORDER, ...otherUnits, '미입력', '집계'];
   
   const tabFilteredData = useMemo(() => {
@@ -548,6 +543,13 @@ export default function App() {
       if (filterCompliance !== 'all' && item.complianceStatus !== filterCompliance) return false;
       if (filterAgency !== 'all' && item.agencyName !== filterAgency) return false;
       if (filterModel !== 'all' && item.model !== filterModel) return false;
+      
+      // [수정 포인트] 성적서발행 띄어쓰기 유무 모두 대응하여 필터 처리
+      if (activeTab === 'PT' && filterExcludeReport === 'exclude') {
+        const content = item.defectContent || '';
+        if (content.includes('성적서 발행') || content.includes('성적서발행')) return false;
+      }
+
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         return (
@@ -559,7 +561,7 @@ export default function App() {
       }
       return true;
     });
-  }, [tabFilteredData, activeTab, filterCompliance, filterAgency, filterModel, filterPtBoard, searchQuery]);
+  }, [tabFilteredData, activeTab, filterCompliance, filterAgency, filterModel, filterPtBoard, filterExcludeReport, searchQuery]);
 
   const renderStatusBadge = (status) => {
     switch (status) {
@@ -615,6 +617,22 @@ export default function App() {
         if (autoReqDate) newData.reqDeliveryDate = autoReqDate;
       }
       if (name === 'repairMethod' && finalValue !== '유상수리') newData.cost = '';
+
+      // [수정 포인트] 성적서 발행 자동 계산 로직에 띄어쓰기 예외 처리 추가 및 수량 파싱 안전성 확보
+      if (name === 'defectContent' || name === 'qtyDefect') {
+        const currentContent = name === 'defectContent' ? finalValue : prev.defectContent;
+        const prevContent = prev.defectContent || '';
+        const currentQty = name === 'qtyDefect' ? Math.max(1, parseInt(finalValue) || 1) : prev.qtyDefect;
+
+        const isReport = currentContent && (currentContent.includes('성적서 발행') || currentContent.includes('성적서발행'));
+        const wasReport = prevContent && (prevContent.includes('성적서 발행') || prevContent.includes('성적서발행'));
+
+        if (isReport && (!wasReport || name === 'qtyDefect')) {
+          newData.cost = currentQty * 1000;
+          newData.repairMethod = '유상수리';
+        }
+      }
+
       return newData;
     });
   };
@@ -640,7 +658,7 @@ export default function App() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, filterCompliance, filterAgency, filterModel, filterPtBoard, searchQuery]);
+  }, [activeTab, filterCompliance, filterAgency, filterModel, filterPtBoard, filterExcludeReport, searchQuery]);
 
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
   const paginatedData = useMemo(() => {
@@ -648,7 +666,6 @@ export default function App() {
     return filteredData.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredData, currentPage]);
 
-  // --- 페이지네이션 5개 단위 블록 계산 ---
   const maxVisiblePages = 5;
   const currentBlock = Math.ceil(currentPage / maxVisiblePages);
   const startPage = (currentBlock - 1) * maxVisiblePages + 1;
@@ -703,7 +720,6 @@ export default function App() {
     }
   };
 
-  // 강력한 CSV 파서 (줄바꿈 포함 셀 완벽 대응)
   const parseCSVText = (text) => {
     const rows = [];
     let currentRow = [];
@@ -745,7 +761,6 @@ export default function App() {
     const file = e.target.files[0];
     if (!file) return;
 
-    // 파일명 기반 PT 보드 기본값 추론
     const fileName = file.name.toUpperCase();
     let defaultPtBoard = 'N';
     if (fileName.includes('ZMDI')) defaultPtBoard = 'ZMDI';
@@ -754,7 +769,6 @@ export default function App() {
     reader.onload = (event) => {
       const text = event.target.result;
       
-      // 전체 텍스트 기반으로 콤마 및 따옴표 안의 엔터를 파싱
       const rows = parseCSVText(text);
       if (rows.length < 3) return alert('유효한 데이터가 부족합니다. (헤더 2줄 포함 필요)');
       
@@ -762,7 +776,6 @@ export default function App() {
       for (let i = 2; i < rows.length; i++) {
         const cols = rows[i];
         
-        // 접수번호가 아예 비어있는 빈 행 무시 (,,,,,)
         if (!cols[0] || !cols[0].trim()) continue;
         
         if (cols.length >= 20) {
@@ -795,6 +808,14 @@ export default function App() {
           }
 
           let ptBoard = cols[26] && cols[26].trim() ? cols[26].trim() : (bu === 'PT' ? defaultPtBoard : 'N');
+          const defectContent = cols[6] ? cols[6].trim() : '';
+          const qtyDefect = parseInt(cols[5]) || 1;
+
+          // [수정 포인트] CSV 업로드 시에도 성적서 발행 자동 계산 적용
+          if (defectContent.includes('성적서 발행') || defectContent.includes('성적서발행')) {
+            if (cost === null || cost === 0) cost = qtyDefect * 1000;
+            if (!repairMethod) repairMethod = '유상수리';
+          }
 
           newRecords.push({
             id: Date.now() + i,
@@ -803,8 +824,8 @@ export default function App() {
             agencyName: cols[2] ? cols[2].trim() : '',
             companyName: cols[3] ? cols[3].trim() : '',
             model: cols[4] ? cols[4].trim() : '',
-            qtyDefect: parseInt(cols[5]) || 1,
-            defectContent: cols[6] ? cols[6].trim() : '',
+            qtyDefect: qtyDefect,
+            defectContent: defectContent,
             serialNo: cols[7] ? cols[7].trim() : '',
             releaseDate: cols[8] ? cols[8].trim() : '',
             originalOrderNumber: cols[9] ? cols[9].trim() : '',
@@ -945,7 +966,10 @@ export default function App() {
                 key={unit}
                 onClick={() => {
                   setActiveTab(unit);
-                  if (unit !== 'PT') setFilterPtBoard('all');
+                  if (unit !== 'PT') {
+                    setFilterPtBoard('all');
+                    setFilterExcludeReport('all');
+                  }
                 }}
                 className={`whitespace-nowrap py-4 px-6 text-sm font-medium border-b-2 transition-colors duration-200 ${
                   activeTab === unit 
@@ -1007,6 +1031,23 @@ export default function App() {
                     {models.filter(m => m !== 'all').map(model => <option key={model} value={model}>{model}</option>)}
                   </select>
                 </div>
+
+                {/* PT 탭 성적서 발행 필터 라디오 버튼 */}
+                {activeTab === 'PT' && (
+                  <div className="flex items-center space-x-3 border-l border-gray-300 pl-4 ml-2">
+                    <label className="text-sm text-gray-600 font-medium">성적서발행:</label>
+                    <div className="flex items-center gap-3">
+                      <label className="flex items-center gap-1 cursor-pointer">
+                        <input type="radio" value="all" checked={filterExcludeReport === 'all'} onChange={(e) => setFilterExcludeReport(e.target.value)} className="w-3.5 h-3.5 text-blue-600" />
+                        <span className="text-sm text-gray-700">포함</span>
+                      </label>
+                      <label className="flex items-center gap-1 cursor-pointer">
+                        <input type="radio" value="exclude" checked={filterExcludeReport === 'exclude'} onChange={(e) => setFilterExcludeReport(e.target.value)} className="w-3.5 h-3.5 text-red-500" />
+                        <span className="text-sm text-gray-700">제외</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
 
                 <div className="relative ml-auto">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -1239,7 +1280,7 @@ export default function App() {
                   ) : (
                     <tr>
                       <td colSpan="15" className="px-6 py-12 text-center text-gray-500">
-                        조건에 맞는 데이터가 없습니다. {activeTab === '미입력' ? '모든 데이터가 완벽하게 입력되어 있습니다!' : '필터를 변경해보세요.'}
+                        조건에 맞는 데이터가 없습니다. {activeTab === '미입력' ? '모든 핵심 데이터가 완벽하게 입력되어 있습니다!' : '필터를 변경해보세요.'}
                       </td>
                     </tr>
                   )}
