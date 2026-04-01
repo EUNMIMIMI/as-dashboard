@@ -9,7 +9,7 @@ import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'fi
 
 // --- 사용자 권한 및 비밀번호 설정 (원하는 대로 수정/추가 하세요!) ---
 const ACCESS_ROLES = {
-  'q4123': { name: '품질경영팀', tabs: 'ALL' },
+  'q123': { name: '품질경영팀', tabs: 'ALL' },
   'pmd123': { name: 'pmd 담당자', tabs: ['PMD'] },
   'tmd123': { name: 'tmd 담당자', tabs: ['TMD'] },
   'fld123': { name: 'fld 담당자', tabs: ['FLD'] },
@@ -274,6 +274,7 @@ export default function App() {
   });
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [isCapsLockOn, setIsCapsLockOn] = useState(false); // 캡스락 감지 상태
 
   // --- 기존 데이터 상태 ---
   const [data, setData] = useState([]); 
@@ -316,6 +317,7 @@ export default function App() {
     setCurrentUserRole(null);
     localStorage.removeItem('as_dashboard_role');
     setLoginPassword('');
+    setIsCapsLockOn(false);
   };
 
   // --- 권한 변경 시 활성 탭 보호 ---
@@ -880,6 +882,15 @@ export default function App() {
     document.body.removeChild(link);
   };
 
+  // --- 캡스락 감지 핸들러 ---
+  const handleCapsLockCheck = (e) => {
+    if (e.getModifierState && e.getModifierState('CapsLock')) {
+      setIsCapsLockOn(true);
+    } else {
+      setIsCapsLockOn(false);
+    }
+  };
+
   // --- 로그인 화면 렌더링 ---
   if (!currentUserRole) {
     return (
@@ -892,20 +903,32 @@ export default function App() {
           <p className="text-gray-500 mb-8">부여받은 시스템 접근 비밀번호를 입력해주세요.</p>
           
           <form onSubmit={handleLogin} className="space-y-4">
-            <div>
+            <div className="relative">
               <input
                 type="password"
                 value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
+                onChange={(e) => {
+                  setLoginPassword(e.target.value);
+                  // fallback: 입력값에 대문자가 포함되어 있을 경우에도 경고 노출
+                  if (/[A-Z]/.test(e.target.value)) setIsCapsLockOn(true);
+                }}
+                onKeyDown={handleCapsLockCheck}
+                onKeyUp={handleCapsLockCheck}
                 placeholder="비밀번호 입력"
                 className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-center text-lg tracking-widest"
                 required
               />
+              {/* 캡스락 경고 문구 표시 */}
+              {isCapsLockOn && (
+                <p className="text-orange-500 text-sm font-bold mt-2 animate-pulse">
+                  ⚠️ 캡스락(Caps Lock)을 풀어주세요.
+                </p>
+              )}
             </div>
             {loginError && <p className="text-red-500 text-sm font-medium">{loginError}</p>}
             <button
               type="submit"
-              className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-colors shadow-sm"
+              className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-colors shadow-sm mt-4"
             >
               시스템 접속
             </button>
