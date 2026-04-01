@@ -9,7 +9,7 @@ import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'fi
 
 // --- 사용자 권한 및 비밀번호 설정 (원하는 대로 수정/추가 하세요!) ---
 const ACCESS_ROLES = {
-  'qm123': { name: '품질경영팀', tabs: 'ALL' },
+  'q4123': { name: '품질경영팀', tabs: 'ALL' },
   'pmd123': { name: 'pmd 담당자', tabs: ['PMD'] },
   'tmd123': { name: 'tmd 담당자', tabs: ['TMD'] },
   'fld123': { name: 'fld 담당자', tabs: ['FLD'] },
