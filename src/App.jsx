@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
-  Search, Filter, X, FileText, Calendar, CheckCircle, Clock, AlertCircle, 
-  Download, Upload, FileCode, Plus, Edit, Trash, Save, BarChart, PieChart, Layers
+  Search, Filter, X, FileText, Calendar, CheckCircle2, Clock, AlertCircle, 
+  Download, Upload, FileCode, Plus, Edit, Trash2, Save, BarChart3, PieChart, Layers
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
@@ -9,15 +9,15 @@ import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'fi
 
 // --- Firebase 초기화 ---
 const isCanvasEnv = typeof __firebase_config !== 'undefined';
-const firebaseConfig = isCanvasEnv
-  ? JSON.parse(__firebase_config)
+const firebaseConfig = isCanvasEnv 
+  ? JSON.parse(__firebase_config) 
   : {
-      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-      appId: import.meta.env.VITE_FIREBASE_APP_ID
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_AUTH_DOMAIN",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_STORAGE_BUCKET",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
     };
 
 const app = initializeApp(firebaseConfig);
@@ -33,49 +33,64 @@ const getCollectionPath = () => {
 };
 // -----------------------
 
-// 초기 목업 데이터
+// 업로드된 새 CSV 데이터를 기반으로 재구성한 초기 목업 데이터
 const initialMockData = [
   {
-    id: 1, asNumber: 'WQ-2821-01-26-001', orderNumber: 'P100Z260001', originalOrderNumber: 'P1DSZ250066',
-    receiptDate: '01월 07일', reqDeliveryDate: '01월 15일', businessUnit: 'PMD', agencyName: '이노바이저',
-    companyName: '크라이오에이치앤아이', model: 'P255', qtyDefect: 1, serialNo: 'P250219884', releaseDate: '2025.02.24',
-    defectContent: 'LEAK', causeAnalysis: '관안 용접부위 핀홀로 LEAK됨',
+    id: 1,
+    asNumber: 'WQ-2821-01-26-001',
+    orderNumber: 'P100Z260001',
+    originalOrderNumber: 'P1DSZ250066',
+    receiptDate: '01월 07일',
+    reqDeliveryDate: '01월 15일',
+    businessUnit: 'PMD',
+    agencyName: '이노바이저',
+    companyName: '크라이오에이치앤아이',
+    model: 'P255',
+    qtyDefect: 1,
+    serialNo: 'P250219884',
+    releaseDate: '2025.02.24',
+    defectContent: 'LEAK',
+    causeAnalysis: '관안 용접부위 핀홀로 LEAK됨',
     processDetails: '신규제작 및 재발방지 대책서 송부\nCryo H&I 납품분만 버든튜브 용접 후 수압 테스트 전에 헬륨 LEAK TEST 하기로 대책서 작성함',
-    processDate: '01월 16일', processType: '견적 후 착수', cost: 0, claimType: '일반 A/S', repairMethod: '무상수리', ptBoardType: 'N'
+    processDate: '01월 16일',
+    processType: '견적 후 착수',
+    cost: 0,
+    claimType: '일반 A/S',
+    repairMethod: '무상수리',
+    ptBoardType: 'N'
   },
   {
-    id: 2, asNumber: 'WQ-2821-01-26-002', orderNumber: 'P1AGZ260013', originalOrderNumber: '',
-    receiptDate: '01월 07일', reqDeliveryDate: '01월 15일', businessUnit: 'PMD', agencyName: '우진종합계기(구로)',
-    companyName: '한국드와이어', model: 'P252', qtyDefect: 6, serialNo: 'C151009684\n...', releaseDate: '',
-    defectContent: '성적서 발행 요청', causeAnalysis: '', processDetails: '', processDate: '', processType: '견적 후 착수',
-    cost: null, claimType: '일반 A/S', repairMethod: '', ptBoardType: 'N'
-  },
-  {
-    id: 3, asNumber: 'WQ-2821-01-26-144', orderNumber: 'P1SAZ260027', originalOrderNumber: 'SAZ230009',
-    receiptDate: '03월 18일', reqDeliveryDate: '03월 25일', businessUnit: 'PMD', agencyName: '티에스아이',
-    companyName: '미원화학', model: 'P982', qtyDefect: 1, serialNo: 'P230124988', releaseDate: '',
-    defectContent: '압력지시 안됨', causeAnalysis: '', processDetails: '', processDate: '', processType: '견적 후 착수',
-    cost: null, claimType: '일반 A/S', repairMethod: '', ptBoardType: 'N'
-  },
-  {
-    id: 4, asNumber: 'WQ-2821-01-26-145', orderNumber: 'UHPATZ260160', originalOrderNumber: 'ATZ230035',
-    receiptDate: '03월 19일', reqDeliveryDate: '03월 27일', businessUnit: 'UHP', agencyName: '우진계기(서울)',
-    companyName: '동광화학', model: 'SMT2001', qtyDefect: 2, serialNo: 'TM230300925\nTM230300932', releaseDate: '2023.04.26',
-    defectContent: '에러표시 및 헌팅', causeAnalysis: '', processDetails: '', processDate: '', processType: '견적 후 착수',
-    cost: null, claimType: '일반 A/S', repairMethod: '', ptBoardType: 'N'
-  },
-  {
-    id: 6, asNumber: 'WQ-2821-01-26-146', orderNumber: 'P4BNZ260291', originalOrderNumber: '',
-    receiptDate: '03월 20일', reqDeliveryDate: '03월 27일', businessUnit: 'PT', agencyName: '오토센서코리아',
-    companyName: '원앤유엔씨테크', model: 'PT-100', qtyDefect: 1, serialNo: '', releaseDate: '',
-    defectContent: '출력 불량 확인요청', causeAnalysis: '', processDetails: '', processDate: '', processType: '선조치',
-    cost: null, claimType: '고객불만', repairMethod: '유상수리', ptBoardType: 'ZMDI'
+    id: 2,
+    asNumber: 'WQ-2821-01-26-002',
+    orderNumber: 'P1AGZ260013',
+    originalOrderNumber: '',
+    receiptDate: '01월 07일',
+    reqDeliveryDate: '01월 15일',
+    businessUnit: 'PMD',
+    agencyName: '우진종합계기(구로)',
+    companyName: '한국드와이어',
+    model: 'P252',
+    qtyDefect: 6,
+    serialNo: 'C151009684\n...',
+    releaseDate: '',
+    defectContent: '성적서 발행 요청',
+    causeAnalysis: '',
+    processDetails: '',
+    processDate: '',
+    processType: '견적 후 착수',
+    cost: null,
+    claimType: '일반 A/S',
+    repairMethod: '',
+    ptBoardType: 'N'
   }
 ];
 
+// TMD와 UHP 사이에 FLD 추가
 const FIXED_UNITS_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT'];
+// 차트 컬러 팔레트
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'];
 
+// 날짜 헬퍼 함수
 const parseDate = (dateStr) => {
   if (!dateStr) return 0;
   if (dateStr.includes('월') && dateStr.includes('일')) {
@@ -112,7 +127,6 @@ const calculateDuration = (startDate, endDate) => {
 const addBusinessDays = (dateStr, days) => {
   if (!dateStr) return '';
   let m, d;
-  
   if (dateStr.includes('월') && dateStr.includes('일')) {
     m = parseInt(dateStr.split('월')[0].trim());
     d = parseInt(dateStr.split('월')[1].replace('일', '').trim());
@@ -123,7 +137,6 @@ const addBusinessDays = (dateStr, days) => {
   } else {
     return '';
   }
-
   let date = new Date(2026, m - 1, d);
   if (isNaN(date.getTime())) return '';
   
@@ -133,7 +146,6 @@ const addBusinessDays = (dateStr, days) => {
     const dayOfWeek = date.getDay();
     if (dayOfWeek !== 0 && dayOfWeek !== 6) addedDays++;
   }
-  
   if (dateStr.includes('월')) {
     return `${String(date.getMonth() + 1).padStart(2, '0')}월 ${String(date.getDate()).padStart(2, '0')}일`;
   }
@@ -154,16 +166,29 @@ const generateNextAsNumber = (currentData) => {
   return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
 };
 
+// 미입력 데이터(결측치) 확인 헬퍼 함수
+const isIncomplete = (item) => {
+  // 기존주문정보(serialNo, releaseDate, originalOrderNumber) 및 조건부 비용(cost)을 제외한 나머지 열
+  const requiredFields = [
+    'asNumber', 'orderNumber', 'businessUnit', 'agencyName', 'companyName', 
+    'model', 'qtyDefect', 'defectContent', 'causeAnalysis', 
+    'processDetails', 'processType', 'repairMethod', 
+    'receiptDate', 'reqDeliveryDate', 'processDate', 'claimType'
+  ];
+  return requiredFields.some(field => {
+    const val = item[field];
+    return val === null || val === undefined || String(val).trim() === '';
+  });
+};
+
 const formatForDateInput = (dateStr) => {
   if (!dateStr) return '';
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
-  
   try {
     if (dateStr.includes('.')) {
       const parts = dateStr.split('.').map(p => p.trim());
       if (parts.length >= 3) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
     }
-    
     let m, d;
     if (dateStr.includes('월') && dateStr.includes('일')) {
       m = dateStr.split('월')[0].trim();
@@ -185,7 +210,6 @@ const MultiDonutChart = ({ data, size = 160, strokeWidth = 24 }) => {
   const total = data.reduce((acc, item) => acc + item.value, 0);
   const radius = 50 - strokeWidth / 2;
   const circumference = 2 * Math.PI * radius;
-  
   let currentOffset = 0;
   
   return (
@@ -203,11 +227,9 @@ const MultiDonutChart = ({ data, size = 160, strokeWidth = 24 }) => {
           
           return (
             <circle 
-              key={item.label}
-              cx="50" cy="50" r={radius} fill="transparent" 
+              key={item.label} cx="50" cy="50" r={radius} fill="transparent" 
               stroke={item.color} strokeWidth={strokeWidth}
-              strokeDasharray={strokeDasharray}
-              strokeDashoffset={offset}
+              strokeDasharray={strokeDasharray} strokeDashoffset={offset}
               className="transition-all duration-1000 ease-out"
             />
           );
@@ -225,7 +247,6 @@ const DonutChart = ({ normal, complaint, size = 120, strokeWidth = 12 }) => {
   const total = normal + complaint;
   const radius = 50 - strokeWidth / 2;
   const circumference = 2 * Math.PI * radius;
-  
   const normalDash = total === 0 ? 0 : (normal / total) * circumference;
   const complaintDash = total === 0 ? 0 : (complaint / total) * circumference;
   
@@ -236,19 +257,15 @@ const DonutChart = ({ normal, complaint, size = 120, strokeWidth = 12 }) => {
         {normal > 0 && (
           <circle 
             cx="50" cy="50" r={radius} fill="transparent" stroke="#3b82f6" strokeWidth={strokeWidth}
-            strokeDasharray={`${normalDash} ${circumference}`}
-            strokeDashoffset="0"
-            strokeLinecap="round"
-            className="transition-all duration-1000 ease-out"
+            strokeDasharray={`${normalDash} ${circumference}`} strokeDashoffset="0"
+            strokeLinecap="round" className="transition-all duration-1000 ease-out"
           />
         )}
         {complaint > 0 && (
           <circle 
             cx="50" cy="50" r={radius} fill="transparent" stroke="#ef4444" strokeWidth={strokeWidth}
-            strokeDasharray={`${complaintDash} ${circumference}`}
-            strokeDashoffset={-normalDash}
-            strokeLinecap="round"
-            className="transition-all duration-1000 ease-out"
+            strokeDasharray={`${complaintDash} ${circumference}`} strokeDashoffset={-normalDash}
+            strokeLinecap="round" className="transition-all duration-1000 ease-out"
           />
         )}
       </svg>
@@ -261,10 +278,7 @@ const DonutChart = ({ normal, complaint, size = 120, strokeWidth = 12 }) => {
 };
 
 const getModelGroup = (bu, modelName, ptBoardType) => {
-  if (bu === 'PT') {
-    return ptBoardType === 'ZMDI' ? 'ZMDI' : 'N';
-  }
-  
+  if (bu === 'PT') return ptBoardType === 'ZMDI' ? 'ZMDI' : 'N';
   if (!modelName) return bu === 'PMD' ? 'ACC' : '기타';
   const upperModel = modelName.toUpperCase().trim();
   
@@ -310,7 +324,6 @@ export default function App() {
   
   const fileInputRef = useRef(null);
 
-  // --- Firebase 실시간 연동 (Auth & Firestore) ---
   useEffect(() => {
     const initAuth = async () => {
       if (isCanvasEnv && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -326,7 +339,6 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    
     const colRef = collection(db, getCollectionPath());
     const unsubscribe = onSnapshot(colRef, (snapshot) => {
       const records = [];
@@ -340,7 +352,6 @@ export default function App() {
           await setDoc(doc(db, getCollectionPath(), String(record.id)), record);
         });
       } else {
-        // 접수번호(asNumber) 기준으로 내림차순(최신순) 정렬되도록 수정
         records.sort((a, b) => {
           const numA = a.asNumber || '';
           const numB = b.asNumber || '';
@@ -348,13 +359,9 @@ export default function App() {
         });
         setData(records);
       }
-    }, (error) => {
-      console.error("Firestore Error:", error);
-    });
-    
+    }, (error) => console.error("Firestore Error:", error));
     return () => unsubscribe();
   }, [user, isSeeded]);
-  // ---------------------------------------------
 
   const processedData = useMemo(() => {
     return data.map(item => ({
@@ -367,10 +374,7 @@ export default function App() {
   const aggregatedStats = useMemo(() => {
     const stats = {};
     const AGGREGATION_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT (ZMDI)', 'PT (N)'];
-    
-    AGGREGATION_ORDER.forEach(unit => {
-      stats[unit] = { unit, normal: 0, complaint: 0 }; 
-    });
+    AGGREGATION_ORDER.forEach(unit => stats[unit] = { unit, normal: 0, complaint: 0 });
 
     processedData.forEach(item => {
       let unit = item.businessUnit || '미분류';
@@ -379,21 +383,16 @@ export default function App() {
         unit = `PT (${boardType})`;
       }
       if (!stats[unit]) stats[unit] = { unit, normal: 0, complaint: 0 }; 
-      
       if (item.claimType === '고객불만') stats[unit].complaint += 1;
       else stats[unit].normal += 1;
     });
 
     let totalNormal = 0; let totalComplaint = 0;
-
     const result = Object.values(stats).map(stat => {
       const totalClaims = stat.normal + stat.complaint;
       const normalRate = totalClaims > 0 ? ((stat.normal / totalClaims) * 100).toFixed(1) : 0;
       const complaintRate = totalClaims > 0 ? ((stat.complaint / totalClaims) * 100).toFixed(1) : 0;
-      
-      totalNormal += stat.normal;
-      totalComplaint += stat.complaint;
-
+      totalNormal += stat.normal; totalComplaint += stat.complaint;
       return { ...stat, totalClaims, normalRate, complaintRate };
     });
 
@@ -414,34 +413,24 @@ export default function App() {
       unit: '총계', isTotal: true, normal: totalNormal, complaint: totalComplaint,
       totalClaims: grandTotalClaims, normalRate: grandNormalRate, complaintRate: grandComplaintRate
     });
-
     return result;
   }, [processedData]);
 
   const dashboardStats = useMemo(() => {
     const stats = {};
-    
-    FIXED_UNITS_ORDER.forEach(bu => {
-      stats[bu] = { unit: bu, total: 0, models: {} };
-    });
+    FIXED_UNITS_ORDER.forEach(bu => stats[bu] = { unit: bu, total: 0, models: {} });
 
     processedData.forEach(item => {
       const bu = FIXED_UNITS_ORDER.includes(item.businessUnit) ? item.businessUnit : '기타사업부';
       if (!stats[bu]) stats[bu] = { unit: bu, total: 0, models: {} };
       
       const groupLabel = getModelGroup(item.businessUnit, item.model, item.ptBoardType);
-      
       stats[bu].total += 1;
-      if (!stats[bu].models[groupLabel]) {
-        stats[bu].models[groupLabel] = { label: groupLabel, total: 0, normal: 0, complaint: 0 };
-      }
+      if (!stats[bu].models[groupLabel]) stats[bu].models[groupLabel] = { label: groupLabel, total: 0, normal: 0, complaint: 0 };
       
       stats[bu].models[groupLabel].total += 1;
-      if (item.claimType === '고객불만') {
-        stats[bu].models[groupLabel].complaint += 1;
-      } else {
-        stats[bu].models[groupLabel].normal += 1;
-      }
+      if (item.claimType === '고객불만') stats[bu].models[groupLabel].complaint += 1;
+      else stats[bu].models[groupLabel].normal += 1;
     });
 
     return Object.values(stats).map(buStat => {
@@ -461,10 +450,14 @@ export default function App() {
 
   const dynamicUnits = Array.from(new Set(processedData.map(d => d.businessUnit).filter(Boolean)));
   const otherUnits = dynamicUnits.filter(unit => !FIXED_UNITS_ORDER.includes(unit));
-  const businessUnits = ['전체', ...FIXED_UNITS_ORDER, ...otherUnits, '집계'];
+  
+  // 탭 목록에 '미입력' 추가
+  const businessUnits = ['전체', '미입력', ...FIXED_UNITS_ORDER, ...otherUnits, '집계'];
   
   const tabFilteredData = useMemo(() => {
-    if (activeTab === '집계' || activeTab === '전체') return processedData;
+    if (activeTab === '전체' || activeTab === '집계') return processedData;
+    if (activeTab === '미입력') return processedData.filter(isIncomplete);
+
     return processedData.filter(item => {
       if (item.businessUnit !== activeTab) return false;
       if (activeTab === 'PT' && filterPtBoard !== 'all') {
@@ -474,15 +467,8 @@ export default function App() {
     });
   }, [processedData, activeTab, filterPtBoard]);
 
-  const agencies = useMemo(() => {
-    const list = Array.from(new Set(tabFilteredData.map(d => d.agencyName).filter(Boolean)));
-    return ['all', ...list.sort()];
-  }, [tabFilteredData]);
-
-  const models = useMemo(() => {
-    const list = Array.from(new Set(tabFilteredData.map(d => d.model).filter(Boolean)));
-    return ['all', ...list.sort()];
-  }, [tabFilteredData]);
+  const agencies = ['all', ...Array.from(new Set(tabFilteredData.map(d => d.agencyName).filter(Boolean)))].sort();
+  const models = ['all', ...Array.from(new Set(tabFilteredData.map(d => d.model).filter(Boolean)))].sort();
 
   const filteredData = useMemo(() => {
     return tabFilteredData.filter(item => {
@@ -501,28 +487,11 @@ export default function App() {
       }
       return true;
     });
-  }, [tabFilteredData, activeTab, filterCompliance, filterAgency, filterModel, searchQuery]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab, filterCompliance, filterAgency, filterModel, filterPtBoard, searchQuery]);
-
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
-  const paginatedData = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredData.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredData, currentPage]);
-
-  // --- 페이지네이션 5개 단위 블록 계산 ---
-  const maxVisiblePages = 5;
-  const currentBlock = Math.ceil(currentPage / maxVisiblePages);
-  const startPage = (currentBlock - 1) * maxVisiblePages + 1;
-  const endPage = Math.min(startPage + maxVisiblePages - 1, totalPages);
-  const visiblePages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
+  }, [tabFilteredData, activeTab, filterCompliance, filterAgency, filterModel, filterPtBoard, searchQuery]);
 
   const renderStatusBadge = (status) => {
     switch (status) {
-      case '준수': return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800"><CheckCircle className="w-3 h-3 mr-1" />준수</span>;
+      case '준수': return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800"><CheckCircle2 className="w-3 h-3 mr-1" />준수</span>;
       case '지연': return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800"><AlertCircle className="w-3 h-3 mr-1" />지연</span>;
       case '미완료': return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800"><Clock className="w-3 h-3 mr-1" />처리중</span>;
       default: return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">알수없음</span>;
@@ -551,20 +520,16 @@ export default function App() {
 
   const handleFormChange = (e) => {
     const { name, value, type } = e.target;
-    
     let finalValue = value;
+    
     if (type === 'date' && value) {
       const [y, m, d] = value.split('-');
-      if (name === 'releaseDate') {
-        finalValue = `${y}.${m}.${d}`;
-      } else {
-        finalValue = `${m}월 ${d}일`;
-      }
+      if (name === 'releaseDate') finalValue = `${y}.${m}.${d}`;
+      else finalValue = `${m}월 ${d}일`;
     }
 
     setFormData(prev => {
       const newData = { ...prev, [name]: finalValue };
-      
       if (name === 'orderNumber') {
         const orderNum = finalValue.toUpperCase();
         if (orderNum.startsWith('P1')) newData.businessUnit = 'PMD';
@@ -573,16 +538,11 @@ export default function App() {
         else if (orderNum.startsWith('T')) newData.businessUnit = 'TMD';
         else if (orderNum.startsWith('F')) newData.businessUnit = 'FLD';
       }
-      
       if (name === 'receiptDate') {
         const autoReqDate = addBusinessDays(finalValue, 5);
         if (autoReqDate) newData.reqDeliveryDate = autoReqDate;
       }
-
-      if (name === 'repairMethod' && finalValue !== '유상수리') {
-        newData.cost = '';
-      }
-      
+      if (name === 'repairMethod' && finalValue !== '유상수리') newData.cost = '';
       return newData;
     });
   };
@@ -606,6 +566,23 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, filterCompliance, filterAgency, filterModel, filterPtBoard, searchQuery]);
+
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const paginatedData = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredData.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredData, currentPage]);
+
+  // --- 페이지네이션 5개 단위 블록 계산 ---
+  const maxVisiblePages = 5;
+  const currentBlock = Math.ceil(currentPage / maxVisiblePages);
+  const startPage = (currentBlock - 1) * maxVisiblePages + 1;
+  const endPage = Math.min(startPage + maxVisiblePages - 1, totalPages);
+  const visiblePages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
+
   const exportToCSV = async () => {
     const header1 = '접수번호,수주번호,대리점명,업체명,MODEL,불량수량,하자내용,SERIAL No.,출고일자,기존주문번호,처리 방법,,,접수일,납기요구일,처리완료일,처리,,,,비용,원인 분석,,제품 원인,처리내역,사업부(시스템용),PT보드구분(시스템용)\n';
     const header2 = ',,,,,,,,,,견적 후 착수,선 조치,출장,,,,무상,유상,수리 불가,수리 취소,,일반 A/S,고객 불만,,,,\n';
@@ -615,35 +592,14 @@ export default function App() {
 
     targetData.forEach(row => {
       const costVal = row.cost != null && row.cost !== '' ? row.cost : '';
-      
       const rowData = [
-        row.asNumber || '',
-        row.orderNumber || '',
-        row.agencyName || '',
-        row.companyName || '',
-        row.model || '',
-        row.qtyDefect || 1,
-        row.defectContent || '',
-        row.serialNo || '',
-        row.releaseDate || '',
-        row.originalOrderNumber || '',
-        row.processType === '견적 후 착수' ? '●' : '',
-        row.processType === '선조치' ? '●' : '',
-        row.processType === '출장' ? '●' : '',
-        row.receiptDate || '',
-        row.reqDeliveryDate || '',
-        row.processDate || '',
-        row.repairMethod === '무상수리' ? '●' : '',
-        row.repairMethod === '유상수리' ? '●' : '',
-        row.repairMethod === '수리불가' ? '●' : '',
-        row.repairMethod === '수리취소' ? '●' : '',
-        costVal,
-        row.claimType === '일반 A/S' ? '●' : '',
-        row.claimType === '고객불만' ? '●' : '',
-        row.causeAnalysis || '',
-        row.processDetails || '',
-        row.businessUnit || '',
-        row.ptBoardType || 'N'
+        row.asNumber || '', row.orderNumber || '', row.agencyName || '', row.companyName || '', row.model || '',
+        row.qtyDefect || 1, row.defectContent || '', row.serialNo || '', row.releaseDate || '', row.originalOrderNumber || '',
+        row.processType === '견적 후 착수' ? '●' : '', row.processType === '선조치' ? '●' : '', row.processType === '출장' ? '●' : '',
+        row.receiptDate || '', row.reqDeliveryDate || '', row.processDate || '',
+        row.repairMethod === '무상수리' ? '●' : '', row.repairMethod === '유상수리' ? '●' : '', row.repairMethod === '수리불가' ? '●' : '', row.repairMethod === '수리취소' ? '●' : '',
+        costVal, row.claimType === '일반 A/S' ? '●' : '', row.claimType === '고객불만' ? '●' : '', row.causeAnalysis || '', row.processDetails || '',
+        row.businessUnit || '', row.ptBoardType || 'N'
       ].map(cell => {
         let str = String(cell).replace(/"/g, '""');
         if (str.search(/("|,|\n)/g) >= 0) str = `"${str}"`;
@@ -669,12 +625,13 @@ export default function App() {
       const blob = new Blob([encodedBuffer], { type: 'text/csv;charset=euc-kr;' });
       triggerDownload(blob, `AS관리대장_${new Date().toISOString().slice(0,10)}_EUC-KR.csv`);
     } catch (error) {
-      console.warn("EUC-KR 인코딩 모듈 로드 실패. 기본 UTF-8(BOM) 방식으로 다운로드됩니다.", error);
+      console.warn("EUC-KR 인코딩 모듈 로드 실패", error);
       const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
       triggerDownload(blob, `AS관리대장_${new Date().toISOString().slice(0,10)}.csv`);
     }
   };
 
+  // 강력한 CSV 파서 (줄바꿈 포함 셀 완벽 대응)
   const parseCSVText = (text) => {
     const rows = [];
     let currentRow = [];
@@ -695,8 +652,8 @@ export default function App() {
       } else if (char === ',' && !inQuotes) {
         currentRow.push(currentCell);
         currentCell = '';
-      } else if ((char === '\n' || char === '\r') && !inQuotes) {
-        if (char === '\r' && nextChar === '\n') i++; 
+      } else if ((char === '\n' || (char === '\r' && nextChar === '\n')) && !inQuotes) {
+        if (char === '\r') i++; 
         currentRow.push(currentCell);
         rows.push(currentRow);
         currentRow = [];
@@ -709,8 +666,7 @@ export default function App() {
       currentRow.push(currentCell);
       rows.push(currentRow);
     }
-    
-    return rows.filter(row => row.length > 1 || (row.length === 1 && row[0].trim() !== ''));
+    return rows;
   };
 
   const importFromCSV = (e) => {
@@ -721,13 +677,17 @@ export default function App() {
     let defaultPtBoard = 'N';
     if (fileName.includes('ZMDI')) defaultPtBoard = 'ZMDI';
 
-    const processText = (text) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target.result;
+      
       const rows = parseCSVText(text);
       if (rows.length < 3) return alert('유효한 데이터가 부족합니다. (헤더 2줄 포함 필요)');
       
       const newRecords = [];
       for (let i = 2; i < rows.length; i++) {
         const cols = rows[i];
+        
         if (!cols[0] || !cols[0].trim()) continue;
         
         if (cols.length >= 20) {
@@ -756,10 +716,7 @@ export default function App() {
             else if (orderNum.startsWith('UHP') || orderNum.startsWith('P3')) bu = 'UHP';
             else if (orderNum.startsWith('P4')) bu = 'PT';
             else if (orderNum.startsWith('T')) bu = 'TMD';
-            else if (orderNum.startsWith('F')) bu = 'FLD';
-            else bu = '기타사업부'; 
-          } else if (!bu) {
-            bu = '기타사업부';
+            else if (orderNum.startsWith('F')) bu = 'FLD'; 
           }
 
           let ptBoard = cols[26] && cols[26].trim() ? cols[26].trim() : (bu === 'PT' ? defaultPtBoard : 'N');
@@ -796,7 +753,7 @@ export default function App() {
            newRecords.forEach(async (record) => {
              await setDoc(doc(db, getCollectionPath(), String(record.id)), record);
            });
-           alert(`${newRecords.length}건의 데이터를 성공적으로 업로드했습니다!`);
+           alert(`${newRecords.length}건의 데이터를 성공적으로 업로드 중입니다. (잠시 후 실시간으로 반영됩니다.)`);
          } else {
            alert('데이터베이스 연결이 안되어 업로드할 수 없습니다.');
          }
@@ -804,22 +761,7 @@ export default function App() {
          alert('업로드할 유효한 데이터 항목을 찾지 못했습니다. 파일 양식을 확인해주세요.');
       }
     };
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target.result;
-      // 인코딩 깨짐 감지 시 UTF-8로 재시도
-      if (text.includes('')) {
-        console.log("인코딩 문제 감지, UTF-8로 재시도합니다.");
-        const utf8Reader = new FileReader();
-        utf8Reader.onload = (e2) => processText(e2.target.result);
-        utf8Reader.readAsText(file, 'utf-8');
-      } else {
-        processText(text);
-      }
-    };
     
-    // 기본적으로 EUC-KR로 읽기 시도
     reader.readAsText(file, 'euc-kr');
     e.target.value = null;
   };
@@ -852,7 +794,7 @@ export default function App() {
           <thead>
             <tr>
               <th>사업부</th><th>상태</th><th>접수번호</th><th>수주번호</th><th>대리점</th><th>업체명</th><th>모델(수량)</th>
-              <th>하자내용</th><th>기존주문정보(S/N)</th><th>처리방식</th><th>처리방법(금액)</th><th>일정</th>
+              <th>하자내용</th><th>원인분석</th><th>기존주문정보(S/N)</th><th>처리방식</th><th>처리방법(금액)</th><th>일정</th>
             </tr>
           </thead>
           <tbody>
@@ -866,6 +808,7 @@ export default function App() {
                 <td>${row.companyName}</td>
                 <td>${row.model}<br>(${row.qtyDefect}개)</td>
                 <td><span class="claim-badge">${row.claimType || '일반 A/S'}</span><br/>${row.defectContent || '-'}</td>
+                <td>${row.causeAnalysis || '-'}</td>
                 <td>S/N: ${row.serialNo || '-'}<br>출고: ${row.releaseDate || '-'}<br>수주: ${row.originalOrderNumber || '-'}</td>
                 <td class="text-center">${row.processType || '-'}</td>
                 <td class="text-right">
@@ -894,6 +837,7 @@ export default function App() {
     <div className="min-h-screen bg-gray-50 p-4 md:p-8 font-sans">
       <div className="max-w-[1400px] mx-auto space-y-6">
         
+        {/* 헤더 & 기능 버튼 */}
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-200">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -918,6 +862,7 @@ export default function App() {
           </div>
         </header>
 
+        {/* 탭 영역 */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="border-b border-gray-200 px-2 flex overflow-x-auto hide-scrollbar">
             {businessUnits.map(unit => (
@@ -926,16 +871,11 @@ export default function App() {
                 onClick={() => {
                   setActiveTab(unit);
                   if (unit !== 'PT') setFilterPtBoard('all');
-                  
-                  // 탭 변경 시 상세 필터 및 페이지 자동 초기화
-                  setFilterCompliance('all');
-                  setFilterAgency('all');
-                  setFilterModel('all');
-                  setSearchQuery('');
-                  setCurrentPage(1);
                 }}
                 className={`whitespace-nowrap py-4 px-6 text-sm font-medium border-b-2 transition-colors duration-200 ${
-                  activeTab === unit ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  activeTab === unit 
+                    ? (unit === '미입력' ? 'border-red-500 text-red-600' : 'border-blue-500 text-blue-600') 
+                    : (unit === '미입력' ? 'border-transparent text-red-400 hover:text-red-500 hover:border-red-300' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300')
                 }`}
               >
                 {unit}
@@ -943,6 +883,7 @@ export default function App() {
             ))}
           </div>
 
+          {/* '집계' 탭이 아닐 때만 하위 필터 노출 */}
           {activeTab !== '집계' && (
             <>
               {activeTab === 'PT' && (
@@ -1012,10 +953,13 @@ export default function App() {
           )}
         </div>
 
+        {/* 메인 화면 조건부 렌더링 (집계 대시보드 OR 데이터 테이블) */}
         {activeTab === '집계' ? (
           
           <div className="space-y-6 animate-in fade-in duration-300">
+            {/* 상단: 시각화 차트 대시보드 */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+              {/* 전체 통계 요약 (왼쪽) */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-1 flex flex-col items-center justify-center">
                 <h3 className="text-base font-bold text-gray-900 mb-6 flex items-center gap-2 w-full">
                   <PieChart className="w-5 h-5 text-blue-600" /> 전체 A/S 종합 현황
@@ -1038,9 +982,10 @@ export default function App() {
                 </div>
               </div>
 
+              {/* 사업부별 통계 차트 (오른쪽) */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-3">
                 <h3 className="text-base font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <BarChart className="w-5 h-5 text-gray-600" /> 사업부별 세부 비율 지표
+                  <BarChart3 className="w-5 h-5 text-gray-600" /> 사업부별 세부 비율 지표
                 </h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
                   {aggregatedStats.filter(s => !s.isTotal).map(stat => (
@@ -1067,6 +1012,7 @@ export default function App() {
               </div>
             </div>
 
+            {/* 사업부별 개별 카드 영역 (모델 집계) */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
               {dashboardStats.map(buStat => (
                 <div key={buStat.unit} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col">
@@ -1075,6 +1021,7 @@ export default function App() {
                     {buStat.unit} 모델별 접수 현황
                   </h3>
                   
+                  {/* 상단 파이차트 */}
                   <div className="flex justify-center mb-8">
                     <MultiDonutChart 
                       data={buStat.modelsArr.map(m => ({ label: m.label, value: m.total, color: m.color }))} 
@@ -1082,6 +1029,7 @@ export default function App() {
                     />
                   </div>
                   
+                  {/* 하단 모델별 집계 리스트 표 */}
                   <div className="flex-1 w-full mt-2">
                     <table className="w-full text-sm text-left">
                       <thead>
@@ -1139,6 +1087,7 @@ export default function App() {
                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">모델명</th>
                     <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">수량</th>
                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">하자내용</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">원인분석</th>
                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">기존 주문정보</th>
                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">처리방식</th>
                     <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">처리방법</th>
@@ -1169,7 +1118,10 @@ export default function App() {
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">{row.qtyDefect}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 max-w-[150px] truncate">
                           <span className="inline-block px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded mr-1 mb-1">{row.claimType || '일반 A/S'}</span>
-                          <div className="truncate">{row.defectContent || '-'}</div>
+                          <div className="truncate" title={row.defectContent}>{row.defectContent || '-'}</div>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 max-w-[150px] truncate">
+                          <div className="truncate" title={row.causeAnalysis}>{row.causeAnalysis || '-'}</div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <div className="flex flex-col gap-1 text-xs">
@@ -1203,7 +1155,7 @@ export default function App() {
                               <Edit className="w-4 h-4" />
                             </button>
                             <button onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="삭제">
-                              <Trash className="w-4 h-4" />
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
                         </td>
@@ -1211,8 +1163,8 @@ export default function App() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="14" className="px-6 py-12 text-center text-gray-500">
-                        조건에 맞는 데이터가 없습니다. 필터를 변경해보세요.
+                      <td colSpan="15" className="px-6 py-12 text-center text-gray-500">
+                        조건에 맞는 데이터가 없습니다. {activeTab === '미입력' ? '모든 데이터가 완벽하게 입력되어 있습니다!' : '필터를 변경해보세요.'}
                       </td>
                     </tr>
                   )}
@@ -1284,47 +1236,60 @@ export default function App() {
       </div>
 
       {/* 1. 상세 정보 모달 */}
-      {selectedRow && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0 bg-gray-50 rounded-t-2xl">
+      {selectedRow && !isFormOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
               <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                A/S 상세 정보
+                A/S 상세 정보 <span className="text-sm font-normal text-gray-500 ml-2">{selectedRow.asNumber}</span>
               </h2>
-              <button onClick={() => setSelectedRow(null)} className="p-2 hover:bg-gray-200 rounded-full"><X className="w-5 h-5 text-gray-500" /></button>
+              <button onClick={() => setSelectedRow(null)} className="p-2 hover:bg-gray-100 rounded-full"><X className="w-5 h-5 text-gray-500" /></button>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-6 space-y-8">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 space-y-6">
-                  <div className="flex justify-between items-end border-b pb-2">
-                    <h3 className="text-lg font-semibold text-gray-900">기본 정보</h3>
-                    <span className="text-sm font-medium text-blue-600">{selectedRow.asNumber}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-y-4 gap-x-6">
-                    <DetailItem label="사업부" value={selectedRow.businessUnit} />
-                    <DetailItem label="처리 방식" value={selectedRow.processType} />
-                    <DetailItem label="대리점명" value={selectedRow.agencyName} />
-                    <DetailItem label="업체명" value={selectedRow.companyName} />
-                    <DetailItem label="접수일" value={selectedRow.receiptDate} />
-                    <DetailItem label="납기요구일" value={selectedRow.reqDeliveryDate} />
+            <div className="p-6 overflow-y-auto space-y-6 flex-1">
+              {/* 상태 요약 */}
+              <div className="bg-gray-50 p-4 rounded-xl flex items-center justify-between">
+                <div>
+                  <div className="text-sm text-gray-500 mb-1">현재 상태</div>
+                  <div className="flex items-center gap-3">
+                    {renderStatusBadge(selectedRow.complianceStatus)}
+                    <span className="text-sm font-medium text-gray-900">{selectedRow.processType || '미처리'}</span>
                   </div>
                 </div>
-                
-                <div className="space-y-6 bg-gray-50 p-5 rounded-xl border border-gray-100">
-                  <h3 className="text-sm font-semibold text-gray-900 border-b pb-2">제품 정보</h3>
-                  <div className="space-y-4">
-                    <DetailItem label="모델명" value={selectedRow.model} />
-                    <DetailItem label="불량 수량" value={`${selectedRow.qtyDefect} 개`} />
-                    <DetailItem label="출고 일자" value={selectedRow.releaseDate} />
-                    <DetailItem label="기존 주문번호" value={selectedRow.originalOrderNumber} />
-                    <div className="col-span-2">
-                      <DetailItem label="Serial No." value={selectedRow.serialNo || '-'} isMultiline />
-                    </div>
+                <div className="text-right">
+                  <div className="text-sm text-gray-500 mb-1">납기 일정</div>
+                  <div className="text-sm font-medium text-gray-900">요구: <span className="text-red-600">{selectedRow.reqDeliveryDate}</span> / 완료: {selectedRow.processDate || '미정'}</div>
+                </div>
+              </div>
+
+              {/* 기본 정보 */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3 border-b pb-2">기본 정보</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <DetailItem label="사업부" value={selectedRow.businessUnit === 'PT' ? `${selectedRow.businessUnit} (${selectedRow.ptBoardType || 'N'})` : selectedRow.businessUnit} />
+                  <DetailItem label="대리점명" value={selectedRow.agencyName} />
+                  <DetailItem label="업체명" value={selectedRow.companyName} />
+                  <DetailItem label="접수번호" value={selectedRow.asNumber} />
+                  <DetailItem label="수주번호" value={selectedRow.orderNumber} />
+                  <DetailItem label="접수일" value={selectedRow.receiptDate} />
+                </div>
+              </div>
+
+              {/* 제품 정보 */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3 border-b pb-2">제품 및 수주 정보</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <DetailItem label="MODEL" value={selectedRow.model} />
+                  <DetailItem label="불량수량" value={`${selectedRow.qtyDefect}개`} />
+                  <DetailItem label="출고일자" value={selectedRow.releaseDate || '-'} />
+                  <DetailItem label="기존수주번호" value={selectedRow.originalOrderNumber || '-'} />
+                  <div className="col-span-2">
+                    <DetailItem label="Serial No." value={selectedRow.serialNo || '-'} isMultiline />
                   </div>
                 </div>
               </div>
 
+              {/* 내용 (클레임유형, 수리방법, 금액 통합) */}
               <div>
                 <div className="flex justify-between items-end mb-3 border-b pb-2">
                   <h3 className="text-lg font-semibold text-gray-900">하자 및 처리 내용</h3>
@@ -1340,6 +1305,7 @@ export default function App() {
                     <DetailItem label="처리 내역 및 대책" value={selectedRow.processDetails} isMultiline />
                   </div>
                   
+                  {/* 처리 결과 및 방법 영역 */}
                   <div className="mt-4 flex items-center justify-between bg-gray-50 border border-gray-200 p-4 rounded-lg">
                     <div className="text-sm font-bold text-gray-800">
                       처리 결과: <span className="text-blue-700 ml-2">{selectedRow.repairMethod || '-'}</span>
@@ -1356,7 +1322,7 @@ export default function App() {
 
             <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-between shrink-0 rounded-b-2xl">
               <button onClick={() => handleDelete(selectedRow.id)} className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center text-sm font-medium">
-                <Trash className="w-4 h-4 mr-2" /> 삭제
+                <Trash2 className="w-4 h-4 mr-2" /> 삭제
               </button>
               <div className="flex gap-2">
                 <button onClick={() => handleOpenForm(selectedRow)} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm font-medium">
@@ -1371,6 +1337,7 @@ export default function App() {
         </div>
       )}
 
+      {/* 2. 추가/수정 폼 모달 */}
       {isFormOpen && formData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
@@ -1426,6 +1393,7 @@ export default function App() {
                 </FormGroup>
               </div>
 
+              {/* 달력 선택 폼 (접수일, 납기일, 완료일) */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-gray-100 pb-4">
                 <FormGroup label="접수일자 (클릭 시 달력)">
                   <input type="date" name="receiptDate" value={formatForDateInput(formData.receiptDate)} onChange={handleFormChange} className="form-input cursor-pointer" />
@@ -1466,7 +1434,10 @@ export default function App() {
                 <textarea name="serialNo" value={formData.serialNo} onChange={handleFormChange} className="form-input h-16" />
               </FormGroup>
 
+              {/* 하자 및 처리내용 입력 섹션 */}
               <div className="border-t border-gray-200 pt-6 space-y-4">
+                
+                {/* 1. 클레임 유형 라디오 버튼 */}
                 <div className="flex gap-6 mb-2">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="radio" name="claimType" value="일반 A/S" checked={formData.claimType === '일반 A/S'} onChange={handleFormChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" />
@@ -1488,6 +1459,7 @@ export default function App() {
                   <textarea name="processDetails" value={formData.processDetails} onChange={handleFormChange} className="form-input h-24" />
                 </FormGroup>
                 
+                {/* 2. 처리 결과 및 수리방법 라디오 버튼 */}
                 <div className="pt-4 border-t border-gray-100 bg-gray-50 p-4 rounded-xl mt-4">
                   <label className="block text-sm font-bold text-gray-700 mb-3">수리 결과 및 방법 선택</label>
                   <div className="flex flex-wrap items-center gap-6">
@@ -1498,6 +1470,7 @@ export default function App() {
                       </label>
                     ))}
                     
+                    {/* 3. 유상수리 선택 시에만 나타나는 금액 입력칸 */}
                     {formData.repairMethod === '유상수리' && (
                       <div className="ml-auto flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border border-gray-200 shadow-sm transition-all">
                         <span className="text-sm font-bold text-gray-700">금액 (₩)</span>
@@ -1506,6 +1479,7 @@ export default function App() {
                     )}
                   </div>
                 </div>
+
               </div>
 
               <button type="submit" className="hidden">저장</button>
