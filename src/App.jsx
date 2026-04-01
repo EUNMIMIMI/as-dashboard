@@ -1,11 +1,21 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Search, Filter, X, FileText, Calendar, CheckCircle2, Clock, AlertCircle, 
-  Download, Upload, FileCode, Plus, Edit, Trash2, Save, BarChart3, PieChart, Layers
+  Download, Upload, FileCode, Plus, Edit, Trash2, Save, BarChart3, PieChart, Layers, Lock, LogOut
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+
+// --- 사용자 권한 및 비밀번호 설정 (원하는 대로 수정/추가 하세요!) ---
+const ACCESS_ROLES = {
+  'qm123': { name: '품질경영팀', tabs: 'ALL' },
+  'pmd123': { name: 'pmd 담당자', tabs: ['PMD'] },
+  'tmd123': { name: 'tmd 담당자', tabs: ['TMD'] },
+  'fld123': { name: 'fld 담당자', tabs: ['FLD'] },
+  'uhp123': { name: 'uhp 담당자', tabs: ['UHP', 'PT'] }
+};
+// -----------------------------------------------------------
 
 // --- Firebase 초기화 ---
 const isCanvasEnv = typeof __firebase_config !== 'undefined';
@@ -33,127 +43,14 @@ const getCollectionPath = () => {
 };
 // -----------------------
 
-// 업로드된 새 CSV 데이터를 기반으로 재구성한 초기 목업 데이터
 const initialMockData = [
   {
-    id: 1,
-    asNumber: 'WQ-2821-01-26-001',
-    orderNumber: 'P100Z260001',
-    originalOrderNumber: 'P1DSZ250066',
-    receiptDate: '01월 07일',
-    reqDeliveryDate: '01월 15일',
-    businessUnit: 'PMD',
-    agencyName: '이노바이저',
-    companyName: '크라이오에이치앤아이',
-    model: 'P255',
-    qtyDefect: 1,
-    serialNo: 'P250219884',
-    releaseDate: '2025.02.24',
-    defectContent: 'LEAK',
-    causeAnalysis: '관안 용접부위 핀홀로 LEAK됨',
-    processDetails: '신규제작 및 재발방지 대책서 송부\nCryo H&I 납품분만 버든튜브 용접 후 수압 테스트 전에 헬륨 LEAK TEST 하기로 대책서 작성함',
-    processDate: '01월 16일',
-    processType: '견적 후 착수',
-    cost: 0,
-    claimType: '일반 A/S',
-    repairMethod: '무상수리',
-    ptBoardType: 'N'
-  },
-  {
-    id: 2,
-    asNumber: 'WQ-2821-01-26-002',
-    orderNumber: 'P1AGZ260013',
-    originalOrderNumber: '',
-    receiptDate: '01월 07일',
-    reqDeliveryDate: '01월 15일',
-    businessUnit: 'PMD',
-    agencyName: '우진종합계기(구로)',
-    companyName: '한국드와이어',
-    model: 'P252',
-    qtyDefect: 6,
-    serialNo: 'C151009684\n...',
-    releaseDate: '',
-    defectContent: '성적서 발행 요청',
-    causeAnalysis: '',
-    processDetails: '',
-    processDate: '',
-    processType: '견적 후 착수',
-    cost: null,
-    claimType: '일반 A/S',
-    repairMethod: '',
-    ptBoardType: 'N'
-  },
-  {
-    id: 3,
-    asNumber: 'WQ-2821-01-26-144',
-    orderNumber: 'P1SAZ260027',
-    originalOrderNumber: 'SAZ230009',
-    receiptDate: '03월 18일',
-    reqDeliveryDate: '03월 25일',
-    businessUnit: 'PMD',
-    agencyName: '티에스아이',
-    companyName: '미원화학',
-    model: 'P982',
-    qtyDefect: 1,
-    serialNo: 'P230124988',
-    releaseDate: '',
-    defectContent: '압력지시 안됨',
-    causeAnalysis: '',
-    processDetails: '',
-    processDate: '',
-    processType: '견적 후 착수',
-    cost: null,
-    claimType: '일반 A/S',
-    repairMethod: '',
-    ptBoardType: 'N'
-  },
-  {
-    id: 4,
-    asNumber: 'WQ-2821-01-26-145',
-    orderNumber: 'UHPATZ260160',
-    originalOrderNumber: 'ATZ230035',
-    receiptDate: '03월 19일',
-    reqDeliveryDate: '03월 27일',
-    businessUnit: 'UHP',
-    agencyName: '우진계기(서울)',
-    companyName: '동광화학',
-    model: 'SMT2001',
-    qtyDefect: 2,
-    serialNo: 'TM230300925\nTM230300932',
-    releaseDate: '2023.04.26',
-    defectContent: '에러표시 및 헌팅',
-    causeAnalysis: '',
-    processDetails: '',
-    processDate: '',
-    processType: '견적 후 착수',
-    cost: null,
-    claimType: '일반 A/S',
-    repairMethod: '',
-    ptBoardType: 'N'
-  },
-  {
-    id: 6,
-    asNumber: 'WQ-2821-01-26-146',
-    orderNumber: 'P4BNZ260291',
-    originalOrderNumber: '',
-    receiptDate: '03월 20일',
-    reqDeliveryDate: '03월 27일',
-    businessUnit: 'PT',
-    agencyName: '오토센서코리아',
-    companyName: '원앤유엔씨테크',
-    model: 'PT-100',
-    qtyDefect: 1,
-    serialNo: '',
-    releaseDate: '',
-    defectContent: '출력 불량 확인요청',
-    causeAnalysis: '',
-    processDetails: '',
-    processDate: '',
-    processType: '선조치',
-    cost: null,
-    claimType: '고객불만',
-    repairMethod: '유상수리',
-    ptBoardType: 'ZMDI'
+    id: 1, asNumber: 'WQ-2821-01-26-001', orderNumber: 'P100Z260001', originalOrderNumber: 'P1DSZ250066',
+    receiptDate: '01월 07일', reqDeliveryDate: '01월 15일', businessUnit: 'PMD', agencyName: '이노바이저',
+    companyName: '크라이오에이치앤아이', model: 'P255', qtyDefect: 1, serialNo: 'P250219884', releaseDate: '2025.02.24',
+    defectContent: 'LEAK', causeAnalysis: '관안 용접부위 핀홀로 LEAK됨',
+    processDetails: '신규제작 및 재발방지 대책서 송부',
+    processDate: '01월 16일', processType: '견적 후 착수', cost: 0, claimType: '일반 A/S', repairMethod: '무상수리', ptBoardType: 'N'
   }
 ];
 
@@ -236,7 +133,6 @@ const generateNextAsNumber = (currentData) => {
 };
 
 const isIncomplete = (item) => {
-  // [수정 포인트] 너무 많은 데이터가 미입력으로 잡히지 않도록, 실제 A/S 처리에 필수적인 핵심 열만 검사하도록 완화했습니다.
   const coreFields = [
     'asNumber', 'businessUnit', 'agencyName', 'model', 
     'defectContent', 'causeAnalysis', 'processDetails', 
@@ -371,6 +267,15 @@ const getModelGroup = (bu, modelName, ptBoardType) => {
 };
 
 export default function App() {
+  // --- 인증(로그인) 상태 ---
+  const [currentUserRole, setCurrentUserRole] = useState(() => {
+    const saved = localStorage.getItem('as_dashboard_role');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+
+  // --- 기존 데이터 상태 ---
   const [data, setData] = useState([]); 
   const [activeTab, setActiveTab] = useState('전체'); 
   const [user, setUser] = useState(null);
@@ -391,6 +296,36 @@ export default function App() {
   const [formData, setFormData] = useState(null);
   
   const fileInputRef = useRef(null);
+
+  // --- 로그인/로그아웃 핸들러 ---
+  const handleLogin = (e) => {
+    e.preventDefault();
+    const role = ACCESS_ROLES[loginPassword];
+    if (role) {
+      setCurrentUserRole(role);
+      localStorage.setItem('as_dashboard_role', JSON.stringify(role));
+      setLoginError('');
+      // 로그인 시 해당 사용자가 접근 가능한 첫 번째 탭으로 이동
+      setActiveTab(role.tabs === 'ALL' ? '전체' : role.tabs[0]);
+    } else {
+      setLoginError('비밀번호가 올바르지 않습니다.');
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUserRole(null);
+    localStorage.removeItem('as_dashboard_role');
+    setLoginPassword('');
+  };
+
+  // --- 권한 변경 시 활성 탭 보호 ---
+  useEffect(() => {
+    if (currentUserRole && currentUserRole.tabs !== 'ALL') {
+      if (!currentUserRole.tabs.includes(activeTab)) {
+        setActiveTab(currentUserRole.tabs[0]);
+      }
+    }
+  }, [currentUserRole, activeTab]);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -439,12 +374,18 @@ export default function App() {
     }));
   }, [data]);
 
+  // --- 권한(Role)이 적용된 데이터 필터링 ---
+  const allowedProcessedData = useMemo(() => {
+    if (!currentUserRole || currentUserRole.tabs === 'ALL') return processedData;
+    return processedData.filter(item => currentUserRole.tabs.includes(item.businessUnit));
+  }, [processedData, currentUserRole]);
+
   const aggregatedStats = useMemo(() => {
     const stats = {};
     const AGGREGATION_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT (ZMDI)', 'PT (N)'];
     AGGREGATION_ORDER.forEach(unit => stats[unit] = { unit, normal: 0, complaint: 0 });
 
-    processedData.forEach(item => {
+    allowedProcessedData.forEach(item => {
       let unit = item.businessUnit || '미분류';
       if (unit === 'PT') {
         const boardType = item.ptBoardType === 'ZMDI' ? 'ZMDI' : 'N';
@@ -482,13 +423,13 @@ export default function App() {
       totalClaims: grandTotalClaims, normalRate: grandNormalRate, complaintRate: grandComplaintRate
     });
     return result;
-  }, [processedData]);
+  }, [allowedProcessedData]);
 
   const dashboardStats = useMemo(() => {
     const stats = {};
     FIXED_UNITS_ORDER.forEach(bu => stats[bu] = { unit: bu, total: 0, models: {} });
 
-    processedData.forEach(item => {
+    allowedProcessedData.forEach(item => {
       const bu = FIXED_UNITS_ORDER.includes(item.businessUnit) ? item.businessUnit : '기타사업부';
       if (!stats[bu]) stats[bu] = { unit: bu, total: 0, models: {} };
       
@@ -514,25 +455,34 @@ export default function App() {
       if (ia === -1) ia = 99; if (ib === -1) ib = 99;
       return ia - ib;
     });
-  }, [processedData]);
+  }, [allowedProcessedData]);
 
   const dynamicUnits = Array.from(new Set(processedData.map(d => d.businessUnit).filter(Boolean)));
   const otherUnits = dynamicUnits.filter(unit => !FIXED_UNITS_ORDER.includes(unit));
   
-  const businessUnits = ['전체', ...FIXED_UNITS_ORDER, ...otherUnits, '미입력', '집계'];
+  const allBusinessUnits = ['전체', ...FIXED_UNITS_ORDER, ...otherUnits, '미입력', '집계'];
+  
+  // 권한에 따라 노출할 탭(사업부) 결정
+  const visibleBusinessUnits = useMemo(() => {
+    if (!currentUserRole) return [];
+    if (currentUserRole.tabs === 'ALL') return allBusinessUnits;
+    return allBusinessUnits.filter(u => currentUserRole.tabs.includes(u));
+  }, [currentUserRole, allBusinessUnits]);
   
   const tabFilteredData = useMemo(() => {
-    if (activeTab === '전체' || activeTab === '집계') return processedData;
-    if (activeTab === '미입력') return processedData.filter(isIncomplete);
+    let baseData = allowedProcessedData;
 
-    return processedData.filter(item => {
+    if (activeTab === '전체' || activeTab === '집계') return baseData;
+    if (activeTab === '미입력') return baseData.filter(isIncomplete);
+
+    return baseData.filter(item => {
       if (item.businessUnit !== activeTab) return false;
       if (activeTab === 'PT' && filterPtBoard !== 'all') {
         if (item.ptBoardType !== filterPtBoard) return false;
       }
       return true;
     });
-  }, [processedData, activeTab, filterPtBoard]);
+  }, [allowedProcessedData, activeTab, filterPtBoard]);
 
   const agencies = ['all', ...Array.from(new Set(tabFilteredData.map(d => d.agencyName).filter(Boolean)))].sort();
   const models = ['all', ...Array.from(new Set(tabFilteredData.map(d => d.model).filter(Boolean)))].sort();
@@ -544,7 +494,7 @@ export default function App() {
       if (filterAgency !== 'all' && item.agencyName !== filterAgency) return false;
       if (filterModel !== 'all' && item.model !== filterModel) return false;
       
-      // [수정 포인트] 성적서발행 띄어쓰기 유무 모두 대응하여 필터 처리
+      // PT 탭 전용 필터: 성적서 발행 제외
       if (activeTab === 'PT' && filterExcludeReport === 'exclude') {
         const content = item.defectContent || '';
         if (content.includes('성적서 발행') || content.includes('성적서발행')) return false;
@@ -578,11 +528,14 @@ export default function App() {
       setSelectedRow(null);
     } else {
       const newAsNumber = generateNextAsNumber(data);
+      // 권한이 특정 부서에 국한되어 있다면, 새 글 작성 시 해당 부서가 기본값
+      const defaultBU = (currentUserRole.tabs !== 'ALL' && currentUserRole.tabs.length > 0) ? currentUserRole.tabs[0] : 'PMD';
+      
       setFormData({
         id: Date.now(),
         asNumber: newAsNumber, orderNumber: '', originalOrderNumber: '',
         receiptDate: '', reqDeliveryDate: '', processDate: '',
-        businessUnit: 'PMD', agencyName: '', companyName: '',
+        businessUnit: defaultBU, agencyName: '', companyName: '',
         model: '', qtyDefect: 1, serialNo: '', releaseDate: '',
         defectContent: '', causeAnalysis: '', processDetails: '',
         processType: '견적 후 착수', cost: '', ptBoardType: 'N',
@@ -618,7 +571,6 @@ export default function App() {
       }
       if (name === 'repairMethod' && finalValue !== '유상수리') newData.cost = '';
 
-      // [수정 포인트] 성적서 발행 자동 계산 로직에 띄어쓰기 예외 처리 추가 및 수량 파싱 안전성 확보
       if (name === 'defectContent' || name === 'qtyDefect') {
         const currentContent = name === 'defectContent' ? finalValue : prev.defectContent;
         const prevContent = prev.defectContent || '';
@@ -677,7 +629,7 @@ export default function App() {
     const header2 = ',,,,,,,,,,견적 후 착수,선 조치,출장,,,,무상,유상,수리 불가,수리 취소,,일반 A/S,고객 불만,,,,\n';
     
     let csvContent = header1 + header2;
-    const targetData = activeTab === '집계' ? processedData : filteredData;
+    const targetData = activeTab === '집계' ? allowedProcessedData : filteredData;
 
     targetData.forEach(row => {
       const costVal = row.cost != null && row.cost !== '' ? row.cost : '';
@@ -811,7 +763,6 @@ export default function App() {
           const defectContent = cols[6] ? cols[6].trim() : '';
           const qtyDefect = parseInt(cols[5]) || 1;
 
-          // [수정 포인트] CSV 업로드 시에도 성적서 발행 자동 계산 적용
           if (defectContent.includes('성적서 발행') || defectContent.includes('성적서발행')) {
             if (cost === null || cost === 0) cost = qtyDefect * 1000;
             if (!repairMethod) repairMethod = '유상수리';
@@ -863,7 +814,7 @@ export default function App() {
   };
 
   const exportToHTML = () => {
-    const targetData = activeTab === '집계' ? processedData : filteredData;
+    const targetData = activeTab === '집계' ? allowedProcessedData : filteredData;
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -929,6 +880,41 @@ export default function App() {
     document.body.removeChild(link);
   };
 
+  // --- 로그인 화면 렌더링 ---
+  if (!currentUserRole) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8 text-center border border-gray-100">
+          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Lock className="w-8 h-8 text-blue-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">A/S 관리대장 로그인</h1>
+          <p className="text-gray-500 mb-8">부여받은 시스템 접근 비밀번호를 입력해주세요.</p>
+          
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <input
+                type="password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                placeholder="비밀번호 입력"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-center text-lg tracking-widest"
+                required
+              />
+            </div>
+            {loginError && <p className="text-red-500 text-sm font-medium">{loginError}</p>}
+            <button
+              type="submit"
+              className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-colors shadow-sm"
+            >
+              시스템 접속
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8 font-sans">
       <div className="max-w-[1400px] mx-auto space-y-6">
@@ -940,6 +926,9 @@ export default function App() {
               <FileText className="text-blue-600" />
               A/S 처리 관리대장
             </h1>
+            <p className="text-sm text-gray-500 mt-1 flex items-center">
+              접속 권한: <span className="font-bold text-blue-600 ml-1">{currentUserRole.name}</span>
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <input type="file" accept=".csv" ref={fileInputRef} onChange={importFromCSV} className="hidden" />
@@ -955,13 +944,16 @@ export default function App() {
             <button onClick={() => handleOpenForm()} className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-sm ml-2">
               <Plus className="w-4 h-4 mr-1.5" /> 새 데이터 추가
             </button>
+            <button onClick={handleLogout} className="flex items-center px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors ml-2">
+              <LogOut className="w-4 h-4 mr-1.5" /> 로그아웃
+            </button>
           </div>
         </header>
 
         {/* 탭 영역 */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="border-b border-gray-200 px-2 flex overflow-x-auto hide-scrollbar">
-            {businessUnits.map(unit => (
+            {visibleBusinessUnits.map(unit => (
               <button
                 key={unit}
                 onClick={() => {
