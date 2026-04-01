@@ -82,6 +82,78 @@ const initialMockData = [
     claimType: '일반 A/S',
     repairMethod: '',
     ptBoardType: 'N'
+  },
+  {
+    id: 3,
+    asNumber: 'WQ-2821-01-26-144',
+    orderNumber: 'P1SAZ260027',
+    originalOrderNumber: 'SAZ230009',
+    receiptDate: '03월 18일',
+    reqDeliveryDate: '03월 25일',
+    businessUnit: 'PMD',
+    agencyName: '티에스아이',
+    companyName: '미원화학',
+    model: 'P982',
+    qtyDefect: 1,
+    serialNo: 'P230124988',
+    releaseDate: '',
+    defectContent: '압력지시 안됨',
+    causeAnalysis: '',
+    processDetails: '',
+    processDate: '',
+    processType: '견적 후 착수',
+    cost: null,
+    claimType: '일반 A/S',
+    repairMethod: '',
+    ptBoardType: 'N'
+  },
+  {
+    id: 4,
+    asNumber: 'WQ-2821-01-26-145',
+    orderNumber: 'UHPATZ260160',
+    originalOrderNumber: 'ATZ230035',
+    receiptDate: '03월 19일',
+    reqDeliveryDate: '03월 27일',
+    businessUnit: 'UHP',
+    agencyName: '우진계기(서울)',
+    companyName: '동광화학',
+    model: 'SMT2001',
+    qtyDefect: 2,
+    serialNo: 'TM230300925\nTM230300932',
+    releaseDate: '2023.04.26',
+    defectContent: '에러표시 및 헌팅',
+    causeAnalysis: '',
+    processDetails: '',
+    processDate: '',
+    processType: '견적 후 착수',
+    cost: null,
+    claimType: '일반 A/S',
+    repairMethod: '',
+    ptBoardType: 'N'
+  },
+  {
+    id: 6,
+    asNumber: 'WQ-2821-01-26-146',
+    orderNumber: 'P4BNZ260291',
+    originalOrderNumber: '',
+    receiptDate: '03월 20일',
+    reqDeliveryDate: '03월 27일',
+    businessUnit: 'PT',
+    agencyName: '오토센서코리아',
+    companyName: '원앤유엔씨테크',
+    model: 'PT-100',
+    qtyDefect: 1,
+    serialNo: '',
+    releaseDate: '',
+    defectContent: '출력 불량 확인요청',
+    causeAnalysis: '',
+    processDetails: '',
+    processDate: '',
+    processType: '선조치',
+    cost: null,
+    claimType: '고객불만',
+    repairMethod: '유상수리',
+    ptBoardType: 'ZMDI'
   }
 ];
 
@@ -451,8 +523,8 @@ export default function App() {
   const dynamicUnits = Array.from(new Set(processedData.map(d => d.businessUnit).filter(Boolean)));
   const otherUnits = dynamicUnits.filter(unit => !FIXED_UNITS_ORDER.includes(unit));
   
-  // 탭 목록에 '미입력' 추가
-  const businessUnits = ['전체', '미입력', ...FIXED_UNITS_ORDER, ...otherUnits, '집계'];
+  // 탭 목록 순서 변경 ('미입력'을 PT(otherUnits 포함)와 집계 사이로 이동)
+  const businessUnits = ['전체', ...FIXED_UNITS_ORDER, ...otherUnits, '미입력', '집계'];
   
   const tabFilteredData = useMemo(() => {
     if (activeTab === '전체' || activeTab === '집계') return processedData;
@@ -673,6 +745,7 @@ export default function App() {
     const file = e.target.files[0];
     if (!file) return;
 
+    // 파일명 기반 PT 보드 기본값 추론
     const fileName = file.name.toUpperCase();
     let defaultPtBoard = 'N';
     if (fileName.includes('ZMDI')) defaultPtBoard = 'ZMDI';
@@ -681,6 +754,7 @@ export default function App() {
     reader.onload = (event) => {
       const text = event.target.result;
       
+      // 전체 텍스트 기반으로 콤마 및 따옴표 안의 엔터를 파싱
       const rows = parseCSVText(text);
       if (rows.length < 3) return alert('유효한 데이터가 부족합니다. (헤더 2줄 포함 필요)');
       
@@ -688,6 +762,7 @@ export default function App() {
       for (let i = 2; i < rows.length; i++) {
         const cols = rows[i];
         
+        // 접수번호가 아예 비어있는 빈 행 무시 (,,,,,)
         if (!cols[0] || !cols[0].trim()) continue;
         
         if (cols.length >= 20) {
@@ -794,7 +869,7 @@ export default function App() {
           <thead>
             <tr>
               <th>사업부</th><th>상태</th><th>접수번호</th><th>수주번호</th><th>대리점</th><th>업체명</th><th>모델(수량)</th>
-              <th>하자내용</th><th>원인분석</th><th>기존주문정보(S/N)</th><th>처리방식</th><th>처리방법(금액)</th><th>일정</th>
+              <th>하자내용</th><th>원인분석</th><th>일정</th><th>기존주문정보(S/N)</th><th>처리방식</th><th>처리방법(금액)</th>
             </tr>
           </thead>
           <tbody>
@@ -809,13 +884,13 @@ export default function App() {
                 <td>${row.model}<br>(${row.qtyDefect}개)</td>
                 <td><span class="claim-badge">${row.claimType || '일반 A/S'}</span><br/>${row.defectContent || '-'}</td>
                 <td>${row.causeAnalysis || '-'}</td>
+                <td>접수: ${row.receiptDate}<br>요구: <span style="color:red">${row.reqDeliveryDate}</span><br>납기: ${row.processDate || '-'}</td>
                 <td>S/N: ${row.serialNo || '-'}<br>출고: ${row.releaseDate || '-'}<br>수주: ${row.originalOrderNumber || '-'}</td>
                 <td class="text-center">${row.processType || '-'}</td>
                 <td class="text-right">
                   <strong>${row.repairMethod || '-'}</strong><br/>
                   ${row.repairMethod === '유상수리' ? (row.cost != null && row.cost !== '' ? '₩ ' + Number(row.cost).toLocaleString() : '₩ 0') : ''}
                 </td>
-                <td>접수: ${row.receiptDate}<br>요구: <span style="color:red">${row.reqDeliveryDate}</span><br>납기: ${row.processDate || '-'}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -1088,10 +1163,10 @@ export default function App() {
                     <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">수량</th>
                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">하자내용</th>
                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">원인분석</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">일정</th>
                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">기존 주문정보</th>
                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">처리방식</th>
                     <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">처리방법</th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">일정</th>
                     <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">관리</th>
                   </tr>
                 </thead>
@@ -1125,6 +1200,14 @@ export default function App() {
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <div className="flex flex-col gap-1 text-xs">
+                            <div className="flex items-center"><span className="text-gray-400 w-8">접수:</span> <span className="text-gray-900">{row.receiptDate}</span></div>
+                            <div className="flex items-center"><span className="text-gray-400 w-8">요구:</span> <span className="text-red-500">{row.reqDeliveryDate}</span></div>
+                            <div className="flex items-center"><span className="text-gray-400 w-8">납기:</span> <span className="text-gray-900">{row.processDate || '-'}</span></div>
+                            <div className="flex items-center"><span className="text-gray-400 w-8">소요:</span> <span className="text-gray-900">{row.duration}</span></div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="flex flex-col gap-1 text-xs">
                             <div className="flex items-center"><span className="text-gray-400 w-8">S/N:</span> <span className="text-gray-900 max-w-[120px] truncate">{row.serialNo || '-'}</span></div>
                             <div className="flex items-center"><span className="text-gray-400 w-8">출고:</span> <span className="text-gray-900">{row.releaseDate || '-'}</span></div>
                             <div className="flex items-center"><span className="text-gray-400 w-8">수주:</span> <span className="text-gray-900">{row.originalOrderNumber || '-'}</span></div>
@@ -1140,14 +1223,6 @@ export default function App() {
                           ) : (
                             <span className="font-medium text-gray-700">{row.repairMethod || '-'}</span>
                           )}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex flex-col gap-1 text-xs">
-                            <div className="flex items-center"><span className="text-gray-400 w-8">접수:</span> <span className="text-gray-900">{row.receiptDate}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-8">요구:</span> <span className="text-red-500">{row.reqDeliveryDate}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-8">납기:</span> <span className="text-gray-900">{row.processDate || '-'}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-8">소요:</span> <span className="text-gray-900">{row.duration}</span></div>
-                          </div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-center align-middle">
                           <div className="flex items-center justify-center gap-1">
