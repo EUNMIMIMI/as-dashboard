@@ -1,13 +1,13 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Search, Filter, X, FileText, Calendar, CheckCircle2, Clock, AlertCircle, 
-  Download, Upload, FileCode, Plus, Edit, Trash2, Save, BarChart3, PieChart, Layers, Lock, LogOut
+  Download, Upload, FileCode, Plus, Edit, Trash2, Save, BarChart3, PieChart, Layers, Lock, LogOut, RotateCcw, FileSpreadsheet
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, deleteDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 
-// --- 사용자 권한 및 비밀번호 설정 (원하는 대로 수정/추가 하세요!) ---
+// --- 사용자 권한 및 비밀번호 설정 ---
 const ACCESS_ROLES = {
   'q123': { name: '품질경영팀', tabs: 'ALL' },
   'pmd123': { name: 'pmd 담당자', tabs: ['PMD'] },
@@ -15,7 +15,7 @@ const ACCESS_ROLES = {
   'fld123': { name: 'fld 담당자', tabs: ['FLD'] },
   'uhp123': { name: 'uhp 담당자', tabs: ['UHP', 'PT'] }
 };
-// -----------------------------------------------------------
+// ------------------------------------
 
 // --- Firebase 초기화 ---
 const isCanvasEnv = typeof __firebase_config !== 'undefined';
@@ -267,16 +267,14 @@ const getModelGroup = (bu, modelName, ptBoardType) => {
 };
 
 export default function App() {
-  // --- 인증(로그인) 상태 ---
   const [currentUserRole, setCurrentUserRole] = useState(() => {
     const saved = localStorage.getItem('as_dashboard_role');
     return saved ? JSON.parse(saved) : null;
   });
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
-  const [isCapsLockOn, setIsCapsLockOn] = useState(false); // 캡스락 감지 상태
+  const [isCapsLockOn, setIsCapsLockOn] = useState(false);
 
-  // --- 기존 데이터 상태 ---
   const [data, setData] = useState([]); 
   const [activeTab, setActiveTab] = useState('전체'); 
   const [user, setUser] = useState(null);
@@ -295,10 +293,15 @@ export default function App() {
   const [selectedRow, setSelectedRow] = useState(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formData, setFormData] = useState(null);
+
+  const [itemToDelete, setItemToDelete] = useState(null);
+  const [itemToPermanentDelete, setItemToPermanentDelete] = useState(null);
+  const [alertMessage, setAlertMessage] = useState('');
   
   const fileInputRef = useRef(null);
 
-  // --- 로그인/로그아웃 핸들러 ---
+  const customAlert = (message) => setAlertMessage(message);
+
   const handleLogin = (e) => {
     e.preventDefault();
     const role = ACCESS_ROLES[loginPassword];
@@ -306,7 +309,6 @@ export default function App() {
       setCurrentUserRole(role);
       localStorage.setItem('as_dashboard_role', JSON.stringify(role));
       setLoginError('');
-      // 로그인 시 해당 사용자가 접근 가능한 첫 번째 탭으로 이동
       setActiveTab(role.tabs === 'ALL' ? '전체' : role.tabs[0]);
     } else {
       setLoginError('비밀번호가 올바르지 않습니다.');
@@ -320,10 +322,12 @@ export default function App() {
     setIsCapsLockOn(false);
   };
 
-  // --- 권한 변경 시 활성 탭 보호 ---
   useEffect(() => {
-    if (currentUserRole && currentUserRole.tabs !== 'ALL') {
-      if (!currentUserRole.tabs.includes(activeTab)) {
+    if (currentUserRole) {
+      const isQM = currentUserRole.name === '품질경영팀';
+      if (!isQM && (activeTab === '휴지통' || activeTab === '보고서')) {
+        setActiveTab(currentUserRole.tabs[0]);
+      } else if (currentUserRole.tabs !== 'ALL' && !currentUserRole.tabs.includes(activeTab)) {
         setActiveTab(currentUserRole.tabs[0]);
       }
     }
@@ -345,10 +349,19 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     const colRef = collection(db, getCollectionPath());
+    
     const unsubscribe = onSnapshot(colRef, (snapshot) => {
       const records = [];
-      snapshot.forEach(doc => {
-        records.push({ id: doc.id, ...doc.data() });
+      const now = Date.now();
+      const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+
+      snapshot.forEach(docSnap => {
+        const d = docSnap.data();
+        if (d.deletedAt && (now - d.deletedAt > THREE_DAYS_MS)) {
+          deleteDoc(doc(db, getCollectionPath(), docSnap.id)).catch(console.error);
+        } else {
+          records.push({ id: docSnap.id, ...d });
+        }
       });
       
       if (snapshot.empty && !isSeeded) {
@@ -368,15 +381,25 @@ export default function App() {
     return () => unsubscribe();
   }, [user, isSeeded]);
 
+  const activeRecords = useMemo(() => data.filter(d => !d.deletedAt), [data]);
+  const deletedRecords = useMemo(() => data.filter(d => d.deletedAt), [data]);
+
   const processedData = useMemo(() => {
-    return data.map(item => ({
+    return activeRecords.map(item => ({
       ...item,
       complianceStatus: calculateCompliance(item.reqDeliveryDate, item.processDate),
       duration: calculateDuration(item.receiptDate, item.processDate)
     }));
-  }, [data]);
+  }, [activeRecords]);
 
-  // --- 권한(Role)이 적용된 데이터 필터링 ---
+  const processedDeletedData = useMemo(() => {
+    return deletedRecords.map(item => ({
+      ...item,
+      complianceStatus: calculateCompliance(item.reqDeliveryDate, item.processDate),
+      duration: calculateDuration(item.receiptDate, item.processDate)
+    }));
+  }, [deletedRecords]);
+
   const allowedProcessedData = useMemo(() => {
     if (!currentUserRole || currentUserRole.tabs === 'ALL') return processedData;
     return processedData.filter(item => currentUserRole.tabs.includes(item.businessUnit));
@@ -464,7 +487,6 @@ export default function App() {
   
   const allBusinessUnits = ['전체', ...FIXED_UNITS_ORDER, ...otherUnits, '미입력', '집계'];
   
-  // 권한에 따라 노출할 탭(사업부) 결정
   const visibleBusinessUnits = useMemo(() => {
     if (!currentUserRole) return [];
     if (currentUserRole.tabs === 'ALL') return allBusinessUnits;
@@ -472,9 +494,10 @@ export default function App() {
   }, [currentUserRole, allBusinessUnits]);
   
   const tabFilteredData = useMemo(() => {
-    let baseData = allowedProcessedData;
+    if (activeTab === '휴지통') return processedDeletedData;
 
-    if (activeTab === '전체' || activeTab === '집계') return baseData;
+    let baseData = allowedProcessedData;
+    if (activeTab === '전체' || activeTab === '집계' || activeTab === '보고서') return baseData;
     if (activeTab === '미입력') return baseData.filter(isIncomplete);
 
     return baseData.filter(item => {
@@ -484,7 +507,7 @@ export default function App() {
       }
       return true;
     });
-  }, [allowedProcessedData, activeTab, filterPtBoard]);
+  }, [allowedProcessedData, processedDeletedData, activeTab, filterPtBoard]);
 
   const agencies = ['all', ...Array.from(new Set(tabFilteredData.map(d => d.agencyName).filter(Boolean)))].sort();
   const models = ['all', ...Array.from(new Set(tabFilteredData.map(d => d.model).filter(Boolean)))].sort();
@@ -496,7 +519,6 @@ export default function App() {
       if (filterAgency !== 'all' && item.agencyName !== filterAgency) return false;
       if (filterModel !== 'all' && item.model !== filterModel) return false;
       
-      // PT 탭 전용 필터: 성적서 발행 제외
       if (activeTab === 'PT' && filterExcludeReport === 'exclude') {
         const content = item.defectContent || '';
         if (content.includes('성적서 발행') || content.includes('성적서발행')) return false;
@@ -504,7 +526,7 @@ export default function App() {
 
       if (searchQuery) {
         const query = searchQuery.toLowerCase().trim();
-        const queryDigits = query.replace(/\D/g, ''); // 검색어에서 숫자만 추출
+        const queryDigits = query.replace(/\D/g, ''); 
 
         const asNum = (item.asNumber || '').toLowerCase();
         const orderNum = (item.orderNumber || '').toLowerCase();
@@ -512,23 +534,15 @@ export default function App() {
         const agency = (item.agencyName || '').toLowerCase();
         const mod = (item.model || '').toLowerCase();
 
-        // 수주번호에서 숫자만 추출 (예: taez260056 -> 260056)
         const orderNumDigits = orderNum.replace(/\D/g, '');
-        // 접수번호 마지막 마디 추출 (예: WQ-2821-01-26-123 -> 123)
         const asNumLast = asNum.split('-').pop() || '';
 
-        // 1. 일반적인 텍스트 포함 여부 검사 (수주번호 추가)
         const isNormalMatch = 
-          asNum.includes(query) ||
-          orderNum.includes(query) ||
-          comp.includes(query) ||
-          agency.includes(query) ||
-          mod.includes(query);
+          asNum.includes(query) || orderNum.includes(query) ||
+          comp.includes(query) || agency.includes(query) || mod.includes(query);
 
-        // 2. 숫자로만 검색했을 때의 정밀 매칭 (수주번호 숫자만 비교, 접수번호 마지막 3자리 비교)
         const isDigitMatch = queryDigits.length > 0 && (
-          orderNumDigits.includes(queryDigits) || 
-          asNumLast.includes(queryDigits)
+          orderNumDigits.includes(queryDigits) || asNumLast.includes(queryDigits)
         );
 
         return isNormalMatch || isDigitMatch;
@@ -552,7 +566,6 @@ export default function App() {
       setSelectedRow(null);
     } else {
       const newAsNumber = generateNextAsNumber(data);
-      // 권한이 특정 부서에 국한되어 있다면, 새 글 작성 시 해당 부서가 기본값
       const defaultBU = (currentUserRole.tabs !== 'ALL' && currentUserRole.tabs.length > 0) ? currentUserRole.tabs[0] : 'PMD';
       
       setFormData({
@@ -615,7 +628,10 @@ export default function App() {
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
-    if (!user) return alert('데이터베이스에 연결 중입니다. 잠시 후 다시 시도해주세요.');
+    if (!user) {
+      customAlert('데이터베이스에 연결 중입니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
 
     const docId = String(formData.id || Date.now());
     const docRef = doc(db, getCollectionPath(), docId);
@@ -624,12 +640,36 @@ export default function App() {
     setIsFormOpen(false);
   };
 
-  const handleDelete = async (id) => {
-    if (confirm('정말로 이 기록을 삭제하시겠습니까?')) {
-      if (!user) return;
-      await deleteDoc(doc(db, getCollectionPath(), String(id)));
-      setSelectedRow(null);
-    }
+  const handleDeletePrepare = (id, e) => {
+    if (e) e.stopPropagation();
+    setItemToDelete(id);
+  };
+
+  const executeDelete = async () => {
+    if (!user || !itemToDelete) return;
+    await updateDoc(doc(db, getCollectionPath(), String(itemToDelete)), { deletedAt: Date.now() });
+    setItemToDelete(null);
+    setSelectedRow(null);
+  };
+
+  const handlePermanentDeletePrepare = (id, e) => {
+    if (e) e.stopPropagation();
+    setItemToPermanentDelete(id);
+  };
+
+  const executePermanentDelete = async () => {
+    if (!user || !itemToPermanentDelete) return;
+    await deleteDoc(doc(db, getCollectionPath(), String(itemToPermanentDelete)));
+    setItemToPermanentDelete(null);
+    setSelectedRow(null);
+  };
+
+  const handleRestore = async (id, e) => {
+    if (e) e.stopPropagation();
+    if (!user) return;
+    await updateDoc(doc(db, getCollectionPath(), String(id)), { deletedAt: null });
+    setSelectedRow(null);
+    customAlert('데이터가 성공적으로 복구되었습니다.');
   };
 
   useEffect(() => {
@@ -648,12 +688,124 @@ export default function App() {
   const endPage = Math.min(startPage + maxVisiblePages - 1, totalPages);
   const visiblePages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
 
+  const exportToExcel = async () => {
+    try {
+      const XLSX = await import('https://esm.sh/xlsx-js-style');
+      const targetData = activeTab === '집계' || activeTab === '보고서' ? allowedProcessedData : filteredData;
+      
+      const wsData = [
+        ["[2026년 A/S 처리관리대장]", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        ["접수번호", "수주번호", "사업부", "대리점명", "업체명", "MODEL", "불량\n수량", "하자내용", "SERIAL No.", "출고일자", "기존\n주문번호", "처리 방법", "", "", "접수일", "납기\n요구일", "처리\n완료일", "처리", "", "", "", "비용", "원인 분석", "", "제품 원인", "처리내역"],
+        ["", "", "", "", "", "", "", "", "", "", "", "견적\n후\n착수", "선\n조치", "출장", "", "", "", "무상", "유상", "수리\n불가", "수리\n취소", "", "일반\nA/S", "고객\n불만", "", ""]
+      ];
+
+      targetData.forEach(row => {
+        wsData.push([
+          row.asNumber || '',
+          row.orderNumber || '',
+          row.businessUnit || '',
+          row.agencyName || '',
+          row.companyName || '',
+          row.model || '',
+          row.qtyDefect || 1,
+          row.defectContent || '',
+          row.serialNo || '',
+          row.releaseDate || '',
+          row.originalOrderNumber || '',
+          row.processType === '견적 후 착수' ? '●' : '',
+          row.processType === '선조치' ? '●' : '',
+          row.processType === '출장' ? '●' : '',
+          row.receiptDate || '',
+          row.reqDeliveryDate || '',
+          row.processDate || '',
+          row.repairMethod === '무상수리' ? '●' : '',
+          row.repairMethod === '유상수리' ? '●' : '',
+          row.repairMethod === '수리불가' ? '●' : '',
+          row.repairMethod === '수리취소' ? '●' : '',
+          row.cost != null && row.cost !== '' ? Number(row.cost) : '',
+          row.claimType === '일반 A/S' ? '●' : '',
+          row.claimType === '고객불만' ? '●' : '',
+          row.causeAnalysis || '',
+          row.processDetails || ''
+        ]);
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+      ws['!merges'] = [
+        { s: {r:0, c:0}, e: {r:0, c:25} }, 
+        { s: {r:1, c:0}, e: {r:2, c:0} }, 
+        { s: {r:1, c:1}, e: {r:2, c:1} }, 
+        { s: {r:1, c:2}, e: {r:2, c:2} }, 
+        { s: {r:1, c:3}, e: {r:2, c:3} }, 
+        { s: {r:1, c:4}, e: {r:2, c:4} }, 
+        { s: {r:1, c:5}, e: {r:2, c:5} }, 
+        { s: {r:1, c:6}, e: {r:2, c:6} }, 
+        { s: {r:1, c:7}, e: {r:2, c:7} }, 
+        { s: {r:1, c:8}, e: {r:2, c:8} }, 
+        { s: {r:1, c:9}, e: {r:2, c:9} }, 
+        { s: {r:1, c:10}, e: {r:2, c:10} }, 
+        { s: {r:1, c:11}, e: {r:1, c:13} }, 
+        { s: {r:1, c:14}, e: {r:2, c:14} }, 
+        { s: {r:1, c:15}, e: {r:2, c:15} }, 
+        { s: {r:1, c:16}, e: {r:2, c:16} }, 
+        { s: {r:1, c:17}, e: {r:1, c:20} }, 
+        { s: {r:1, c:21}, e: {r:2, c:21} }, 
+        { s: {r:1, c:22}, e: {r:1, c:23} }, 
+        { s: {r:1, c:24}, e: {r:2, c:24} }, 
+        { s: {r:1, c:25}, e: {r:2, c:25} }  
+      ];
+
+      const borderStyle = { top: {style: 'thin', color: {rgb: "000000"}}, bottom: {style: 'thin', color: {rgb: "000000"}}, left: {style: 'thin', color: {rgb: "000000"}}, right: {style: 'thin', color: {rgb: "000000"}} };
+      const grayStyle = { font: { name: '맑은 고딕', sz: 10, bold: true }, fill: { fgColor: { rgb: "BFBFBF" } }, border: borderStyle, alignment: { horizontal: "center", vertical: "center", wrapText: true } };
+      const pinkStyle = { font: { name: '맑은 고딕', sz: 10, bold: true }, fill: { fgColor: { rgb: "E6B8B7" } }, border: borderStyle, alignment: { horizontal: "center", vertical: "center", wrapText: true } };
+      const blueStyle = { font: { name: '맑은 고딕', sz: 10, bold: true }, fill: { fgColor: { rgb: "8DB4E2" } }, border: borderStyle, alignment: { horizontal: "center", vertical: "center", wrapText: true } };
+      const dataStyleCenter = { font: { name: '맑은 고딕', sz: 10 }, border: borderStyle, alignment: { horizontal: "center", vertical: "center", wrapText: true } };
+      const dataStyleLeft = { font: { name: '맑은 고딕', sz: 10 }, border: borderStyle, alignment: { horizontal: "left", vertical: "center", wrapText: true } };
+      const dataStyleRight = { font: { name: '맑은 고딕', sz: 10 }, border: borderStyle, alignment: { horizontal: "right", vertical: "center", wrapText: true } };
+
+      for (let R = 0; R < wsData.length; R++) {
+        for (let C = 0; C <= 25; C++) {
+          const cellRef = XLSX.utils.encode_cell({c: C, r: R});
+          if (!ws[cellRef]) ws[cellRef] = { t: 's', v: '' }; 
+          
+          if (R === 0) {
+            ws['A1'].s = { font: { name: '맑은 고딕', sz: 20, bold: true }, alignment: { horizontal: "center", vertical: "center" } };
+          } else if (R === 1 || R === 2) {
+            if (C <= 13) ws[cellRef].s = grayStyle;
+            else if (C <= 21) ws[cellRef].s = pinkStyle;
+            else ws[cellRef].s = blueStyle;
+          } else {
+            if ([7, 8, 24, 25].includes(C)) ws[cellRef].s = dataStyleLeft;
+            else if (C === 21) ws[cellRef].s = dataStyleRight;
+            else ws[cellRef].s = dataStyleCenter;
+          }
+        }
+      }
+      
+      ws['!cols'] = [
+        {wch: 16}, {wch: 14}, {wch: 8}, {wch: 14}, {wch: 14}, {wch: 12}, {wch: 6}, {wch: 30}, {wch: 18}, {wch: 11}, {wch: 14}, 
+        {wch: 5}, {wch: 5}, {wch: 5}, {wch: 10}, {wch: 10}, {wch: 10}, {wch: 5}, {wch: 5}, {wch: 5}, {wch: 5}, {wch: 10}, 
+        {wch: 5}, {wch: 5}, {wch: 25}, {wch: 30}
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "AS 접수대장");
+      XLSX.writeFile(wb, `AS관리대장_${new Date().toISOString().slice(0,10)}.xlsx`);
+      customAlert("색상과 서식이 유지된 엑셀 파일이 다운로드되었습니다!");
+
+    } catch (error) {
+      console.error(error);
+      customAlert("엑셀 변환 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+    }
+  };
+
   const exportToCSV = async () => {
     const header1 = '접수번호,수주번호,대리점명,업체명,MODEL,불량수량,하자내용,SERIAL No.,출고일자,기존주문번호,처리 방법,,,접수일,납기요구일,처리완료일,처리,,,,비용,원인 분석,,제품 원인,처리내역,사업부(시스템용),PT보드구분(시스템용)\n';
     const header2 = ',,,,,,,,,,견적 후 착수,선 조치,출장,,,,무상,유상,수리 불가,수리 취소,,일반 A/S,고객 불만,,,,\n';
     
     let csvContent = header1 + header2;
-    const targetData = activeTab === '집계' ? allowedProcessedData : filteredData;
+    const targetData = activeTab === '집계' || activeTab === '보고서' ? allowedProcessedData : filteredData;
 
     targetData.forEach(row => {
       const costVal = row.cost != null && row.cost !== '' ? row.cost : '';
@@ -746,7 +898,7 @@ export default function App() {
       const text = event.target.result;
       
       const rows = parseCSVText(text);
-      if (rows.length < 3) return alert('유효한 데이터가 부족합니다. (헤더 2줄 포함 필요)');
+      if (rows.length < 3) return customAlert('유효한 데이터가 부족합니다. (헤더 2줄 포함 필요)');
       
       const newRecords = [];
       for (let i = 2; i < rows.length; i++) {
@@ -814,7 +966,8 @@ export default function App() {
             causeAnalysis: cols[23] ? cols[23].trim() : '',
             processDetails: cols[24] ? cols[24].trim() : '',
             businessUnit: bu,
-            ptBoardType: ptBoard
+            ptBoardType: ptBoard,
+            deletedAt: null 
           });
         }
       }
@@ -824,12 +977,12 @@ export default function App() {
            newRecords.forEach(async (record) => {
              await setDoc(doc(db, getCollectionPath(), String(record.id)), record);
            });
-           alert(`${newRecords.length}건의 데이터를 성공적으로 업로드 중입니다. (잠시 후 실시간으로 반영됩니다.)`);
+           customAlert(`${newRecords.length}건의 데이터를 성공적으로 업로드 중입니다. (잠시 후 실시간으로 반영됩니다.)`);
          } else {
-           alert('데이터베이스 연결이 안되어 업로드할 수 없습니다.');
+           customAlert('데이터베이스 연결이 안되어 업로드할 수 없습니다.');
          }
       } else {
-         alert('업로드할 유효한 데이터 항목을 찾지 못했습니다. 파일 양식을 확인해주세요.');
+         customAlert('업로드할 유효한 데이터 항목을 찾지 못했습니다. 파일 양식을 확인해주세요.');
       }
     };
     
@@ -838,55 +991,113 @@ export default function App() {
   };
 
   const exportToHTML = () => {
-    const targetData = activeTab === '집계' ? allowedProcessedData : filteredData;
+    const targetData = activeTab === '집계' || activeTab === '보고서' ? allowedProcessedData : filteredData;
 
     const htmlContent = `
       <!DOCTYPE html>
       <html lang="ko">
       <head>
         <meta charset="UTF-8">
-        <title>A/S 처리 관리대장 보고서</title>
+        <title>[2026년 A/S 처리관리대장]</title>
         <style>
-          body { font-family: 'Malgun Gothic', sans-serif; padding: 20px; }
-          h1 { text-align: center; color: #333; }
-          .summary { margin-bottom: 20px; text-align: right; color: #666; font-size: 14px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
-          th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-          th { background-color: #f4f4f5; font-weight: bold; }
-          .text-center { text-align: center; }
-          .text-right { text-align: right; }
-          .claim-badge { display:inline-block; padding:2px 4px; border-radius:3px; background:#f0f0f0; font-size:10px; margin-bottom:4px; }
+          @page { size: landscape; margin: 10mm; }
+          body, table, th, td { font-family: '맑은 고딕', 'Malgun Gothic', Tahoma, sans-serif; font-size: 10pt; color: #000; }
+          body { padding: 20px; background: #fff; }
+          h1 { text-align: center; color: #000; font-size: 20pt; margin-bottom: 15px; letter-spacing: 1px; font-weight: bold; }
+          .summary { margin-bottom: 5px; text-align: right; color: #000; font-size: 10pt; }
+          
+          table { width: 100%; border-collapse: collapse; table-layout: auto; word-break: break-all; }
+          th, td { border: 1pt solid #000; padding: 4px; text-align: center; vertical-align: middle; line-height: 1.3; }
+          
+          th.bg-gray { background-color: #BFBFBF !important; }
+          th.bg-pink { background-color: #E6B8B7 !important; }
+          th.bg-blue { background-color: #8DB4E2 !important; }
+          
+          th { font-weight: bold; white-space: pre-wrap; }
+          
+          .text-left { text-align: left; padding-left: 5px; white-space: pre-wrap; }
+          .text-right { text-align: right; padding-right: 5px; }
+          .circle { font-size: 11pt; font-weight: bold; }
+          .nowrap { white-space: nowrap; }
+          
+          .col-defect { min-width: 100px; }
+          .col-cause { min-width: 100px; }
+          .col-detail { min-width: 100px; }
+          .col-serial { min-width: 70px; word-break: break-all; }
         </style>
       </head>
       <body>
-        <h1>A/S 처리 관리대장 보고서</h1>
-        <div class="summary">출력일시: ${new Date().toLocaleString()} | 총 ${targetData.length}건</div>
+        <h1>[2026년 A/S 처리관리대장]</h1>
+        <div class="summary">출력일시: ${new Date().toLocaleString()} | 대상: 총 ${targetData.length}건</div>
         <table>
           <thead>
             <tr>
-              <th>사업부</th><th>상태</th><th>접수번호</th><th>수주번호</th><th>대리점</th><th>업체명</th><th>모델(수량)</th>
-              <th>하자내용</th><th>원인분석</th><th>일정</th><th>기존주문정보(S/N)</th><th>처리방식</th><th>처리방법(금액)</th>
+              <th rowspan="2" class="bg-gray nowrap">접수번호</th>
+              <th rowspan="2" class="bg-gray nowrap">수주번호</th>
+              <th rowspan="2" class="bg-gray nowrap">사업부</th>
+              <th rowspan="2" class="bg-gray">대리점명</th>
+              <th rowspan="2" class="bg-gray">업체명</th>
+              <th rowspan="2" class="bg-gray">MODEL</th>
+              <th rowspan="2" class="bg-gray">불량<br>수량</th>
+              <th rowspan="2" class="col-defect bg-gray">하자내용</th>
+              <th rowspan="2" class="col-serial bg-gray">SERIAL No.</th>
+              <th rowspan="2" class="bg-gray nowrap">출고일자</th>
+              <th rowspan="2" class="bg-gray">기존<br>주문번호</th>
+              <th colspan="3" class="bg-gray">처리 방법</th>
+              
+              <th rowspan="2" class="bg-pink nowrap">접수일</th>
+              <th rowspan="2" class="bg-pink nowrap">납기<br>요구일</th>
+              <th rowspan="2" class="bg-pink nowrap">처리<br>완료일</th>
+              <th colspan="4" class="bg-pink">처리</th>
+              <th rowspan="2" class="bg-pink">비용</th>
+              
+              <th colspan="2" class="bg-blue">원인 분석</th>
+              <th rowspan="2" class="col-cause bg-blue">제품 원인</th>
+              <th rowspan="2" class="col-detail bg-blue">처리내역</th>
+            </tr>
+            <tr>
+              <th class="bg-gray nowrap">견적 후<br>착수</th>
+              <th class="bg-gray nowrap">선 조치</th>
+              <th class="bg-gray nowrap">출장</th>
+              
+              <th class="bg-pink nowrap">무상</th>
+              <th class="bg-pink nowrap">유상</th>
+              <th class="bg-pink nowrap">수리<br>불가</th>
+              <th class="bg-pink nowrap">수리<br>취소</th>
+              
+              <th class="bg-blue nowrap">일반<br>A/S</th>
+              <th class="bg-blue nowrap">고객<br>불만</th>
             </tr>
           </thead>
           <tbody>
             ${targetData.map(row => `
               <tr>
-                <td class="text-center">${row.businessUnit}</td>
-                <td class="text-center">${row.complianceStatus}</td>
-                <td>${row.asNumber}</td>
-                <td>${row.orderNumber}</td>
-                <td>${row.agencyName}</td>
-                <td>${row.companyName}</td>
-                <td>${row.model}<br>(${row.qtyDefect}개)</td>
-                <td><span class="claim-badge">${row.claimType || '일반 A/S'}</span><br/>${row.defectContent || '-'}</td>
-                <td>${row.causeAnalysis || '-'}</td>
-                <td>접수: ${row.receiptDate}<br>요구: <span style="color:red">${row.reqDeliveryDate}</span><br>납기: ${row.processDate || '-'}</td>
-                <td>S/N: ${row.serialNo || '-'}<br>출고: ${row.releaseDate || '-'}<br>수주: ${row.originalOrderNumber || '-'}</td>
-                <td class="text-center">${row.processType || '-'}</td>
-                <td class="text-right">
-                  <strong>${row.repairMethod || '-'}</strong><br/>
-                  ${row.repairMethod === '유상수리' ? (row.cost != null && row.cost !== '' ? '₩ ' + Number(row.cost).toLocaleString() : '₩ 0') : ''}
-                </td>
+                <td class="nowrap">${row.asNumber || ''}</td>
+                <td class="nowrap">${row.orderNumber || ''}</td>
+                <td class="nowrap">${row.businessUnit || ''}</td>
+                <td>${row.agencyName || ''}</td>
+                <td>${row.companyName || ''}</td>
+                <td>${row.model || ''}</td>
+                <td>${row.qtyDefect || 1}</td>
+                <td class="text-left">${(row.defectContent || '').replace(/\n/g, '<br/>')}</td>
+                <td class="text-left" style="font-size: 9pt;">${(row.serialNo || '').replace(/\n/g, '<br/>')}</td>
+                <td class="nowrap">${row.releaseDate || ''}</td>
+                <td class="nowrap">${row.originalOrderNumber || ''}</td>
+                <td class="circle">${row.processType === '견적 후 착수' ? '●' : ''}</td>
+                <td class="circle">${row.processType === '선조치' ? '●' : ''}</td>
+                <td class="circle">${row.processType === '출장' ? '●' : ''}</td>
+                <td class="nowrap">${row.receiptDate || ''}</td>
+                <td class="nowrap">${row.reqDeliveryDate || ''}</td>
+                <td class="nowrap">${row.processDate || ''}</td>
+                <td class="circle">${row.repairMethod === '무상수리' ? '●' : ''}</td>
+                <td class="circle">${row.repairMethod === '유상수리' ? '●' : ''}</td>
+                <td class="circle">${row.repairMethod === '수리불가' ? '●' : ''}</td>
+                <td class="circle">${row.repairMethod === '수리취소' ? '●' : ''}</td>
+                <td class="text-right nowrap">${row.cost ? Number(row.cost).toLocaleString() : ''}</td>
+                <td class="circle">${row.claimType === '일반 A/S' ? '●' : ''}</td>
+                <td class="circle">${row.claimType === '고객불만' ? '●' : ''}</td>
+                <td class="text-left">${(row.causeAnalysis || '').replace(/\n/g, '<br/>')}</td>
+                <td class="text-left">${(row.processDetails || '').replace(/\n/g, '<br/>')}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -904,7 +1115,150 @@ export default function App() {
     document.body.removeChild(link);
   };
 
-  // --- 캡스락 감지 핸들러 ---
+  const exportToASReportHTML = (lang = 'ko') => {
+    const targetData = activeTab === '집계' || activeTab === '보고서' ? allowedProcessedData : filteredData;
+
+    // --- 비즈니스 전문 영문 번역기 ---
+    const translateToEn = (text) => {
+      if (!text) return '-';
+      const dict = {
+        '일반 A/S': 'General Service',
+        '고객불만': 'Customer Claim',
+        '무상수리': 'FOC Repair (Warranty)',
+        '유상수리': 'Paid Repair',
+        '수리불가': 'Beyond Economical Repair',
+        '수리취소': 'Repair Canceled',
+        '견적 후 착수': 'Proceed after Quotation',
+        '선조치': 'Advance Replacement/Repair',
+        '출장': 'On-site Service',
+        '성적서 발행 요청': 'Requested issuance of inspection certificate',
+        '성적서 발행': 'Issued inspection certificate',
+        '관안 용접부위 핀홀로 LEAK됨': 'Leakage detected due to pinhole at internal weld joint',
+        '신규제작 및 재발방지 대책서 송부': 'Remanufactured product & submitted preventive action report',
+        '압력지시 안됨': 'Failure in pressure indication',
+        '에러표시 및 헌팅': 'Error displayed & signal hunting observed',
+        '출력 불량 확인요청': 'Requested verification of output defect',
+        '최소값 고정': 'Output fixed at minimum value',
+        '센서보드 패턴 이상': 'Defect in sensor board circuit pattern',
+        '대체품 출하': 'Replacement unit shipped',
+        '정상제품': 'No Defect Found (NDF)',
+        'LEAK': 'Leakage detected'
+      };
+
+      let result = text;
+      // 1. 전체 문장이 사전과 완벽히 일치하는 경우 바로 반환
+      if (dict[result.trim()]) return dict[result.trim()].replace(/\n/g, '<br/>');
+
+      // 2. 문장 안에 섞여있는 자주 쓰이는 단어들을 부분적으로 치환 (정규식 사용)
+      Object.keys(dict).forEach(key => {
+        const regex = new RegExp(key, 'g');
+        result = result.replace(regex, dict[key]);
+      });
+
+      return result.replace(/\n/g, '<br/>');
+    };
+
+    // 언어에 따른 테이블 헤더 설정
+    const headers = lang === 'en' ? {
+      docTitle: 'A/S Report (Service Summary)',
+      dateLabel: 'Report Date',
+      targetLabel: 'Total',
+      countUnit: 'records',
+      colAsNum: 'Receipt No.',
+      colAgency: 'Agency / Customer',
+      colModel: 'Model (Qty)',
+      colDefect: 'Defect Description',
+      colCause: 'Root Cause Analysis',
+      colResult: 'Service Result',
+      colDetails: 'Action Taken & Countermeasure',
+      qtyUnit: 'ea'
+    } : {
+      docTitle: 'AS 보고서 (처리내역 요약)',
+      dateLabel: '보고일자',
+      targetLabel: '대상: 총',
+      countUnit: '건',
+      colAsNum: '접수번호',
+      colAgency: '대리점 / 업체명',
+      colModel: '모델 (수량)',
+      colDefect: '하자 내용',
+      colCause: '원인 분석',
+      colResult: '처리 결과',
+      colDetails: '처리 내역 및 대책',
+      qtyUnit: '개'
+    };
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="${lang}">
+      <head>
+        <meta charset="UTF-8">
+        <title>${headers.docTitle}</title>
+        <style>
+          body, table, th, td { font-family: '맑은 고딕', 'Malgun Gothic', Arial, sans-serif; font-size: 10pt; color: #000; }
+          body { padding: 20px; background: #fff; }
+          h1 { text-align: center; color: #1e3a8a; font-size: 20pt; font-weight: bold; }
+          .summary { margin-bottom: 20px; text-align: right; color: #666; font-size: 10pt; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; line-height: 1.5; }
+          th, td { border: 1pt solid #cbd5e1; padding: 10px; text-align: left; vertical-align: top; }
+          th { background-color: #f1f5f9; font-weight: bold; color: #334155; text-align: center; }
+          .text-center { text-align: center; }
+          .text-right { text-align: right; }
+          .claim-badge { display:inline-block; padding:3px 6px; border-radius:4px; background:#e2e8f0; font-size:9pt; margin-bottom:6px; color:#475569; font-weight:bold; }
+          .highlight-cell { background-color: #f8fafc; }
+        </style>
+      </head>
+      <body>
+        <h1>${headers.docTitle}</h1>
+        <div class="summary">${headers.dateLabel}: ${new Date().toLocaleString()} | ${headers.targetLabel} ${targetData.length}${headers.countUnit}</div>
+        <table>
+          <thead>
+            <tr>
+              <th width="10%">${headers.colAsNum}</th>
+              <th width="12%">${headers.colAgency}</th>
+              <th width="10%">${headers.colModel}</th>
+              <th width="18%">${headers.colDefect}</th>
+              <th width="18%">${headers.colCause}</th>
+              <th width="10%">${headers.colResult}</th>
+              <th width="22%">${headers.colDetails}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${targetData.map(row => {
+              const claimTypeStr = lang === 'en' ? translateToEn(row.claimType || '일반 A/S') : (row.claimType || '일반 A/S');
+              const defectStr = lang === 'en' ? translateToEn(row.defectContent) : (row.defectContent || '-').replace(/\n/g, '<br/>');
+              const causeStr = lang === 'en' ? translateToEn(row.causeAnalysis) : (row.causeAnalysis || '-').replace(/\n/g, '<br/>');
+              const methodStr = lang === 'en' ? translateToEn(row.repairMethod) : (row.repairMethod || '-');
+              const detailStr = lang === 'en' ? translateToEn(row.processDetails) : (row.processDetails || '-').replace(/\n/g, '<br/>');
+              
+              return `
+              <tr>
+                <td class="text-center font-bold"><strong>${row.asNumber}</strong></td>
+                <td>${row.agencyName}<br/><span style="color:#64748b; font-size:9pt;">${row.companyName}</span></td>
+                <td class="text-center">${row.model}<br/><strong>(${row.qtyDefect}${headers.qtyUnit})</strong></td>
+                <td><span class="claim-badge">${claimTypeStr}</span><br/>${defectStr}</td>
+                <td>${causeStr}</td>
+                <td class="text-center highlight-cell">
+                  <strong>${methodStr}</strong><br/>
+                  <span style="font-size:9pt; color:#64748b;">${row.repairMethod === '유상수리' ? (row.cost != null && row.cost !== '' ? (lang === 'en' ? 'KRW ' : '₩ ') + Number(row.cost).toLocaleString() : (lang === 'en' ? 'KRW 0' : '₩ 0')) : ''}</span>
+                </td>
+                <td class="highlight-cell">${detailStr}</td>
+              </tr>
+            `}).join('')}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `AS_Report_${lang.toUpperCase()}_${new Date().toISOString().slice(0,10)}.html`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleCapsLockCheck = (e) => {
     if (e.getModifierState && e.getModifierState('CapsLock')) {
       setIsCapsLockOn(true);
@@ -913,7 +1267,6 @@ export default function App() {
     }
   };
 
-  // --- 로그인 화면 렌더링 ---
   if (!currentUserRole) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -931,7 +1284,6 @@ export default function App() {
                 value={loginPassword}
                 onChange={(e) => {
                   setLoginPassword(e.target.value);
-                  // fallback: 입력값에 대문자가 포함되어 있을 경우에도 경고 노출
                   if (/[A-Z]/.test(e.target.value)) setIsCapsLockOn(true);
                 }}
                 onKeyDown={handleCapsLockCheck}
@@ -940,7 +1292,6 @@ export default function App() {
                 className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-center text-lg tracking-widest"
                 required
               />
-              {/* 캡스락 경고 문구 표시 */}
               {isCapsLockOn && (
                 <p className="text-orange-500 text-sm font-bold mt-2 animate-pulse">
                   ⚠️ 캡스락(Caps Lock)을 풀어주세요.
@@ -976,16 +1327,6 @@ export default function App() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <input type="file" accept=".csv" ref={fileInputRef} onChange={importFromCSV} className="hidden" />
-            <button onClick={() => fileInputRef.current.click()} className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-              <Upload className="w-4 h-4 mr-1.5" /> CSV 업로드
-            </button>
-            <button onClick={exportToCSV} className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-              <Download className="w-4 h-4 mr-1.5" /> CSV 다운로드
-            </button>
-            <button onClick={exportToHTML} className="flex items-center px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors border border-blue-200">
-              <FileCode className="w-4 h-4 mr-1.5" /> HTML 보고서
-            </button>
             <button onClick={() => handleOpenForm()} className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-sm ml-2">
               <Plus className="w-4 h-4 mr-1.5" /> 새 데이터 추가
             </button>
@@ -997,30 +1338,58 @@ export default function App() {
 
         {/* 탭 영역 */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="border-b border-gray-200 px-2 flex overflow-x-auto hide-scrollbar">
-            {visibleBusinessUnits.map(unit => (
-              <button
-                key={unit}
-                onClick={() => {
-                  setActiveTab(unit);
-                  if (unit !== 'PT') {
-                    setFilterPtBoard('all');
-                    setFilterExcludeReport('all');
-                  }
-                }}
-                className={`whitespace-nowrap py-4 px-6 text-sm font-medium border-b-2 transition-colors duration-200 ${
-                  activeTab === unit 
-                    ? (unit === '미입력' ? 'border-red-500 text-red-600' : 'border-blue-500 text-blue-600') 
-                    : (unit === '미입력' ? 'border-transparent text-red-400 hover:text-red-500 hover:border-red-300' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300')
-                }`}
-              >
-                {unit}
-              </button>
-            ))}
+          <div className="border-b border-gray-200 flex justify-between items-center bg-white overflow-x-auto hide-scrollbar">
+            <div className="flex">
+              {visibleBusinessUnits.map(unit => (
+                <button
+                  key={unit}
+                  onClick={() => {
+                    setActiveTab(unit);
+                    if (unit !== 'PT') {
+                      setFilterPtBoard('all');
+                      setFilterExcludeReport('all');
+                    }
+                  }}
+                  className={`whitespace-nowrap py-4 px-6 text-sm font-medium border-b-2 transition-colors duration-200 ${
+                    activeTab === unit 
+                      ? (unit === '미입력' ? 'border-red-500 text-red-600' : 'border-blue-500 text-blue-600') 
+                      : (unit === '미입력' ? 'border-transparent text-red-400 hover:text-red-500 hover:bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50')
+                  }`}
+                >
+                  {unit}
+                </button>
+              ))}
+            </div>
+            
+            {/* 우측 유틸리티 탭 영역 (보고서, 휴지통) - 품질경영팀 전용 */}
+            {currentUserRole?.name === '품질경영팀' && (
+              <div className="flex shrink-0">
+                <button
+                  onClick={() => setActiveTab('보고서')}
+                  className={`whitespace-nowrap py-4 px-6 text-sm font-medium border-b-2 transition-colors duration-200 ${
+                    activeTab === '보고서' 
+                      ? 'border-gray-800 text-gray-900 bg-gray-50' 
+                      : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                  }`}
+                >
+                  📊 보고서
+                </button>
+                <button
+                  onClick={() => setActiveTab('휴지통')}
+                  className={`whitespace-nowrap py-4 px-6 text-sm font-medium border-b-2 transition-colors duration-200 ${
+                    activeTab === '휴지통' 
+                      ? 'border-gray-800 text-gray-900 bg-gray-50' 
+                      : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                  }`}
+                >
+                  🗑️ 휴지통 <span className="text-xs font-normal text-gray-400 ml-1">(3일 보관)</span>
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* '집계' 탭이 아닐 때만 하위 필터 노출 */}
-          {activeTab !== '집계' && (
+          {/* '집계', '휴지통', '보고서' 탭이 아닐 때만 하위 필터 노출 */}
+          {activeTab !== '집계' && activeTab !== '휴지통' && activeTab !== '보고서' && (
             <>
               {activeTab === 'PT' && (
                 <div className="bg-indigo-50/50 px-6 py-3 border-b border-indigo-100 flex items-center gap-4">
@@ -1069,7 +1438,6 @@ export default function App() {
                   </select>
                 </div>
 
-                {/* PT 탭 성적서 발행 필터 라디오 버튼 */}
                 {activeTab === 'PT' && (
                   <div className="flex items-center space-x-3 border-l border-gray-300 pl-4 ml-2">
                     <label className="text-sm text-gray-600 font-medium">성적서발행:</label>
@@ -1106,13 +1474,78 @@ export default function App() {
           )}
         </div>
 
-        {/* 메인 화면 조건부 렌더링 (집계 대시보드 OR 데이터 테이블) */}
-        {activeTab === '집계' ? (
+        <input type="file" accept=".csv" ref={fileInputRef} onChange={importFromCSV} className="hidden" />
+        
+        {activeTab === '보고서' ? (
+          
+          <div className="space-y-8 animate-in fade-in duration-300">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-10">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">데이터 백업 및 엑셀 내보내기</h2>
+              <p className="text-gray-500 mb-8">현재 필터 조건에 맞는 <span className="font-bold text-blue-600">{filteredData.length}건</span>의 데이터를 원본 양식의 엑셀(.xlsx) 또는 CSV로 백업할 수 있습니다.</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-12">
+                {/* CSV 데이터 업로드 카드 */}
+                <div onClick={() => fileInputRef.current.click()} className="p-8 border border-gray-200 rounded-2xl hover:border-blue-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center h-full">
+                  <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-blue-100 transition-colors">
+                    <Upload className="w-8 h-8 text-blue-600" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900">CSV 데이터 업로드</h3>
+                </div>
+                
+                {/* xlsx 다운로드 카드 */}
+                <div onClick={exportToExcel} className="p-8 border border-gray-200 rounded-2xl hover:border-green-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center h-full">
+                  <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-green-100 transition-colors">
+                    <FileSpreadsheet className="w-8 h-8 text-green-600" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900">xlsx 다운로드</h3>
+                </div>
+                
+                {/* CSV 다운로드 카드 */}
+                <div onClick={exportToCSV} className="p-8 border border-gray-200 rounded-2xl hover:border-gray-400 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center h-full">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4 group-hover:bg-gray-200 transition-colors">
+                    <Download className="w-8 h-8 text-gray-600" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-700">CSV 다운로드</h3>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 pt-10">
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">HTML 보고서 출력</h2>
+                <p className="text-gray-500 mb-8">웹페이지 형태로 깔끔하게 포맷팅된 요약 보고서를 생성하여 인쇄하거나 PDF로 저장합니다.</p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+                  {/* AS 관리대장 HTML 생성 */}
+                  <div onClick={exportToHTML} className="p-8 border border-gray-200 rounded-2xl hover:border-purple-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center h-full">
+                    <div className="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-purple-100 transition-colors">
+                      <FileCode className="w-8 h-8 text-purple-600" />
+                    </div>
+                    <h3 className="text-lg font-bold text-center text-gray-900">AS 관리대장 HTML 생성</h3>
+                  </div>
+
+                  {/* AS 보고서 HTML (국문) */}
+                  <div onClick={() => exportToASReportHTML('ko')} className="p-8 border border-gray-200 rounded-2xl hover:border-indigo-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center h-full">
+                    <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-indigo-100 transition-colors">
+                      <FileText className="w-8 h-8 text-indigo-600" />
+                    </div>
+                    <h3 className="text-lg font-bold text-center text-gray-900">AS 보고서 HTML (국문)</h3>
+                  </div>
+
+                  {/* AS 보고서 HTML (영문) */}
+                  <div onClick={() => exportToASReportHTML('en')} className="p-8 border border-gray-200 rounded-2xl hover:border-indigo-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center h-full">
+                    <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-blue-100 transition-colors">
+                      <FileText className="w-8 h-8 text-blue-600" />
+                    </div>
+                    <h3 className="text-lg font-bold text-center text-gray-900">AS 보고서 HTML (영문)</h3>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        ) : activeTab === '집계' ? (
           
           <div className="space-y-6 animate-in fade-in duration-300">
-            {/* 상단: 시각화 차트 대시보드 */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-              {/* 전체 통계 요약 (왼쪽) */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-1 flex flex-col items-center justify-center">
                 <h3 className="text-base font-bold text-gray-900 mb-6 flex items-center gap-2 w-full">
                   <PieChart className="w-5 h-5 text-blue-600" /> 전체 A/S 종합 현황
@@ -1135,7 +1568,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* 사업부별 통계 차트 (오른쪽) */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-3">
                 <h3 className="text-base font-bold text-gray-900 mb-6 flex items-center gap-2">
                   <BarChart3 className="w-5 h-5 text-gray-600" /> 사업부별 세부 비율 지표
@@ -1165,7 +1597,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* 사업부별 개별 카드 영역 (모델 집계) */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
               {dashboardStats.map(buStat => (
                 <div key={buStat.unit} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col">
@@ -1174,7 +1605,6 @@ export default function App() {
                     {buStat.unit} 모델별 접수 현황
                   </h3>
                   
-                  {/* 상단 파이차트 */}
                   <div className="flex justify-center mb-8">
                     <MultiDonutChart 
                       data={buStat.modelsArr.map(m => ({ label: m.label, value: m.total, color: m.color }))} 
@@ -1182,7 +1612,6 @@ export default function App() {
                     />
                   </div>
                   
-                  {/* 하단 모델별 집계 리스트 표 */}
                   <div className="flex-1 w-full mt-2">
                     <table className="w-full text-sm text-left">
                       <thead>
@@ -1304,12 +1733,30 @@ export default function App() {
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-center align-middle">
                           <div className="flex items-center justify-center gap-1">
-                            <button onClick={(e) => { e.stopPropagation(); handleOpenForm(row); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="수정">
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="삭제">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {/* 휴지통 탭일 경우 (복구 / 영구삭제 버튼 노출) */}
+                            {activeTab === '휴지통' ? (
+                              <>
+                                <button onClick={(e) => handleRestore(row.id, e)} className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors" title="데이터 복구">
+                                  <RotateCcw className="w-4 h-4" />
+                                </button>
+                                <button onClick={(e) => handlePermanentDeletePrepare(row.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="영구 삭제">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            ) : (
+                              /* 일반 탭일 경우 (수정 / 휴지통이동 버튼 노출) */
+                              <>
+                                <button onClick={(e) => { e.stopPropagation(); handleOpenForm(row); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="수정">
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                                {/* 삭제(휴지통) 버튼은 품질경영팀만 볼 수 있음 */}
+                                {currentUserRole?.name === '품질경영팀' && (
+                                  <button onClick={(e) => handleDeletePrepare(row.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="삭제 (휴지통으로 이동)">
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1317,7 +1764,9 @@ export default function App() {
                   ) : (
                     <tr>
                       <td colSpan="15" className="px-6 py-12 text-center text-gray-500">
-                        조건에 맞는 데이터가 없습니다. {activeTab === '미입력' ? '모든 핵심 데이터가 완벽하게 입력되어 있습니다!' : '필터를 변경해보세요.'}
+                        조건에 맞는 데이터가 없습니다. 
+                        {activeTab === '미입력' && ' 모든 핵심 데이터가 완벽하게 입력되어 있습니다!'}
+                        {activeTab === '휴지통' && ' 휴지통이 비어 있습니다.'}
                       </td>
                     </tr>
                   )}
@@ -1474,17 +1923,39 @@ export default function App() {
             </div>
 
             <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-between shrink-0 rounded-b-2xl">
-              <button onClick={() => handleDelete(selectedRow.id)} className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center text-sm font-medium">
-                <Trash2 className="w-4 h-4 mr-2" /> 삭제
-              </button>
-              <div className="flex gap-2">
-                <button onClick={() => handleOpenForm(selectedRow)} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm font-medium">
-                  <Edit className="w-4 h-4 mr-2" /> 이 데이터 수정하기
-                </button>
-                <button onClick={() => setSelectedRow(null)} className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium">
-                  닫기
-                </button>
-              </div>
+              {selectedRow.deletedAt ? (
+                // 휴지통에 있는 데이터를 클릭했을 때 보여주는 하단 버튼들
+                <div className="flex gap-2 w-full justify-between">
+                  <button onClick={(e) => handlePermanentDeletePrepare(selectedRow.id, e)} className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center text-sm font-medium">
+                    <Trash2 className="w-4 h-4 mr-2" /> 영구 삭제
+                  </button>
+                  <div className="flex gap-2">
+                    <button onClick={(e) => handleRestore(selectedRow.id, e)} className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center text-sm font-medium">
+                      <RotateCcw className="w-4 h-4 mr-2" /> 복구하기
+                    </button>
+                    <button onClick={() => setSelectedRow(null)} className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium">
+                      닫기
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                // 일반 데이터를 클릭했을 때 보여주는 하단 버튼들
+                <>
+                  {currentUserRole?.name === '품질경영팀' ? (
+                    <button onClick={(e) => handleDeletePrepare(selectedRow.id, e)} className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center text-sm font-medium">
+                      <Trash2 className="w-4 h-4 mr-2" /> 삭제
+                    </button>
+                  ) : <div />}
+                  <div className="flex gap-2">
+                    <button onClick={(e) => handleOpenForm(selectedRow)} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm font-medium">
+                      <Edit className="w-4 h-4 mr-2" /> 이 데이터 수정하기
+                    </button>
+                    <button onClick={() => setSelectedRow(null)} className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium">
+                      닫기
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1650,6 +2121,57 @@ export default function App() {
         </div>
       )}
 
+      {/* --- 커스텀 확인/알림 팝업 모달 --- */}
+
+      {/* 3. 일반 알림 팝업 */}
+      {alertMessage && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle2 className="w-8 h-8 text-blue-600" />
+            </div>
+            <h3 className="text-lg font-bold text-gray-900 mb-6">{alertMessage}</h3>
+            <button onClick={() => setAlertMessage('')} className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors">
+              확인
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 4. 휴지통 이동(소프트 삭제) 확인 팝업 */}
+      {itemToDelete && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="w-8 h-8 text-red-600" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">데이터를 삭제하시겠습니까?</h3>
+            <p className="text-sm text-gray-500 mb-6">삭제된 데이터는 <strong>휴지통에서 3일간 보관</strong>된 후 영구 삭제됩니다.</p>
+            <div className="flex justify-center gap-3">
+              <button onClick={() => setItemToDelete(null)} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors">취소</button>
+              <button onClick={executeDelete} className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors">삭제하기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. 영구 삭제 확인 팝업 */}
+      {itemToPermanentDelete && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="w-8 h-8 text-red-600" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">영구 삭제하시겠습니까?</h3>
+            <p className="text-sm text-red-500 mb-6 font-medium">이 작업은 되돌릴 수 없습니다.</p>
+            <div className="flex justify-center gap-3">
+              <button onClick={() => setItemToPermanentDelete(null)} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors">취소</button>
+              <button onClick={executePermanentDelete} className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors">영구 삭제</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style dangerouslySetInnerHTML={{__html: `
         .form-input {
           display: block; width: 100%; padding: 0.5rem 0.75rem; font-size: 0.875rem;
@@ -1662,14 +2184,19 @@ export default function App() {
 }
 
 function DetailItem({ label, value, isMultiline = false }) {
-  if (!value && value !== 0) value = '-';
+  let displayValue = value;
+  if (typeof value === 'object' && value !== null) {
+     displayValue = JSON.stringify(value);
+  }
+  if (!displayValue && displayValue !== 0) displayValue = '-';
+  
   return (
     <div>
       <div className="text-xs text-gray-500 mb-1">{label}</div>
       {isMultiline ? (
-        <div className="text-sm text-gray-900 whitespace-pre-wrap leading-relaxed">{value}</div>
+        <div className="text-sm text-gray-900 whitespace-pre-wrap leading-relaxed">{displayValue}</div>
       ) : (
-        <div className="text-sm font-medium text-gray-900">{value}</div>
+        <div className="text-sm font-medium text-gray-900">{displayValue}</div>
       )}
     </div>
   );
