@@ -503,13 +503,35 @@ export default function App() {
       }
 
       if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        return (
-          (item.asNumber || '').toLowerCase().includes(query) ||
-          (item.companyName || '').toLowerCase().includes(query) ||
-          (item.agencyName || '').toLowerCase().includes(query) ||
-          (item.model || '').toLowerCase().includes(query)
+        const query = searchQuery.toLowerCase().trim();
+        const queryDigits = query.replace(/\D/g, ''); // 검색어에서 숫자만 추출
+
+        const asNum = (item.asNumber || '').toLowerCase();
+        const orderNum = (item.orderNumber || '').toLowerCase();
+        const comp = (item.companyName || '').toLowerCase();
+        const agency = (item.agencyName || '').toLowerCase();
+        const mod = (item.model || '').toLowerCase();
+
+        // 수주번호에서 숫자만 추출 (예: taez260056 -> 260056)
+        const orderNumDigits = orderNum.replace(/\D/g, '');
+        // 접수번호 마지막 마디 추출 (예: WQ-2821-01-26-123 -> 123)
+        const asNumLast = asNum.split('-').pop() || '';
+
+        // 1. 일반적인 텍스트 포함 여부 검사 (수주번호 추가)
+        const isNormalMatch = 
+          asNum.includes(query) ||
+          orderNum.includes(query) ||
+          comp.includes(query) ||
+          agency.includes(query) ||
+          mod.includes(query);
+
+        // 2. 숫자로만 검색했을 때의 정밀 매칭 (수주번호 숫자만 비교, 접수번호 마지막 3자리 비교)
+        const isDigitMatch = queryDigits.length > 0 && (
+          orderNumDigits.includes(queryDigits) || 
+          asNumLast.includes(queryDigits)
         );
+
+        return isNormalMatch || isDigitMatch;
       }
       return true;
     });
