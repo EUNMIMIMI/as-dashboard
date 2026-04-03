@@ -43,80 +43,115 @@ const getCollectionPath = () => {
 };
 // -----------------------
 
-const initialMockData = [
-  {
-    id: 1, asNumber: 'WQ-2821-01-26-001', orderNumber: 'P100Z260001', originalOrderNumber: 'P1DSZ250066',
-    receiptDate: '01월 07일', reqDeliveryDate: '01월 15일', businessUnit: 'PMD', agencyName: '이노바이저',
-    companyName: '크라이오에이치앤아이', model: 'P255', qtyDefect: 1, serialNo: 'P250219884', releaseDate: '2025.02.24',
-    defectContent: 'LEAK', causeAnalysis: '관안 용접부위 핀홀로 LEAK됨',
-    processDetails: '신규제작 및 재발방지 대책서 송부',
-    processDate: '01월 16일', processType: '견적 후 착수', cost: 0, claimType: '일반 A/S', repairMethod: '무상수리', ptBoardType: 'N'
+const parseDateObj = (dateStr) => {
+  if (!dateStr) return null;
+  let str = String(dateStr).trim();
+  let y = new Date().getFullYear();
+  let m, d;
+  
+  if (str.includes('.')) {
+    const parts = str.split('.').map(p => p.trim());
+    if (parts.length >= 3) {
+      y = parts[0].length === 2 ? 2000 + parseInt(parts[0]) : parseInt(parts[0]);
+      m = parseInt(parts[1]);
+      d = parseInt(parts[2]);
+    } else if (parts.length === 2) {
+      m = parseInt(parts[0]);
+      d = parseInt(parts[1]);
+    }
+  } else if (str.includes('월') && str.includes('일')) {
+    m = parseInt(str.split('월')[0].trim());
+    d = parseInt(str.split('월')[1].replace('일', '').trim());
+  } else if (str.includes('/')) {
+    const parts = str.split('/');
+    if (parts.length >= 3) {
+      y = parts[0].length === 2 ? 2000 + parseInt(parts[0]) : parseInt(parts[0]);
+      m = parseInt(parts[1]);
+      d = parseInt(parts[2]);
+    } else if (parts.length === 2) {
+      m = parseInt(parts[0]);
+      d = parseInt(parts[1]);
+    }
+  } else if (str.includes('-')) {
+     const parts = str.split('-');
+     if (parts.length >= 3) {
+      y = parts[0].length === 2 ? 2000 + parseInt(parts[0]) : parseInt(parts[0]);
+      m = parseInt(parts[1]);
+      d = parseInt(parts[2]);
+     }
+  } else {
+     return null;
   }
-];
+  if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
+  return new Date(y, m - 1, d);
+};
 
-const FIXED_UNITS_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT'];
-const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'];
+const formatDisplayDate = (dateStr) => {
+  const d = parseDateObj(dateStr);
+  if (!d) return dateStr || '';
+  const yy = String(d.getFullYear()).slice(-2);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yy}.${mm}.${dd}`;
+};
 
-const parseDate = (dateStr) => {
-  if (!dateStr) return 0;
-  if (dateStr.includes('월') && dateStr.includes('일')) {
-    const m = parseInt(dateStr.split('월')[0].trim());
-    const d = parseInt(dateStr.split('월')[1].replace('일', '').trim());
-    return new Date(2026, m - 1, d).getTime();
-  }
-  const parts = dateStr.split('/');
-  if (parts.length === 2) {
-    return new Date(2026, parseInt(parts[0]) - 1, parseInt(parts[1])).getTime();
-  }
-  return 0;
+const formatForDateInput = (dateStr) => {
+  const d = parseDateObj(dateStr);
+  if (!d) return '';
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 };
 
 const calculateCompliance = (reqDate, compDate) => {
   if (!compDate) return '미완료';
-  const reqTime = parseDate(reqDate);
-  const compTime = parseDate(compDate);
-  if (reqTime === 0 || compTime === 0) return '오류';
-  if (compTime <= reqTime) return '준수';
+  const reqObj = parseDateObj(reqDate);
+  const compObj = parseDateObj(compDate);
+  if (!reqObj || !compObj) return '오류';
+  if (compObj.getTime() <= reqObj.getTime()) return '준수';
   return '지연';
 };
 
 const calculateDuration = (startDate, endDate) => {
   if (!startDate || !endDate) return '-';
-  const start = parseDate(startDate);
-  const end = parseDate(endDate);
-  if (start === 0 || end === 0) return '-';
-  const diffTime = end - start;
+  const startObj = parseDateObj(startDate);
+  const endObj = parseDateObj(endDate);
+  if (!startObj || !endObj) return '-';
+  const diffTime = endObj.getTime() - startObj.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   return diffDays >= 0 ? `${diffDays}일` : '-';
 };
 
 const addBusinessDays = (dateStr, days) => {
-  if (!dateStr) return '';
-  let m, d;
-  if (dateStr.includes('월') && dateStr.includes('일')) {
-    m = parseInt(dateStr.split('월')[0].trim());
-    d = parseInt(dateStr.split('월')[1].replace('일', '').trim());
-  } else if (dateStr.includes('/')) {
-    const parts = dateStr.split('/');
-    m = parseInt(parts[0]);
-    d = parseInt(parts[1]);
-  } else {
-    return '';
-  }
-  let date = new Date(2026, m - 1, d);
-  if (isNaN(date.getTime())) return '';
+  const dObj = parseDateObj(dateStr);
+  if (!dObj) return '';
   
   let addedDays = 0;
   while (addedDays < days) {
-    date.setDate(date.getDate() + 1);
-    const dayOfWeek = date.getDay();
+    dObj.setDate(dObj.getDate() + 1);
+    const dayOfWeek = dObj.getDay();
     if (dayOfWeek !== 0 && dayOfWeek !== 6) addedDays++;
   }
-  if (dateStr.includes('월')) {
-    return `${String(date.getMonth() + 1).padStart(2, '0')}월 ${String(date.getDate()).padStart(2, '0')}일`;
-  }
-  return `${date.getMonth() + 1}/${date.getDate()}`;
+  const yy = String(dObj.getFullYear()).slice(-2);
+  const mm = String(dObj.getMonth() + 1).padStart(2, '0');
+  const dd = String(dObj.getDate()).padStart(2, '0');
+  return `${yy}.${mm}.${dd}`;
 };
+
+const initialMockData = [
+  {
+    id: 1, asNumber: 'WQ-2821-01-26-001', orderNumber: 'P100Z260001', originalOrderNumber: 'P1DSZ250066',
+    receiptDate: '26.01.07', reqDeliveryDate: '26.01.15', businessUnit: 'PMD', agencyName: '이노바이저',
+    companyName: '크라이오에이치앤아이', model: 'P255', qtyDefect: 1, serialNo: 'P250219884', releaseDate: '25.02.24',
+    defectContent: 'LEAK', causeAnalysis: '관안 용접부위 핀홀로 LEAK됨',
+    processDetails: '신규제작 및 재발방지 대책서 송부',
+    processDate: '26.01.16', processType: '견적 후 착수', cost: 0, claimType: '일반 A/S', repairMethod: '무상수리', ptBoardType: 'N'
+  }
+];
+
+const FIXED_UNITS_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT'];
+const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'];
 
 const generateNextAsNumber = (currentData) => {
   const currentYear = new Date().getFullYear().toString().slice(-2);
@@ -142,31 +177,6 @@ const isIncomplete = (item) => {
     const val = item[field];
     return val === null || val === undefined || String(val).trim() === '';
   });
-};
-
-const formatForDateInput = (dateStr) => {
-  if (!dateStr) return '';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
-  try {
-    if (dateStr.includes('.')) {
-      const parts = dateStr.split('.').map(p => p.trim());
-      if (parts.length >= 3) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
-    }
-    let m, d;
-    if (dateStr.includes('월') && dateStr.includes('일')) {
-      m = dateStr.split('월')[0].trim();
-      d = dateStr.split('월')[1].replace('일', '').trim();
-    } else if (dateStr.includes('/')) {
-      const parts = dateStr.split('/');
-      m = parts[0].trim();
-      d = parts[1].trim();
-    } else {
-      return '';
-    }
-    return `2026-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-  } catch (e) {
-    return '';
-  }
 };
 
 const MultiDonutChart = ({ data, size = 160, strokeWidth = 24 }) => {
@@ -298,6 +308,9 @@ export default function App() {
   const [itemToPermanentDelete, setItemToPermanentDelete] = useState(null);
   const [alertMessage, setAlertMessage] = useState('');
   
+  const [pendingUploadData, setPendingUploadData] = useState(null);
+  const [showPtBoardModal, setShowPtBoardModal] = useState(false);
+  
   const fileInputRef = useRef(null);
 
   const customAlert = (message) => setAlertMessage(message);
@@ -387,6 +400,10 @@ export default function App() {
   const processedData = useMemo(() => {
     return activeRecords.map(item => ({
       ...item,
+      receiptDate: formatDisplayDate(item.receiptDate),
+      reqDeliveryDate: formatDisplayDate(item.reqDeliveryDate),
+      processDate: formatDisplayDate(item.processDate),
+      releaseDate: formatDisplayDate(item.releaseDate),
       complianceStatus: calculateCompliance(item.reqDeliveryDate, item.processDate),
       duration: calculateDuration(item.receiptDate, item.processDate)
     }));
@@ -395,6 +412,10 @@ export default function App() {
   const processedDeletedData = useMemo(() => {
     return deletedRecords.map(item => ({
       ...item,
+      receiptDate: formatDisplayDate(item.receiptDate),
+      reqDeliveryDate: formatDisplayDate(item.reqDeliveryDate),
+      processDate: formatDisplayDate(item.processDate),
+      releaseDate: formatDisplayDate(item.releaseDate),
       complianceStatus: calculateCompliance(item.reqDeliveryDate, item.processDate),
       duration: calculateDuration(item.receiptDate, item.processDate)
     }));
@@ -484,6 +505,7 @@ export default function App() {
 
   const dynamicUnits = Array.from(new Set(processedData.map(d => d.businessUnit).filter(Boolean)));
   const otherUnits = dynamicUnits.filter(unit => !FIXED_UNITS_ORDER.includes(unit));
+  
   const allBusinessUnits = ['전체', ...FIXED_UNITS_ORDER, ...otherUnits, '미입력', '집계'];
   
   const visibleBusinessUnits = useMemo(() => {
@@ -587,8 +609,7 @@ export default function App() {
     
     if (type === 'date' && value) {
       const [y, m, d] = value.split('-');
-      if (name === 'releaseDate') finalValue = `${y}.${m}.${d}`;
-      else finalValue = `${m}월 ${d}일`;
+      finalValue = `${y.slice(2)}.${m}.${d}`;
     }
 
     setFormData(prev => {
@@ -671,11 +692,191 @@ export default function App() {
     customAlert('데이터가 성공적으로 복구되었습니다.');
   };
 
+  const handlePtBoardTypeChange = (id, newType) => {
+    setPendingUploadData(prev => 
+      prev.map(item => item.id === id ? { ...item, ptBoardType: newType } : item)
+    );
+  };
+
+  const executeUpload = (records) => {
+    if (!user) {
+      customAlert('데이터베이스 연결이 안되어 업로드할 수 없습니다.');
+      return;
+    }
+    records.forEach(async (record) => {
+      await setDoc(doc(db, getCollectionPath(), String(record.id)), record);
+    });
+    customAlert(`${records.length}건의 데이터를 성공적으로 업로드 중입니다.`);
+  };
+
+  const parseCSVText = (text) => {
+    const rows = [];
+    let currentRow = [];
+    let currentCell = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          currentCell += '"';
+          i++; 
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        currentRow.push(currentCell);
+        currentCell = '';
+      } else if ((char === '\n' || (char === '\r' && nextChar === '\n')) && !inQuotes) {
+        if (char === '\r') i++; 
+        currentRow.push(currentCell);
+        rows.push(currentRow);
+        currentRow = [];
+        currentCell = '';
+      } else {
+        currentCell += char;
+      }
+    }
+    if (currentCell || currentRow.length > 0) {
+      currentRow.push(currentCell);
+      rows.push(currentRow);
+    }
+    return rows;
+  };
+
+  const importFromCSV = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const fileName = file.name.toUpperCase();
+    let defaultPtBoard = 'N';
+    if (fileName.includes('ZMDI')) defaultPtBoard = 'ZMDI';
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target.result;
+      
+      const rows = parseCSVText(text);
+      if (rows.length < 3) return customAlert('유효한 데이터가 부족합니다. (헤더 2줄 포함 필요)');
+      
+      const newRecords = [];
+      const hasBUColumnAt2 = rows[0][2] && rows[0][2].replace(/\s/g, '').includes('사업부');
+      const offset = hasBUColumnAt2 ? 1 : 0;
+      let hasPT = false;
+
+      for (let i = 2; i < rows.length; i++) {
+        const cols = rows[i];
+        if (!cols[0] || !cols[0].trim()) continue;
+        
+        if (cols.length >= 20) {
+          let processType = '';
+          if (cols[10 + offset] && cols[10 + offset].includes('●')) processType = '견적 후 착수';
+          else if (cols[11 + offset] && cols[11 + offset].includes('●')) processType = '선조치';
+          else if (cols[12 + offset] && cols[12 + offset].includes('●')) processType = '출장';
+
+          let repairMethod = '';
+          if (cols[16 + offset] && cols[16 + offset].includes('●')) repairMethod = '무상수리';
+          else if (cols[17 + offset] && cols[17 + offset].includes('●')) repairMethod = '유상수리';
+          else if (cols[18 + offset] && cols[18 + offset].includes('●')) repairMethod = '수리불가';
+          else if (cols[19 + offset] && cols[19 + offset].includes('●')) repairMethod = '수리취소';
+
+          let claimType = '일반 A/S'; 
+          if (cols[22 + offset] && cols[22 + offset].includes('●')) claimType = '고객불만';
+          else if (cols[21 + offset] && cols[21 + offset].includes('●')) claimType = '일반 A/S';
+
+          let costRaw = (cols[20 + offset] || '').replace(/[₩\s,\-]/g, '');
+          let cost = (costRaw && !isNaN(costRaw)) ? Number(costRaw) : null;
+          
+          let orderNumber = cols[1] ? cols[1].trim() : '';
+
+          let bu = '';
+          if (hasBUColumnAt2) bu = cols[2] ? cols[2].trim() : '';
+          else bu = cols[25] ? cols[25].trim() : '';
+
+          if (!bu && orderNumber) {
+            const orderNum = orderNumber.toUpperCase();
+            if (orderNum.startsWith('P1')) bu = 'PMD';
+            else if (orderNum.startsWith('UHP') || orderNum.startsWith('P3')) bu = 'UHP';
+            else if (orderNum.startsWith('P4')) bu = 'PT';
+            else if (orderNum.startsWith('T')) bu = 'TMD';
+            else if (orderNum.startsWith('F')) bu = 'FLD'; 
+          }
+
+          if (bu === 'PT') hasPT = true;
+
+          let ptBoard = '';
+          if (!hasBUColumnAt2 && cols[26]) ptBoard = cols[26].trim();
+          if (!ptBoard) ptBoard = (bu === 'PT' ? defaultPtBoard : 'N');
+
+          let defectContent = cols[6 + offset] ? cols[6 + offset].trim() : '';
+          let qtyDefect = parseInt(cols[5 + offset]) || 1;
+
+          if (defectContent.includes('성적서 발행') || defectContent.includes('성적서발행')) {
+            if (cost === null || cost === 0) cost = qtyDefect * 1000;
+            if (!repairMethod) repairMethod = '유상수리';
+          }
+
+          let receiptDate = formatDisplayDate(cols[13 + offset] ? cols[13 + offset].trim() : '');
+          let reqDeliveryDate = formatDisplayDate(cols[14 + offset] ? cols[14 + offset].trim() : '');
+          let processDate = formatDisplayDate(cols[15 + offset] ? cols[15 + offset].trim() : '');
+          let releaseDate = formatDisplayDate(cols[8 + offset] ? cols[8 + offset].trim() : '');
+
+          if (receiptDate && !reqDeliveryDate) {
+            reqDeliveryDate = addBusinessDays(receiptDate, 5);
+          }
+
+          newRecords.push({
+            id: Date.now() + i,
+            asNumber: cols[0].trim(),
+            orderNumber: orderNumber,
+            agencyName: cols[2 + offset] ? cols[2 + offset].trim() : '',
+            companyName: cols[3 + offset] ? cols[3 + offset].trim() : '',
+            model: cols[4 + offset] ? cols[4 + offset].trim() : '',
+            qtyDefect: qtyDefect,
+            defectContent: defectContent,
+            serialNo: cols[7 + offset] ? cols[7 + offset].trim() : '',
+            releaseDate: releaseDate,
+            originalOrderNumber: cols[9 + offset] ? cols[9 + offset].trim() : '',
+            processType: processType,
+            receiptDate: receiptDate,
+            reqDeliveryDate: reqDeliveryDate,
+            processDate: processDate,
+            repairMethod: repairMethod,
+            cost: cost,
+            claimType: claimType,
+            causeAnalysis: cols[23 + offset] ? cols[23 + offset].trim() : '',
+            processDetails: cols[24 + offset] ? cols[24 + offset].trim() : '',
+            businessUnit: bu,
+            ptBoardType: ptBoard,
+            deletedAt: null 
+          });
+        }
+      }
+      
+      if(newRecords.length > 0) {
+         if (hasPT) {
+           setPendingUploadData(newRecords);
+           setShowPtBoardModal(true);
+         } else {
+           executeUpload(newRecords);
+         }
+      } else {
+         customAlert('업로드할 유효한 데이터 항목을 찾지 못했습니다.');
+      }
+    };
+    
+    reader.readAsText(file, 'euc-kr');
+    e.target.value = null;
+  };
+
   useEffect(() => {
     setCurrentPage(1);
   }, [activeTab, filterCompliance, filterAgency, filterModel, filterPtBoard, filterExcludeReport, searchQuery]);
 
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  // 페이지네이션 로직 복구
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage) || 1;
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     return filteredData.slice(startIndex, startIndex + itemsPerPage);
@@ -845,166 +1046,6 @@ export default function App() {
       const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
       triggerDownload(blob, `AS관리대장_${new Date().toISOString().slice(0,10)}.csv`);
     }
-  };
-
-  const parseCSVText = (text) => {
-    const rows = [];
-    let currentRow = [];
-    let currentCell = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i];
-      const nextChar = text[i + 1];
-
-      if (char === '"') {
-        if (inQuotes && nextChar === '"') {
-          currentCell += '"';
-          i++; 
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === ',' && !inQuotes) {
-        currentRow.push(currentCell);
-        currentCell = '';
-      } else if ((char === '\n' || (char === '\r' && nextChar === '\n')) && !inQuotes) {
-        if (char === '\r') i++; 
-        currentRow.push(currentCell);
-        rows.push(currentRow);
-        currentRow = [];
-        currentCell = '';
-      } else {
-        currentCell += char;
-      }
-    }
-    if (currentCell || currentRow.length > 0) {
-      currentRow.push(currentCell);
-      rows.push(currentRow);
-    }
-    return rows;
-  };
-
-  const importFromCSV = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const fileName = file.name.toUpperCase();
-    let defaultPtBoard = 'N';
-    if (fileName.includes('ZMDI')) defaultPtBoard = 'ZMDI';
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target.result;
-      
-      const rows = parseCSVText(text);
-      if (rows.length < 3) return customAlert('유효한 데이터가 부족합니다. (헤더 2줄 포함 필요)');
-      
-      const newRecords = [];
-      const hasBUColumnAt2 = rows[0][2] && rows[0][2].replace(/\s/g, '').includes('사업부');
-      const offset = hasBUColumnAt2 ? 1 : 0;
-
-      for (let i = 2; i < rows.length; i++) {
-        const cols = rows[i];
-        if (!cols[0] || !cols[0].trim()) continue;
-        
-        if (cols.length >= 20) {
-          let processType = '';
-          if (cols[10 + offset] && cols[10 + offset].includes('●')) processType = '견적 후 착수';
-          else if (cols[11 + offset] && cols[11 + offset].includes('●')) processType = '선조치';
-          else if (cols[12 + offset] && cols[12 + offset].includes('●')) processType = '출장';
-
-          let repairMethod = '';
-          if (cols[16 + offset] && cols[16 + offset].includes('●')) repairMethod = '무상수리';
-          else if (cols[17 + offset] && cols[17 + offset].includes('●')) repairMethod = '유상수리';
-          else if (cols[18 + offset] && cols[18 + offset].includes('●')) repairMethod = '수리불가';
-          else if (cols[19 + offset] && cols[19 + offset].includes('●')) repairMethod = '수리취소';
-
-          let claimType = '일반 A/S'; 
-          if (cols[22 + offset] && cols[22 + offset].includes('●')) claimType = '고객불만';
-          else if (cols[21 + offset] && cols[21 + offset].includes('●')) claimType = '일반 A/S';
-
-          let costRaw = (cols[20 + offset] || '').replace(/[₩\s,\-]/g, '');
-          let cost = (costRaw && !isNaN(costRaw)) ? Number(costRaw) : null;
-          
-          let orderNumber = cols[1] ? cols[1].trim() : '';
-
-          let bu = '';
-          if (hasBUColumnAt2) bu = cols[2] ? cols[2].trim() : '';
-          else bu = cols[25] ? cols[25].trim() : '';
-
-          if (!bu && orderNumber) {
-            const orderNum = orderNumber.toUpperCase();
-            if (orderNum.startsWith('P1')) bu = 'PMD';
-            else if (orderNum.startsWith('UHP') || orderNum.startsWith('P3')) bu = 'UHP';
-            else if (orderNum.startsWith('P4')) bu = 'PT';
-            else if (orderNum.startsWith('T')) bu = 'TMD';
-            else if (orderNum.startsWith('F')) bu = 'FLD'; 
-          }
-
-          let ptBoard = '';
-          if (!hasBUColumnAt2 && cols[26]) ptBoard = cols[26].trim();
-          if (!ptBoard) ptBoard = (bu === 'PT' ? defaultPtBoard : 'N');
-
-          let defectContent = cols[6 + offset] ? cols[6 + offset].trim() : '';
-          let qtyDefect = parseInt(cols[5 + offset]) || 1;
-
-          if (defectContent.includes('성적서 발행') || defectContent.includes('성적서발행')) {
-            if (cost === null || cost === 0) cost = qtyDefect * 1000;
-            if (!repairMethod) repairMethod = '유상수리';
-          }
-
-          let receiptDate = cols[13 + offset] ? cols[13 + offset].trim() : '';
-          let reqDeliveryDate = cols[14 + offset] ? cols[14 + offset].trim() : '';
-          let processDate = cols[15 + offset] ? cols[15 + offset].trim() : '';
-
-          if (receiptDate && !reqDeliveryDate) {
-            reqDeliveryDate = addBusinessDays(receiptDate, 5);
-          }
-
-          newRecords.push({
-            id: Date.now() + i,
-            asNumber: cols[0].trim(),
-            orderNumber: orderNumber,
-            agencyName: cols[2 + offset] ? cols[2 + offset].trim() : '',
-            companyName: cols[3 + offset] ? cols[3 + offset].trim() : '',
-            model: cols[4 + offset] ? cols[4 + offset].trim() : '',
-            qtyDefect: qtyDefect,
-            defectContent: defectContent,
-            serialNo: cols[7 + offset] ? cols[7 + offset].trim() : '',
-            releaseDate: cols[8 + offset] ? cols[8 + offset].trim() : '',
-            originalOrderNumber: cols[9 + offset] ? cols[9 + offset].trim() : '',
-            processType: processType,
-            receiptDate: receiptDate,
-            reqDeliveryDate: reqDeliveryDate,
-            processDate: processDate,
-            repairMethod: repairMethod,
-            cost: cost,
-            claimType: claimType,
-            causeAnalysis: cols[23 + offset] ? cols[23 + offset].trim() : '',
-            processDetails: cols[24 + offset] ? cols[24 + offset].trim() : '',
-            businessUnit: bu,
-            ptBoardType: ptBoard,
-            deletedAt: null 
-          });
-        }
-      }
-      
-      if(newRecords.length > 0) {
-         if (user) {
-           newRecords.forEach(async (record) => {
-             await setDoc(doc(db, getCollectionPath(), String(record.id)), record);
-           });
-           customAlert(`${newRecords.length}건의 데이터를 성공적으로 업로드 중입니다.`);
-         } else {
-           customAlert('데이터베이스 연결이 안되어 업로드할 수 없습니다.');
-         }
-      } else {
-         customAlert('업로드할 유효한 데이터 항목을 찾지 못했습니다.');
-      }
-    };
-    
-    reader.readAsText(file, 'euc-kr');
-    e.target.value = null;
   };
 
   const exportToHTML = () => {
@@ -1511,7 +1552,7 @@ export default function App() {
                   <div className="w-14 h-14 bg-gray-200 rounded-full flex items-center justify-center mb-3 group-hover:bg-gray-300 transition-colors">
                     <Download className="w-6 h-6 text-gray-600" />
                   </div>
-                  <h3 className="text-base font-bold text-gray-700">csv 다운로드</h3>
+                  <h3 className="text-base font-bold text-gray-700">CSV 다운로드</h3>
                 </div>
               </div>
 
@@ -1663,95 +1704,95 @@ export default function App() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th scope="col" className="px-2.5 py-2 text-left text-[12px] font-bold text-gray-500 uppercase whitespace-nowrap">사업부</th>
-                    <th scope="col" className="px-2.5 py-2 text-center text-[12px] font-bold text-gray-500 uppercase whitespace-nowrap">상태</th>
-                    <th scope="col" className="px-2.5 py-2 text-left text-[12px] font-bold text-gray-500 uppercase whitespace-nowrap">접수번호</th>
-                    <th scope="col" className="px-2.5 py-2 text-left text-[12px] font-bold text-gray-500 uppercase whitespace-nowrap">수주번호</th>
-                    <th scope="col" className="px-2.5 py-2 text-left text-[12px] font-bold text-gray-500 uppercase whitespace-nowrap">대리점</th>
-                    <th scope="col" className="px-2.5 py-2 text-left text-[12px] font-bold text-gray-500 uppercase whitespace-nowrap">업체명</th>
-                    <th scope="col" className="px-2.5 py-2 text-left text-[12px] font-bold text-gray-500 uppercase whitespace-nowrap">모델명</th>
-                    <th scope="col" className="px-2.5 py-2 text-right text-[12px] font-bold text-gray-500 uppercase whitespace-nowrap">수량</th>
-                    <th scope="col" className="px-2.5 py-2 text-left text-[12px] font-bold text-gray-500 uppercase whitespace-nowrap">하자내용</th>
-                    <th scope="col" className="px-2.5 py-2 text-left text-[12px] font-bold text-gray-500 uppercase whitespace-nowrap">원인분석</th>
-                    <th scope="col" className="px-2.5 py-2 text-left text-[12px] font-bold text-gray-500 uppercase whitespace-nowrap">일정</th>
-                    <th scope="col" className="px-2.5 py-2 text-right text-[12px] font-bold text-gray-500 uppercase whitespace-nowrap">처리방법</th>
-                    <th scope="col" className="px-2.5 py-2 text-left text-[12px] font-bold text-gray-500 uppercase whitespace-nowrap">기존 주문정보</th>
-                    <th scope="col" className="px-2.5 py-2 text-left text-[12px] font-bold text-gray-500 uppercase whitespace-nowrap">처리방식</th>
-                    <th scope="col" className="px-2.5 py-2 text-center text-[12px] font-bold text-gray-500 uppercase whitespace-nowrap">관리</th>
+                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">사업부</th>
+                    <th scope="col" className="px-3.5 py-2.5 text-center text-xs font-bold text-gray-500 uppercase whitespace-nowrap">상태</th>
+                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">접수번호</th>
+                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">수주번호</th>
+                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">대리점</th>
+                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">업체명</th>
+                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">모델명</th>
+                    <th scope="col" className="px-3.5 py-2.5 text-right text-xs font-bold text-gray-500 uppercase whitespace-nowrap">수량</th>
+                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">하자내용</th>
+                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">원인분석</th>
+                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">일정</th>
+                    <th scope="col" className="px-3.5 py-2.5 text-right text-xs font-bold text-gray-500 uppercase whitespace-nowrap">처리방법</th>
+                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">기존 주문정보</th>
+                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">처리방식</th>
+                    <th scope="col" className="px-3.5 py-2.5 text-center text-xs font-bold text-gray-500 uppercase whitespace-nowrap">관리</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {paginatedData.length > 0 ? (
                     paginatedData.map((row) => (
                       <tr key={row.id} onClick={() => setSelectedRow(row)} className="hover:bg-blue-50 transition-colors cursor-pointer">
-                        <td className="px-2.5 py-2 whitespace-nowrap text-xs font-medium text-gray-900">
+                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] font-medium text-gray-900">
                           {row.businessUnit}
                           {row.businessUnit === 'PT' && row.ptBoardType && (
-                            <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-indigo-100 text-indigo-800">
+                            <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-800">
                               {row.ptBoardType}
                             </span>
                           )}
                         </td>
-                        <td className="px-2.5 py-2 whitespace-nowrap text-center align-middle">
+                        <td className="px-3.5 py-2.5 whitespace-nowrap text-center align-middle">
                           {renderStatusBadge(row.complianceStatus)}
                         </td>
-                        <td className="px-2.5 py-2 whitespace-nowrap text-xs font-medium text-blue-600">{row.asNumber}</td>
-                        <td className="px-2.5 py-2 whitespace-nowrap text-xs text-gray-500">{row.orderNumber}</td>
-                        <td className="px-2.5 py-2 whitespace-nowrap text-xs text-gray-900">{row.agencyName}</td>
-                        <td className="px-2.5 py-2 whitespace-nowrap text-xs text-gray-500">{row.companyName}</td>
-                        <td className="px-2.5 py-2 whitespace-nowrap text-xs text-gray-900">{row.model}</td>
-                        <td className="px-2.5 py-2 whitespace-nowrap text-xs text-gray-900 text-right">{row.qtyDefect}</td>
-                        <td className="px-2.5 py-2 whitespace-nowrap text-xs text-gray-500 max-w-[150px] truncate">
-                          <span className="inline-block px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[9px] rounded mr-1 mb-1">{row.claimType || '일반 A/S'}</span>
+                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] font-medium text-blue-600">{row.asNumber}</td>
+                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] text-gray-500">{row.orderNumber}</td>
+                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] text-gray-900">{row.agencyName}</td>
+                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] text-gray-500">{row.companyName}</td>
+                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] text-gray-900">{row.model}</td>
+                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] text-gray-900 text-right">{row.qtyDefect}</td>
+                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] text-gray-500 max-w-[150px] truncate">
+                          <span className="inline-block px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded mr-1 mb-1">{row.claimType || '일반 A/S'}</span>
                           <div className="truncate" title={row.defectContent}>{row.defectContent || '-'}</div>
                         </td>
-                        <td className="px-2.5 py-2 whitespace-nowrap text-xs text-gray-500 max-w-[150px] truncate">
+                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] text-gray-500 max-w-[150px] truncate">
                           <div className="truncate" title={row.causeAnalysis}>{row.causeAnalysis || '-'}</div>
                         </td>
-                        <td className="px-2.5 py-2 whitespace-nowrap">
-                          <div className="flex flex-col gap-0.5 text-[10px]">
-                            <div className="flex items-center"><span className="text-gray-400 w-7">접수:</span> <span className="text-gray-900">{row.receiptDate}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-7">요구:</span> <span className="text-red-500">{row.reqDeliveryDate}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-7">납기:</span> <span className="text-gray-900">{row.processDate || '-'}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-7">소요:</span> <span className="text-gray-900">{row.duration}</span></div>
+                        <td className="px-3.5 py-2.5 whitespace-nowrap">
+                          <div className="flex flex-col gap-0.5 text-[11px]">
+                            <div className="flex items-center"><span className="text-gray-400 w-8">접수:</span> <span className="text-gray-900">{row.receiptDate}</span></div>
+                            <div className="flex items-center"><span className="text-gray-400 w-8">요구:</span> <span className="text-red-500">{row.reqDeliveryDate}</span></div>
+                            <div className="flex items-center"><span className="text-gray-400 w-8">납기:</span> <span className="text-gray-900">{row.processDate || '-'}</span></div>
+                            <div className="flex items-center"><span className="text-gray-400 w-8">소요:</span> <span className="text-gray-900">{row.duration}</span></div>
                           </div>
                         </td>
-                        <td className="px-2.5 py-2 whitespace-nowrap text-xs text-right align-middle">
+                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] text-right align-middle">
                           {row.repairMethod === '유상수리' ? (
                             <div>
                               <span className="font-medium text-blue-700">{row.repairMethod}</span>
-                              <span className="block text-[10px] text-gray-500">₩ {row.cost != null && row.cost !== '' ? Number(row.cost).toLocaleString() : '0'}</span>
+                              <span className="block text-[11px] text-gray-500">₩ {row.cost != null && row.cost !== '' ? Number(row.cost).toLocaleString() : '0'}</span>
                             </div>
                           ) : (
                             <span className="font-medium text-gray-700">{row.repairMethod || '-'}</span>
                           )}
                         </td>
-                        <td className="px-2.5 py-2 whitespace-nowrap">
-                          <div className="flex flex-col gap-0.5 text-[10px]">
-                            <div className="flex items-center"><span className="text-gray-400 w-7">S/N:</span> <span className="text-gray-900 max-w-[100px] truncate">{row.serialNo || '-'}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-7">출고:</span> <span className="text-gray-900">{row.releaseDate || '-'}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-7">수주:</span> <span className="text-gray-900">{row.originalOrderNumber || '-'}</span></div>
+                        <td className="px-3.5 py-2.5 whitespace-nowrap">
+                          <div className="flex flex-col gap-0.5 text-[11px]">
+                            <div className="flex items-center"><span className="text-gray-400 w-8">S/N:</span> <span className="text-gray-900 max-w-[110px] truncate">{row.serialNo || '-'}</span></div>
+                            <div className="flex items-center"><span className="text-gray-400 w-8">출고:</span> <span className="text-gray-900">{row.releaseDate || '-'}</span></div>
+                            <div className="flex items-center"><span className="text-gray-400 w-8">수주:</span> <span className="text-gray-900">{row.originalOrderNumber || '-'}</span></div>
                           </div>
                         </td>
-                        <td className="px-2.5 py-2 whitespace-nowrap text-xs text-gray-500">{row.processType || '-'}</td>
-                        <td className="px-2.5 py-2 whitespace-nowrap text-center align-middle">
+                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] text-gray-500">{row.processType || '-'}</td>
+                        <td className="px-3.5 py-2.5 whitespace-nowrap text-center align-middle">
                           <div className="flex items-center justify-center gap-1">
                             {activeTab === '휴지통' ? (
                               <>
-                                <button onClick={(e) => handleRestore(row.id, e)} className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors" title="데이터 복구">
+                                <button onClick={(e) => handleRestore(row.id, e)} className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors" title="데이터 복구">
                                   <RotateCcw className="w-3.5 h-3.5" />
                                 </button>
-                                <button onClick={(e) => handlePermanentDeletePrepare(row.id, e)} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="영구 삭제">
+                                <button onClick={(e) => handlePermanentDeletePrepare(row.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="영구 삭제">
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </>
                             ) : (
                               <>
-                                <button onClick={(e) => { e.stopPropagation(); handleOpenForm(row); }} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="수정">
+                                <button onClick={(e) => { e.stopPropagation(); handleOpenForm(row); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="수정">
                                   <Edit className="w-3.5 h-3.5" />
                                 </button>
                                 {currentUserRole?.name === '품질경영팀' && (
-                                  <button onClick={(e) => handleDeletePrepare(row.id, e)} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="삭제 (휴지통으로 이동)">
+                                  <button onClick={(e) => handleDeletePrepare(row.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="삭제 (휴지통으로 이동)">
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
                                 )}
@@ -2015,6 +2056,7 @@ export default function App() {
                 </FormGroup>
               </div>
 
+              {/* 달력 선택 폼 (접수일, 납기일, 완료일) */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-gray-100 pb-4">
                 <FormGroup label="접수일자 (클릭 시 달력)">
                   <input type="date" name="receiptDate" value={formatForDateInput(formData.receiptDate)} onChange={handleFormChange} className="form-input cursor-pointer" />
@@ -2159,6 +2201,61 @@ export default function App() {
             <div className="flex justify-center gap-3">
               <button onClick={() => setItemToPermanentDelete(null)} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors">취소</button>
               <button onClick={executePermanentDelete} className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors">영구 삭제</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. CSV 업로드 시 PT 보드 타입 개별 선택 팝업 */}
+      {showPtBoardModal && pendingUploadData && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl p-6 animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+            <h3 className="text-xl font-bold text-gray-900 mb-2">PT 보드 타입 개별 선택</h3>
+            <p className="text-sm text-gray-500 mb-4">업로드 파일에 PT 사업부 데이터가 포함되어 있습니다. 각 건별로 보드 타입을 확인하거나 변경해주세요.</p>
+            
+            <div className="overflow-y-auto flex-1 mb-6 border border-gray-200 rounded-xl hide-scrollbar">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold text-gray-600">접수번호</th>
+                    <th className="px-4 py-3 font-semibold text-gray-600">모델명</th>
+                    <th className="px-4 py-3 font-semibold text-gray-600">업체명</th>
+                    <th className="px-4 py-3 font-semibold text-gray-600 text-center">보드 타입 선택</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {pendingUploadData.filter(r => r.businessUnit === 'PT').map(record => (
+                    <tr key={record.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-gray-900">{record.asNumber}</td>
+                      <td className="px-4 py-3 text-gray-600">{record.model}</td>
+                      <td className="px-4 py-3 text-gray-600">{record.companyName}</td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="inline-flex bg-gray-100 p-1 rounded-lg">
+                          <button
+                            type="button"
+                            onClick={() => handlePtBoardTypeChange(record.id, 'ZMDI')}
+                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${record.ptBoardType === 'ZMDI' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}
+                          >
+                            ZMDI
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePtBoardTypeChange(record.id, 'N')}
+                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${record.ptBoardType === 'N' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}
+                          >
+                            N
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            <div className="flex justify-center gap-3 shrink-0">
+              <button onClick={() => { setShowPtBoardModal(false); setPendingUploadData(null); }} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors">업로드 취소</button>
+              <button onClick={() => { executeUpload(pendingUploadData); setShowPtBoardModal(false); setPendingUploadData(null); }} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors">선택 완료 및 업로드</button>
             </div>
           </div>
         </div>
