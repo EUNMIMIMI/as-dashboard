@@ -184,31 +184,63 @@ const MultiDonutChart = ({ data, size = 160, strokeWidth = 24 }) => {
   const radius = 50 - strokeWidth / 2;
   const circumference = 2 * Math.PI * radius;
   let currentOffset = 0;
+  let currentAngle = -90; // 텍스트 라벨 위치 계산을 위한 시작 각도
   
   return (
     <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg viewBox="0 0 100 100" className="transform -rotate-90 w-full h-full drop-shadow-sm">
-        {total === 0 && (
-          <circle cx="50" cy="50" r={radius} fill="transparent" stroke="#f3f4f6" strokeWidth={strokeWidth} />
-        )}
+      <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-sm">
+        <g transform="rotate(-90 50 50)">
+          {total === 0 && (
+            <circle cx="50" cy="50" r={radius} fill="transparent" stroke="#f3f4f6" strokeWidth={strokeWidth} />
+          )}
+          {data.map((item, i) => {
+            if (item.value === 0) return null;
+            const dashLength = (item.value / total) * circumference;
+            const strokeDasharray = `${dashLength} ${circumference}`;
+            const offset = -currentOffset;
+            currentOffset += dashLength;
+            
+            return (
+              <circle 
+                key={item.label} cx="50" cy="50" r={radius} fill="transparent" 
+                stroke={item.color} strokeWidth={strokeWidth}
+                strokeDasharray={strokeDasharray} strokeDashoffset={offset}
+                className="transition-all duration-1000 ease-out"
+              />
+            );
+          })}
+        </g>
+        {/* 퍼센트 텍스트 라벨 (비율이 5% 이상일 때만 표시) */}
         {data.map((item, i) => {
           if (item.value === 0) return null;
-          const dashLength = (item.value / total) * circumference;
-          const strokeDasharray = `${dashLength} ${circumference}`;
-          const offset = -currentOffset;
-          currentOffset += dashLength;
+          const sliceAngle = (item.value / total) * 360;
+          const midAngle = currentAngle + sliceAngle / 2;
+          currentAngle += sliceAngle;
+          
+          if (item.value / total < 0.05) return null;
+          
+          const rad = (midAngle * Math.PI) / 180;
+          const x = 50 + radius * Math.cos(rad);
+          const y = 50 + radius * Math.sin(rad);
+          const percentage = ((item.value / total) * 100).toFixed(0) + '%';
           
           return (
-            <circle 
-              key={item.label} cx="50" cy="50" r={radius} fill="transparent" 
-              stroke={item.color} strokeWidth={strokeWidth}
-              strokeDasharray={strokeDasharray} strokeDashoffset={offset}
-              className="transition-all duration-1000 ease-out"
-            />
+            <text 
+              key={`text-${item.label}`} 
+              x={x} y={y} 
+              fill="#ffffff" 
+              fontSize="6.5" 
+              fontWeight="bold" 
+              textAnchor="middle" 
+              dominantBaseline="central"
+              style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.6)' }}
+            >
+              {percentage}
+            </text>
           );
         })}
       </svg>
-      <div className="absolute flex flex-col items-center justify-center text-center bg-white rounded-full p-2">
+      <div className="absolute flex flex-col items-center justify-center text-center bg-white rounded-full" style={{ width: '48%', height: '48%' }}>
         <span className="text-[10px] text-gray-500 mb-0.5">총계</span>
         <span className="text-sm font-bold text-gray-900 leading-none">{total}건</span>
       </div>
@@ -223,26 +255,54 @@ const DonutChart = ({ normal, complaint, size = 120, strokeWidth = 12 }) => {
   const normalDash = total === 0 ? 0 : (normal / total) * circumference;
   const complaintDash = total === 0 ? 0 : (complaint / total) * circumference;
   
+  const normalAngle = total === 0 ? 0 : (normal / total) * 360;
+  const complaintAngle = total === 0 ? 0 : (complaint / total) * 360;
+
+  const getLabelPos = (angle, sliceAngle) => {
+    const midAngle = angle + sliceAngle / 2;
+    const rad = (midAngle * Math.PI) / 180;
+    return {
+      x: 50 + radius * Math.cos(rad),
+      y: 50 + radius * Math.sin(rad)
+    };
+  };
+
+  const normalPos = getLabelPos(-90, normalAngle);
+  const complaintPos = getLabelPos(-90 + normalAngle, complaintAngle);
+
   return (
     <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg viewBox="0 0 100 100" className="transform -rotate-90 w-full h-full drop-shadow-sm">
-        <circle cx="50" cy="50" r={radius} fill="transparent" stroke="#f3f4f6" strokeWidth={strokeWidth} />
-        {normal > 0 && (
-          <circle 
-            cx="50" cy="50" r={radius} fill="transparent" stroke="#3b82f6" strokeWidth={strokeWidth}
-            strokeDasharray={`${normalDash} ${circumference}`} strokeDashoffset="0"
-            strokeLinecap="round" className="transition-all duration-1000 ease-out"
-          />
+      <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-sm">
+        <g transform="rotate(-90 50 50)">
+          <circle cx="50" cy="50" r={radius} fill="transparent" stroke="#f3f4f6" strokeWidth={strokeWidth} />
+          {normal > 0 && (
+            <circle 
+              cx="50" cy="50" r={radius} fill="transparent" stroke="#3b82f6" strokeWidth={strokeWidth}
+              strokeDasharray={`${normalDash} ${circumference}`} strokeDashoffset="0"
+              strokeLinecap="round" className="transition-all duration-1000 ease-out"
+            />
+          )}
+          {complaint > 0 && (
+            <circle 
+              cx="50" cy="50" r={radius} fill="transparent" stroke="#ef4444" strokeWidth={strokeWidth}
+              strokeDasharray={`${complaintDash} ${circumference}`} strokeDashoffset={-normalDash}
+              strokeLinecap="round" className="transition-all duration-1000 ease-out"
+            />
+          )}
+        </g>
+        {/* 라벨 텍스트 추가 (비율이 너무 작으면 숨김 처리) */}
+        {normal > 0 && (normal / total >= 0.08) && (
+           <text x={normalPos.x} y={normalPos.y} fill="#ffffff" fontSize="8" fontWeight="bold" textAnchor="middle" dominantBaseline="central" style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}>
+             {((normal / total) * 100).toFixed(0)}%
+           </text>
         )}
-        {complaint > 0 && (
-          <circle 
-            cx="50" cy="50" r={radius} fill="transparent" stroke="#ef4444" strokeWidth={strokeWidth}
-            strokeDasharray={`${complaintDash} ${circumference}`} strokeDashoffset={-normalDash}
-            strokeLinecap="round" className="transition-all duration-1000 ease-out"
-          />
+        {complaint > 0 && (complaint / total >= 0.08) && (
+           <text x={complaintPos.x} y={complaintPos.y} fill="#ffffff" fontSize="8" fontWeight="bold" textAnchor="middle" dominantBaseline="central" style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}>
+             {((complaint / total) * 100).toFixed(0)}%
+           </text>
         )}
       </svg>
-      <div className="absolute flex flex-col items-center justify-center text-center">
+      <div className="absolute flex flex-col items-center justify-center text-center bg-white rounded-full" style={{ width: '55%', height: '55%' }}>
         <span className="text-[10px] text-gray-500 mb-0.5">총 접수</span>
         <span className="text-sm font-bold text-gray-900 leading-none">{total}건</span>
       </div>
