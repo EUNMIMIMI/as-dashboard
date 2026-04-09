@@ -429,7 +429,7 @@ export default function App() {
   const aggregatedStats = useMemo(() => {
     const stats = {};
     const AGGREGATION_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT (ZMDI)', 'PT (N)'];
-    AGGREGATION_ORDER.forEach(unit => stats[unit] = { unit, normal: 0, complaint: 0 });
+    AGGREGATION_ORDER.forEach(unit => stats[unit] = { unit, normalSet: new Set(), complaintSet: new Set() });
 
     allowedProcessedData.forEach(item => {
       let unit = item.businessUnit || '미분류';
@@ -437,18 +437,25 @@ export default function App() {
         const boardType = item.ptBoardType === 'ZMDI' ? 'ZMDI' : 'N';
         unit = `PT (${boardType})`;
       }
-      if (!stats[unit]) stats[unit] = { unit, normal: 0, complaint: 0 }; 
-      if (item.claimType === '고객불만') stats[unit].complaint += 1;
-      else stats[unit].normal += 1;
+      if (!stats[unit]) stats[unit] = { unit, normalSet: new Set(), complaintSet: new Set() }; 
+      
+      if (item.claimType === '고객불만') {
+        stats[unit].complaintSet.add(item.asNumber);
+      } else {
+        stats[unit].normalSet.add(item.asNumber);
+      }
     });
 
     let totalNormal = 0; let totalComplaint = 0;
     const result = Object.values(stats).map(stat => {
-      const totalClaims = stat.normal + stat.complaint;
-      const normalRate = totalClaims > 0 ? ((stat.normal / totalClaims) * 100).toFixed(1) : 0;
-      const complaintRate = totalClaims > 0 ? ((stat.complaint / totalClaims) * 100).toFixed(1) : 0;
-      totalNormal += stat.normal; totalComplaint += stat.complaint;
-      return { ...stat, totalClaims, normalRate, complaintRate };
+      const normal = stat.normalSet.size;
+      const complaint = stat.complaintSet.size;
+      const totalClaims = normal + complaint;
+      const normalRate = totalClaims > 0 ? ((normal / totalClaims) * 100).toFixed(1) : 0;
+      const complaintRate = totalClaims > 0 ? ((complaint / totalClaims) * 100).toFixed(1) : 0;
+      totalNormal += normal; 
+      totalComplaint += complaint;
+      return { unit: stat.unit, normal, complaint, totalClaims, normalRate, complaintRate };
     });
 
     result.sort((a, b) => {
@@ -473,28 +480,44 @@ export default function App() {
 
   const dashboardStats = useMemo(() => {
     const stats = {};
-    FIXED_UNITS_ORDER.forEach(bu => stats[bu] = { unit: bu, total: 0, models: {} });
+    FIXED_UNITS_ORDER.forEach(bu => stats[bu] = { unit: bu, totalSet: new Set(), models: {} });
 
     allowedProcessedData.forEach(item => {
       const bu = FIXED_UNITS_ORDER.includes(item.businessUnit) ? item.businessUnit : '기타사업부';
-      if (!stats[bu]) stats[bu] = { unit: bu, total: 0, models: {} };
+      if (!stats[bu]) stats[bu] = { unit: bu, totalSet: new Set(), models: {} };
       
+      stats[bu].totalSet.add(item.asNumber);
+
       const groupLabel = getModelGroup(item.businessUnit, item.model, item.ptBoardType);
-      stats[bu].total += 1;
-      if (!stats[bu].models[groupLabel]) stats[bu].models[groupLabel] = { label: groupLabel, total: 0, normal: 0, complaint: 0 };
+      if (!stats[bu].models[groupLabel]) {
+        stats[bu].models[groupLabel] = { label: groupLabel, totalSet: new Set(), normalSet: new Set(), complaintSet: new Set() };
+      }
       
-      stats[bu].models[groupLabel].total += 1;
-      if (item.claimType === '고객불만') stats[bu].models[groupLabel].complaint += 1;
-      else stats[bu].models[groupLabel].normal += 1;
+      stats[bu].models[groupLabel].totalSet.add(item.asNumber);
+      if (item.claimType === '고객불만') {
+        stats[bu].models[groupLabel].complaintSet.add(item.asNumber);
+      } else {
+        stats[bu].models[groupLabel].normalSet.add(item.asNumber);
+      }
     });
 
     return Object.values(stats).map(buStat => {
-      const modelsArr = Object.values(buStat.models).sort((a, b) => b.total - a.total);
+      const buTotal = buStat.totalSet.size;
+      const modelsArr = Object.values(buStat.models).map(m => {
+        const mTotal = m.totalSet.size;
+        return {
+          label: m.label,
+          total: mTotal,
+          normal: m.normalSet.size,
+          complaint: m.complaintSet.size,
+          rate: buTotal > 0 ? ((mTotal / buTotal) * 100).toFixed(1) : 0
+        };
+      }).sort((a, b) => b.total - a.total);
+
       modelsArr.forEach((m, idx) => {
         m.color = CHART_COLORS[idx % CHART_COLORS.length];
-        m.rate = buStat.total > 0 ? ((m.total / buStat.total) * 100).toFixed(1) : 0;
       });
-      return { ...buStat, modelsArr };
+      return { unit: buStat.unit, total: buTotal, modelsArr };
     }).sort((a, b) => {
       let ia = FIXED_UNITS_ORDER.indexOf(a.unit);
       let ib = FIXED_UNITS_ORDER.indexOf(b.unit);
