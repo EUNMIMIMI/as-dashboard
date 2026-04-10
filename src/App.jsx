@@ -13,21 +13,22 @@ const ACCESS_ROLES = {
   'pmd123': { name: 'pmd 담당자', tabs: ['PMD'] },
   'tmd123': { name: 'tmd 담당자', tabs: ['TMD'] },
   'fld123': { name: 'fld 담당자', tabs: ['FLD'] },
-  'uhp123': { name: 'uhp 담당자', tabs: ['UHP', 'PT'] }
+  'uhp123': { name: 'uhp 담당자', tabs: ['UHP', 'PT', 'UPT900'] }
 };
 // ------------------------------------
 
 // --- Firebase 초기화 ---
 const isCanvasEnv = typeof __firebase_config !== 'undefined';
-const firebaseConfig = isCanvasEnv
+
+const firebaseConfig = isCanvasEnv 
   ? JSON.parse(__firebase_config)
   : {
-      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-      appId: import.meta.env.VITE_FIREBASE_APP_ID
+      apiKey: "YOUR_API_KEY", // 로컬 환경 적용 시: import.meta.env.VITE_FIREBASE_API_KEY
+      authDomain: "YOUR_AUTH_DOMAIN", // 로컬 환경 적용 시: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN
+      projectId: "YOUR_PROJECT_ID", // 로컬 환경 적용 시: import.meta.env.VITE_FIREBASE_PROJECT_ID
+      storageBucket: "YOUR_STORAGE_BUCKET", // 로컬 환경 적용 시: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET
+      messagingSenderId: "YOUR_SENDER_ID", // 로컬 환경 적용 시: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID
+      appId: "YOUR_APP_ID" // 로컬 환경 적용 시: import.meta.env.VITE_FIREBASE_APP_ID
     };
 
 const app = initializeApp(firebaseConfig);
@@ -150,7 +151,7 @@ const initialMockData = [
   }
 ];
 
-const FIXED_UNITS_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT'];
+const FIXED_UNITS_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'];
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'];
 
 const generateNextAsNumber = (currentData) => {
@@ -337,10 +338,7 @@ const getModelGroup = (bu, modelName, ptBoardType) => {
 };
 
 export default function App() {
-  const [currentUserRole, setCurrentUserRole] = useState(() => {
-    const saved = localStorage.getItem('as_dashboard_role');
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [currentUserRole, setCurrentUserRole] = useState(null);
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [isCapsLockOn, setIsCapsLockOn] = useState(false);
@@ -380,7 +378,6 @@ export default function App() {
     const role = ACCESS_ROLES[loginPassword];
     if (role) {
       setCurrentUserRole(role);
-      localStorage.setItem('as_dashboard_role', JSON.stringify(role));
       setLoginError('');
       setActiveTab(role.tabs === 'ALL' ? '전체' : role.tabs[0]);
     } else {
@@ -488,7 +485,7 @@ export default function App() {
 
   const aggregatedStats = useMemo(() => {
     const stats = {};
-    const AGGREGATION_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT (ZMDI)', 'PT (N)'];
+    const AGGREGATION_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT (ZMDI)', 'PT (N)', 'UPT900'];
     AGGREGATION_ORDER.forEach(unit => stats[unit] = { unit, normalSet: new Set(), complaintSet: new Set() });
 
     allowedProcessedData.forEach(item => {
@@ -588,7 +585,6 @@ export default function App() {
 
   const dynamicUnits = Array.from(new Set(processedData.map(d => d.businessUnit).filter(Boolean)));
   const otherUnits = dynamicUnits.filter(unit => !FIXED_UNITS_ORDER.includes(unit));
-  
   const allBusinessUnits = ['전체', ...FIXED_UNITS_ORDER, ...otherUnits, '미입력', '집계'];
   
   const visibleBusinessUnits = useMemo(() => {
@@ -958,7 +954,6 @@ export default function App() {
     setCurrentPage(1);
   }, [activeTab, filterCompliance, filterAgency, filterModel, filterPtBoard, filterExcludeReport, searchQuery]);
 
-  // 페이지네이션 로직 복구
   const totalPages = Math.ceil(filteredData.length / itemsPerPage) || 1;
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
@@ -966,7 +961,7 @@ export default function App() {
   }, [filteredData, currentPage]);
 
   const maxVisiblePages = 5;
-  const currentBlock = Math.ceil(currentPage / maxVisiblePages);
+  const currentBlock = Math.ceil(currentPage / maxVisiblePages) || 1;
   const startPage = (currentBlock - 1) * maxVisiblePages + 1;
   const endPage = Math.min(startPage + maxVisiblePages - 1, totalPages);
   const visiblePages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
@@ -2121,6 +2116,7 @@ export default function App() {
                     <option value="FLD">FLD</option>
                     <option value="UHP">UHP</option>
                     <option value="PT">PT</option>
+                    <option value="UPT900">UPT900</option>
                   </select>
                 </FormGroup>
                 <FormGroup label="접수번호">
