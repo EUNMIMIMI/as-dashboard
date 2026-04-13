@@ -631,16 +631,18 @@ export default function App() {
         const comp = (item.companyName || '').toLowerCase();
         const agency = (item.agencyName || '').toLowerCase();
         const mod = (item.model || '').toLowerCase();
+        const serial = (item.serialNo || '').toLowerCase();
 
         const orderNumDigits = orderNum.replace(/\D/g, '');
         const asNumLast = asNum.split('-').pop() || '';
+        const serialDigits = serial.replace(/\D/g, '');
 
         const isNormalMatch = 
           asNum.includes(query) || orderNum.includes(query) ||
-          comp.includes(query) || agency.includes(query) || mod.includes(query);
+          comp.includes(query) || agency.includes(query) || mod.includes(query) || serial.includes(query);
 
         const isDigitMatch = queryDigits.length > 0 && (
-          orderNumDigits.includes(queryDigits) || asNumLast.includes(queryDigits)
+          orderNumDigits.includes(queryDigits) || asNumLast.includes(queryDigits) || serialDigits.includes(queryDigits)
         );
 
         return isNormalMatch || isDigitMatch;
