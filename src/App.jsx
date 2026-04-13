@@ -19,7 +19,8 @@ const ACCESS_ROLES = {
 
 // --- Firebase 초기화 ---
 const isCanvasEnv = typeof __firebase_config !== 'undefined';
-const firebaseConfig = isCanvasEnv
+
+const firebaseConfig = isCanvasEnv 
   ? JSON.parse(__firebase_config)
   : {
       apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
