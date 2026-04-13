@@ -23,12 +23,12 @@ const isCanvasEnv = typeof __firebase_config !== 'undefined';
 const firebaseConfig = isCanvasEnv 
   ? JSON.parse(__firebase_config)
   : {
-      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-      appId: import.meta.env.VITE_FIREBASE_APP_ID
+      apiKey: "YOUR_API_KEY", // 로컬 환경 적용 시: import.meta.env.VITE_FIREBASE_API_KEY
+      authDomain: "YOUR_AUTH_DOMAIN", // 로컬 환경 적용 시: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN
+      projectId: "YOUR_PROJECT_ID", // 로컬 환경 적용 시: import.meta.env.VITE_FIREBASE_PROJECT_ID
+      storageBucket: "YOUR_STORAGE_BUCKET", // 로컬 환경 적용 시: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET
+      messagingSenderId: "YOUR_SENDER_ID", // 로컬 환경 적용 시: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID
+      appId: "YOUR_APP_ID" // 로컬 환경 적용 시: import.meta.env.VITE_FIREBASE_APP_ID
     };
 
 const app = initializeApp(firebaseConfig);
@@ -185,7 +185,7 @@ const MultiDonutChart = ({ data, size = 160, strokeWidth = 24 }) => {
   const radius = 50 - strokeWidth / 2;
   const circumference = 2 * Math.PI * radius;
   let currentOffset = 0;
-  let currentAngle = -90; // 텍스트 라벨 위치 계산을 위한 시작 각도
+  let currentAngle = -90;
   
   return (
     <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
@@ -211,7 +211,6 @@ const MultiDonutChart = ({ data, size = 160, strokeWidth = 24 }) => {
             );
           })}
         </g>
-        {/* 퍼센트 텍스트 라벨 (비율이 5% 이상일 때만 표시) */}
         {data.map((item, i) => {
           if (item.value === 0) return null;
           const sliceAngle = (item.value / total) * 360;
@@ -291,7 +290,6 @@ const DonutChart = ({ normal, complaint, size = 120, strokeWidth = 12 }) => {
             />
           )}
         </g>
-        {/* 라벨 텍스트 추가 (비율이 너무 작으면 숨김 처리) */}
         {normal > 0 && (normal / total >= 0.08) && (
            <text x={normalPos.x} y={normalPos.y} fill="#ffffff" fontSize="8" fontWeight="bold" textAnchor="middle" dominantBaseline="central" style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}>
              {((normal / total) * 100).toFixed(0)}%
@@ -662,7 +660,7 @@ export default function App() {
 
   const handleOpenForm = (record = null) => {
     if (record) {
-      setFormData({ ptBoardType: 'N', claimType: '일반 A/S', repairMethod: '무상수리', ...record });
+      setFormData({ ptBoardType: 'N', claimType: '일반 A/S', repairMethod: '처리중', ...record });
       setSelectedRow(null);
     } else {
       const newAsNumber = generateNextAsNumber(data);
@@ -676,7 +674,7 @@ export default function App() {
         model: '', qtyDefect: 1, serialNo: '', releaseDate: '',
         defectContent: '', causeAnalysis: '', processDetails: '',
         processType: '견적 후 착수', cost: '', ptBoardType: 'N',
-        claimType: '일반 A/S', repairMethod: '무상수리'
+        claimType: '일반 A/S', repairMethod: '처리중'
       });
     }
     setIsFormOpen(true);
@@ -860,6 +858,7 @@ export default function App() {
           else if (cols[17 + offset] && cols[17 + offset].includes('●')) repairMethod = '유상수리';
           else if (cols[18 + offset] && cols[18 + offset].includes('●')) repairMethod = '수리불가';
           else if (cols[19 + offset] && cols[19 + offset].includes('●')) repairMethod = '수리취소';
+          else repairMethod = '처리중';
 
           let claimType = '일반 A/S'; 
           if (cols[22 + offset] && cols[22 + offset].includes('●')) claimType = '고객불만';
@@ -894,7 +893,7 @@ export default function App() {
 
           if (defectContent.includes('성적서 발행') || defectContent.includes('성적서발행')) {
             if (cost === null || cost === 0) cost = qtyDefect * 1000;
-            if (!repairMethod) repairMethod = '유상수리';
+            if (!repairMethod || repairMethod === '처리중') repairMethod = '유상수리';
           }
 
           let receiptDate = formatDisplayDate(cols[13 + offset] ? cols[13 + offset].trim() : '');
@@ -1263,6 +1262,7 @@ export default function App() {
         '유상수리': 'Paid Repair',
         '수리불가': 'Beyond Economical Repair',
         '수리취소': 'Repair Canceled',
+        '처리중': 'In Progress',
         '견적 후 착수': 'Proceed after Quotation',
         '선조치': 'Advance Replacement/Repair',
         '출장': 'On-site Service',
@@ -2203,7 +2203,7 @@ export default function App() {
                 <div className="pt-4 border-t border-gray-100 bg-gray-50 p-4 rounded-xl mt-4">
                   <label className="block text-sm font-bold text-gray-700 mb-3">수리 결과 및 방법 선택</label>
                   <div className="flex flex-wrap items-center gap-6">
-                    {['무상수리', '유상수리', '수리불가', '수리취소'].map(method => (
+                    {['처리중', '무상수리', '유상수리', '수리불가', '수리취소'].map(method => (
                       <label key={method} className="flex items-center gap-2 cursor-pointer">
                         <input type="radio" name="repairMethod" value={method} checked={formData.repairMethod === method} onChange={handleFormChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" />
                         <span className="text-sm font-medium text-gray-900">{method}</span>
