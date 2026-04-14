@@ -20,7 +20,7 @@ const ACCESS_ROLES = {
 // --- Firebase 초기화 ---
 const isCanvasEnv = typeof __firebase_config !== 'undefined';
 
-const firebaseConfig = isCanvasEnv 
+const firebaseConfig = isCanvasEnv
   ? JSON.parse(__firebase_config)
   : {
       apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -30,6 +30,7 @@ const firebaseConfig = isCanvasEnv
       messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
       appId: import.meta.env.VITE_FIREBASE_APP_ID
     };
+
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -43,6 +44,74 @@ const getCollectionPath = () => {
   return 'as_records';
 };
 // -----------------------
+
+const CAUSE_HEADERS = [
+  { id: 'c1', label: '설치\n조건' }, { id: 'c2', label: '취급\n부주의' }, { id: 'c3', label: '품질\n보증\n기간' },
+  { id: 'w1', label: '사양\n검토\n미흡' }, { id: 'w2', label: '설계\n미흡' }, { id: 'w3', label: '사양\n검토\n미흡' },
+  { id: 'w4', label: '용접\n불량' }, { id: 'w5', label: '세척\n불량' }, { id: 'w6', label: '가공\n불량' },
+  { id: 'w7', label: '성능\n불량' }, { id: 'w8', label: '조립\n불량' }, { id: 'w9', label: '오일\n주입\n불량' },
+  { id: 'w10', label: '외관\n불량' }, { id: 'w11', label: '식별\n포장' }, { id: 'w12', label: '검사\n미흡' },
+  { id: 'e1', label: '자재\n부품\n불량' }, { id: 'e2', label: '운송\n중\n충격' }, { id: 'e3', label: '원인\n분석\n불가' },
+  { id: 'e4', label: '정상' }, { id: 'e5', label: '연구\n및\n개선' }
+];
+
+const PT_CAUSE_HEADERS = [
+  { id: 'c1', label: '설치\n조건' }, { id: 'c2', label: '취급\n부주의' }, { id: 'c3', label: '품질\n보증\n기간' },
+  { id: 'w1', label: '사양\n검토\n미흡' }, { id: 'w2', label: '설계\n미흡' }, { id: 'w3', label: '사양\n검토\n미흡' },
+  { id: 'w4', label: '용접\n불량' }, { id: 'w5', label: '세척\n불량' }, { id: 'w6', label: '가공\n불량' },
+  { id: 'w8', label: '조립\n불량' }, { id: 'w7', label: '성능\n불량' }, { id: 'pt1', label: '캐패시터\n불량' },
+  { id: 'pt2', label: '커넥터\n보드\n불량' }, { id: 'pt3', label: '센서칩\n불량' }, { id: 'pt4', label: '와이어\n본딩\n불량' },
+  { id: 'pt5', label: '메인\n보드\n불량' }, { id: 'pt6', label: '케이블\n눌림' }, { id: 'w10', label: '외관\n불량' },
+  { id: 'w11', label: '식별\n포장' }, { id: 'w12', label: '검사\n미흡' }, { id: 'e1', label: '자재\n부품\n불량' },
+  { id: 'e2', label: '운송\n중\n충격' }, { id: 'e3', label: '원인\n분석\n불가' }, { id: 'e4', label: '정상' },
+  { id: 'e5', label: '연구\n및\n개선' }, { id: 'pt7', label: '품질\n테스트' }
+];
+
+const UPT900_CAUSE_HEADERS = [
+  { id: 'c1', label: '설치\n조건' }, { id: 'c2', label: '취급\n부주의' }, { id: 'c3', label: '품질\n보증\n기간' },
+  { id: 'w1', label: '사양\n검토\n미흡' }, { id: 'w2', label: '설계\n미흡' }, { id: 'w3', label: '사양\n검토\n미흡' },
+  { id: 'w4', label: '용접\n불량' }, { id: 'w6', label: '가공\n불량' }, { id: 'w7', label: '성능\n불량' },
+  { id: 'w8', label: '조립\n불량' }, { id: 'w10', label: '외관\n불량' }, { id: 'upt1', label: '스티커\n불량' },
+  { id: 'upt2', label: 'PCB불량' }, { id: 'upt3', label: '영점\n불량' }, { id: 'w11', label: '식별\n포장' },
+  { id: 'w12', label: '검사\n미흡' }, { id: 'e1', label: '자재\n부품\n불량' }, { id: 'e2', label: '운송\n중\n충격' },
+  { id: 'e3', label: '원인\n분석\n불가' }, { id: 'e4', label: '정상' }, { id: 'e5', label: '연구\n및\n개선' }
+];
+
+const PROCESS_HEADERS = [
+  { id: 'p1', value: '점검 및 수리', label: '점검\n및\n수리' },
+  { id: 'p2', value: '부품 교체', label: '부품\n교체' },
+  { id: 'p3', value: '신규 제작', label: '신규\n제작' },
+  { id: 'p4', value: '수리 불가', label: '수리\n불가' },
+  { id: 'p5', value: '수리 취소', label: '수리\n취소' },
+];
+
+const ALL_CAUSE_HEADERS = [...CAUSE_HEADERS, ...PT_CAUSE_HEADERS, ...UPT900_CAUSE_HEADERS];
+const CAUSE_LABEL_MAP = ALL_CAUSE_HEADERS.reduce((acc, curr) => {
+  if (!acc[curr.id]) acc[curr.id] = curr.label.replace(/\n/g, ' ');
+  return acc;
+}, {});
+
+const getCauseTableConfig = (bu) => {
+  if (bu === 'PT') {
+    return {
+      headers: PT_CAUSE_HEADERS,
+      totalCols: 26, wiseCols: 17, otherGroupCols: 6,
+      prodCols: 14, otherCols: 5
+    };
+  } else if (bu === 'UPT900') {
+    return {
+      headers: UPT900_CAUSE_HEADERS,
+      totalCols: 21, wiseCols: 13, otherGroupCols: 5,
+      prodCols: 10, otherCols: 4
+    };
+  } else {
+    return {
+      headers: CAUSE_HEADERS,
+      totalCols: 20, wiseCols: 12, otherGroupCols: 5,
+      prodCols: 9, otherCols: 4
+    };
+  }
+};
 
 const parseDateObj = (dateStr) => {
   if (!dateStr) return null;
@@ -139,17 +208,6 @@ const addBusinessDays = (dateStr, days) => {
   const dd = String(dObj.getDate()).padStart(2, '0');
   return `${yy}.${mm}.${dd}`;
 };
-
-const initialMockData = [
-  {
-    id: 1, asNumber: 'WQ-2821-01-26-001', orderNumber: 'P100Z260001', originalOrderNumber: 'P1DSZ250066',
-    receiptDate: '26.01.07', reqDeliveryDate: '26.01.15', businessUnit: 'PMD', agencyName: '이노바이저',
-    companyName: '크라이오에이치앤아이', model: 'P255', qtyDefect: 1, serialNo: 'P250219884', releaseDate: '25.02.24',
-    defectContent: 'LEAK', causeAnalysis: '관안 용접부위 핀홀로 LEAK됨',
-    processDetails: '신규제작 및 재발방지 대책서 송부',
-    processDate: '26.01.16', processType: '견적 후 착수', cost: 0, claimType: '일반 A/S', repairMethod: '무상수리', ptBoardType: 'N'
-  }
-];
 
 const FIXED_UNITS_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'];
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'];
@@ -309,6 +367,28 @@ const DonutChart = ({ normal, complaint, size = 120, strokeWidth = 12 }) => {
   );
 };
 
+const HorizontalBarChart = ({ data, color }) => {
+  if (!data || data.length === 0) return <div className="text-gray-400 text-sm py-4 text-center">데이터가 없습니다.</div>;
+  const maxVal = Math.max(...data.map(d => d.value));
+
+  return (
+    <div className="space-y-2.5 w-full">
+      {data.map((item, i) => (
+        <div key={i} className="flex items-center text-xs">
+          <div className="w-24 text-right pr-3 font-medium text-gray-700 truncate" title={item.label}>{item.label}</div>
+          <div className="flex-1 flex items-center gap-2">
+            <div
+              className={`h-4 rounded-sm ${color || 'bg-blue-500'}`}
+              style={{ width: `${maxVal > 0 ? (item.value / maxVal) * 100 : 0}%`, minWidth: item.value > 0 ? '4px' : '0' }}
+            ></div>
+            <span className="text-gray-600 font-bold w-6">{item.value}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const getModelGroup = (bu, modelName, ptBoardType) => {
   if (bu === 'PT') return ptBoardType === 'ZMDI' ? 'ZMDI' : 'N';
   if (!modelName) return bu === 'PMD' ? 'ACC' : '기타';
@@ -343,6 +423,7 @@ export default function App() {
 
   const [data, setData] = useState([]); 
   const [activeTab, setActiveTab] = useState('전체'); 
+  const [dashboardTab, setDashboardTab] = useState('종합 지표');
   const [user, setUser] = useState(null);
   const [isSeeded, setIsSeeded] = useState(false);
   
@@ -393,7 +474,7 @@ export default function App() {
   useEffect(() => {
     if (currentUserRole) {
       const isQM = currentUserRole.name === '품질경영팀';
-      if (!isQM && (activeTab === '휴지통' || activeTab === '보고서')) {
+      if (!isQM && (activeTab === '휴지통' || activeTab === '보고서' || activeTab === '집계')) {
         setActiveTab(currentUserRole.tabs[0]);
       } else if (currentUserRole.tabs !== 'ALL' && !currentUserRole.tabs.includes(activeTab)) {
         setActiveTab(currentUserRole.tabs[0]);
@@ -434,9 +515,6 @@ export default function App() {
       
       if (snapshot.empty && !isSeeded) {
         setIsSeeded(true);
-        initialMockData.forEach(async (record) => {
-          await setDoc(doc(db, getCollectionPath(), String(record.id)), record);
-        });
       } else {
         records.sort((a, b) => {
           const numA = a.asNumber || '';
@@ -581,9 +659,52 @@ export default function App() {
     });
   }, [allowedProcessedData]);
 
+  const causeAndProcessStats = useMemo(() => {
+    const stats = {};
+    FIXED_UNITS_ORDER.forEach(bu => {
+      stats[bu] = { unit: bu, totalCauses: 0, causes: {}, totalProcesses: 0, processes: {} };
+    });
+
+    allowedProcessedData.forEach(item => {
+       const bu = FIXED_UNITS_ORDER.includes(item.businessUnit) ? item.businessUnit : '기타사업부';
+       if (!stats[bu]) stats[bu] = { unit: bu, totalCauses: 0, causes: {}, totalProcesses: 0, processes: {} };
+
+       if (Array.isArray(item.causeAnalysisTypes)) {
+         item.causeAnalysisTypes.forEach(causeId => {
+           const label = CAUSE_LABEL_MAP[causeId] || causeId;
+           if (!stats[bu].causes[label]) stats[bu].causes[label] = 0;
+           stats[bu].causes[label]++;
+           stats[bu].totalCauses++;
+         });
+       }
+
+       if (item.processDetailType) {
+          const pLabel = item.processDetailType; 
+          if (!stats[bu].processes[pLabel]) stats[bu].processes[pLabel] = 0;
+          stats[bu].processes[pLabel]++;
+          stats[bu].totalProcesses++;
+       }
+    });
+
+    return Object.values(stats).map(buStat => {
+       const causesArr = Object.entries(buStat.causes)
+          .map(([label, value]) => ({ label, value }))
+          .sort((a, b) => b.value - a.value);
+       const processesArr = Object.entries(buStat.processes)
+          .map(([label, value]) => ({ label, value }))
+          .sort((a, b) => b.value - a.value);
+       return { ...buStat, causesArr, processesArr };
+    }).filter(buStat => buStat.totalCauses > 0 || buStat.totalProcesses > 0);
+  }, [allowedProcessedData]);
+
   const dynamicUnits = Array.from(new Set(processedData.map(d => d.businessUnit).filter(Boolean)));
   const otherUnits = dynamicUnits.filter(unit => !FIXED_UNITS_ORDER.includes(unit));
-  const allBusinessUnits = ['전체', ...FIXED_UNITS_ORDER, ...otherUnits, '미입력', '집계'];
+  
+  const isQM = currentUserRole?.name === '품질경영팀';
+
+  const allBusinessUnits = isQM 
+    ? ['전체', ...FIXED_UNITS_ORDER, ...otherUnits, '미입력', '집계']
+    : ['전체', ...FIXED_UNITS_ORDER, ...otherUnits, '미입력'];
   
   const visibleBusinessUnits = useMemo(() => {
     if (!currentUserRole) return [];
@@ -662,7 +783,11 @@ export default function App() {
 
   const handleOpenForm = (record = null) => {
     if (record) {
-      setFormData({ ptBoardType: 'N', claimType: '일반 A/S', repairMethod: '처리중', ...record });
+      setFormData({ 
+        ptBoardType: 'N', claimType: '일반 A/S', repairMethod: '처리중', 
+        causeAnalysisTypes: [], processDetailType: '',
+        ...record 
+      });
       setSelectedRow(null);
     } else {
       const newAsNumber = generateNextAsNumber(data);
@@ -676,7 +801,8 @@ export default function App() {
         model: '', qtyDefect: 1, serialNo: '', releaseDate: '',
         defectContent: '', causeAnalysis: '', processDetails: '',
         processType: '견적 후 착수', cost: '', ptBoardType: 'N',
-        claimType: '일반 A/S', repairMethod: '처리중'
+        claimType: '일반 A/S', repairMethod: '처리중',
+        causeAnalysisTypes: [], processDetailType: ''
       });
     }
     setIsFormOpen(true);
@@ -722,6 +848,17 @@ export default function App() {
       }
 
       return newData;
+    });
+  };
+
+  const handleCauseCheckbox = (id) => {
+    setFormData(prev => {
+      const types = prev.causeAnalysisTypes || [];
+      if (types.includes(id)) {
+        return { ...prev, causeAnalysisTypes: types.filter(t => t !== id) };
+      } else {
+        return { ...prev, causeAnalysisTypes: [...types, id] };
+      }
     });
   };
 
@@ -930,6 +1067,8 @@ export default function App() {
             processDetails: cols[24 + offset] ? cols[24 + offset].trim() : '',
             businessUnit: bu,
             ptBoardType: ptBoard,
+            causeAnalysisTypes: [],
+            processDetailType: '',
             deletedAt: null 
           });
         }
@@ -1428,7 +1567,7 @@ export default function App() {
               />
               {isCapsLockOn && (
                 <p className="text-orange-500 text-sm font-bold mt-2 animate-pulse">
-                  ⚠️ 캡스락(Caps Lock)을 풀어주세요.
+                  캡스락(Caps Lock)을 풀어주세요.
                 </p>
               )}
             </div>
@@ -1460,9 +1599,11 @@ export default function App() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => handleOpenForm()} className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-sm ml-2">
-              <Plus className="w-4 h-4 mr-1.5" /> 새 데이터 추가
-            </button>
+            {isQM && (
+              <button onClick={() => handleOpenForm()} className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-sm ml-2">
+                <Plus className="w-4 h-4 mr-1.5" /> 새 데이터 추가
+              </button>
+            )}
             <button onClick={handleLogout} className="flex items-center px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors ml-2">
               <LogOut className="w-4 h-4 mr-1.5" /> 로그아웃
             </button>
@@ -1503,7 +1644,7 @@ export default function App() {
                       : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'
                   }`}
                 >
-                  📊 보고서
+                  보고서
                 </button>
                 <button
                   onClick={() => setActiveTab('휴지통')}
@@ -1513,7 +1654,7 @@ export default function App() {
                       : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'
                   }`}
                 >
-                  🗑️ 휴지통 <span className="text-xs font-normal text-gray-400 ml-1">(3일 보관)</span>
+                  휴지통 <span className="text-xs font-normal text-gray-400 ml-1">(3일 보관)</span>
                 </button>
               </div>
             )}
@@ -1669,111 +1810,157 @@ export default function App() {
         ) : activeTab === '집계' ? (
           
           <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-1 flex flex-col items-center justify-center">
-                <h3 className="text-base font-bold text-gray-900 mb-6 flex items-center gap-2 w-full">
-                  <PieChart className="w-5 h-5 text-blue-600" /> 전체 A/S 종합 현황
-                </h3>
-                <DonutChart 
-                  normal={aggregatedStats.find(s => s.isTotal)?.normal || 0} 
-                  complaint={aggregatedStats.find(s => s.isTotal)?.complaint || 0} 
-                  size={180} 
-                  strokeWidth={16} 
-                />
-                <div className="w-full mt-8 space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
-                  <div className="flex justify-between items-center text-sm">
-                    <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500"></span><span className="font-medium text-gray-700">일반 A/S</span></div>
-                    <span className="font-bold text-gray-900">{aggregatedStats.find(s => s.isTotal)?.normal || 0}건 <span className="text-gray-500 font-normal ml-1">({aggregatedStats.find(s => s.isTotal)?.normalRate || 0}%)</span></span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500"></span><span className="font-medium text-gray-700">고객불만</span></div>
-                    <span className="font-bold text-red-600">{aggregatedStats.find(s => s.isTotal)?.complaint || 0}건 <span className="text-red-400 font-normal ml-1">({aggregatedStats.find(s => s.isTotal)?.complaintRate || 0}%)</span></span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-3">
-                <h3 className="text-base font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-gray-600" /> 사업부별 세부 비율 지표
-                </h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {aggregatedStats.filter(s => !s.isTotal).map(stat => (
-                    <div key={stat.unit} className="border border-gray-100 rounded-xl p-5 bg-white shadow-sm hover:shadow-md transition-shadow flex flex-col items-center relative overflow-hidden group">
-                       <div className="w-full text-center pb-3 mb-4 border-b border-gray-100">
-                         <h4 className="font-bold text-gray-800 text-sm">{stat.unit}</h4>
-                       </div>
-                       
-                       <DonutChart normal={stat.normal} complaint={stat.complaint} size={110} strokeWidth={12} />
-                       
-                       <div className="w-full mt-5 space-y-2 text-xs">
-                         <div className="flex justify-between items-center bg-blue-50/50 px-2 py-1.5 rounded text-blue-900">
-                           <span className="font-medium">일반</span>
-                           <span className="font-bold">{stat.normal}건 <span className="text-blue-600 font-normal">({stat.normalRate}%)</span></span>
-                         </div>
-                         <div className="flex justify-between items-center bg-red-50/50 px-2 py-1.5 rounded text-red-900">
-                           <span className="font-medium">불만</span>
-                           <span className="font-bold text-red-600">{stat.complaint}건 <span className="text-red-500 font-normal">({stat.complaintRate}%)</span></span>
-                         </div>
-                       </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-              {dashboardStats.map(buStat => (
-                <div key={buStat.unit} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col">
-                  
-                  <h3 className="text-lg font-bold text-gray-900 mb-6 text-center border-b border-gray-100 pb-4">
-                    {buStat.unit} 모델별 접수 현황
-                  </h3>
-                  
-                  <div className="flex justify-center mb-8">
-                    <MultiDonutChart 
-                      data={buStat.modelsArr.map(m => ({ label: m.label, value: m.total, color: m.color }))} 
-                      size={180} strokeWidth={24} 
-                    />
-                  </div>
-                  
-                  <div className="flex-1 w-full mt-2">
-                    <table className="w-full text-sm text-left">
-                      <thead>
-                        <tr className="border-b border-gray-200 text-gray-500">
-                          <th className="pb-2 font-semibold">모델군</th>
-                          <th className="pb-2 font-semibold text-right">접수</th>
-                          <th className="pb-2 font-semibold text-right">일반 / 불만</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {buStat.modelsArr.map(m => (
-                          <tr key={m.label} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
-                            <td className="py-3 font-medium text-gray-800 flex items-center gap-2">
-                              <span className="w-3 shrink-0 h-3 rounded-full" style={{ backgroundColor: m.color }}></span>
-                              {m.label}
-                            </td>
-                            <td className="py-3 text-right">
-                              <span className="font-bold text-gray-900">{m.total}</span>
-                              <span className="text-[10px] text-gray-400 font-normal ml-1">({m.rate}%)</span>
-                            </td>
-                            <td className="py-3 text-right whitespace-nowrap">
-                              <div className="text-[11px]">
-                                <span className="text-blue-600 font-medium">{m.normal}</span> 
-                                <span className="text-gray-300 mx-1">/</span>
-                                <span className="text-red-500 font-medium">{m.complaint}</span>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                        {buStat.modelsArr.length === 0 && (
-                          <tr><td colSpan="3" className="py-6 text-center text-gray-400">데이터가 없습니다.</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+            <div className="flex border-b border-gray-200 bg-white rounded-t-xl px-4 pt-4">
+              {['종합 지표', '모델별 현황', '유형별 분석'].map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setDashboardTab(tab)}
+                  className={`px-6 py-3 font-bold text-sm transition-colors border-b-2 -mb-[2px] ${
+                    dashboardTab === tab 
+                      ? 'text-blue-600 border-blue-600' 
+                      : 'text-gray-500 border-transparent hover:text-gray-700'
+                  }`}
+                >
+                  {tab}
+                </button>
               ))}
             </div>
+
+            {dashboardTab === '종합 지표' && (
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-1 flex flex-col items-center justify-center">
+                  <h3 className="text-base font-bold text-gray-900 mb-6 flex items-center gap-2 w-full">
+                    <PieChart className="w-5 h-5 text-blue-600" /> 전체 A/S 종합 현황
+                  </h3>
+                  <DonutChart 
+                    normal={aggregatedStats.find(s => s.isTotal)?.normal || 0} 
+                    complaint={aggregatedStats.find(s => s.isTotal)?.complaint || 0} 
+                    size={180} 
+                    strokeWidth={16} 
+                  />
+                  <div className="w-full mt-8 space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                    <div className="flex justify-between items-center text-sm">
+                      <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500"></span><span className="font-medium text-gray-700">일반 A/S</span></div>
+                      <span className="font-bold text-gray-900">{aggregatedStats.find(s => s.isTotal)?.normal || 0}건 <span className="text-gray-500 font-normal ml-1">({aggregatedStats.find(s => s.isTotal)?.normalRate || 0}%)</span></span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500"></span><span className="font-medium text-gray-700">고객불만</span></div>
+                      <span className="font-bold text-red-600">{aggregatedStats.find(s => s.isTotal)?.complaint || 0}건 <span className="text-red-400 font-normal ml-1">({aggregatedStats.find(s => s.isTotal)?.complaintRate || 0}%)</span></span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-3">
+                  <h3 className="text-base font-bold text-gray-900 mb-6 flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-gray-600" /> 사업부별 세부 비율 지표
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {aggregatedStats.filter(s => !s.isTotal).map(stat => (
+                      <div key={stat.unit} className="border border-gray-100 rounded-xl p-5 bg-white shadow-sm hover:shadow-md transition-shadow flex flex-col items-center relative overflow-hidden group">
+                         <div className="w-full text-center pb-3 mb-4 border-b border-gray-100">
+                           <h4 className="font-bold text-gray-800 text-sm">{stat.unit}</h4>
+                         </div>
+                         
+                         <DonutChart normal={stat.normal} complaint={stat.complaint} size={110} strokeWidth={12} />
+                         
+                         <div className="w-full mt-5 space-y-2 text-xs">
+                           <div className="flex justify-between items-center bg-blue-50/50 px-2 py-1.5 rounded text-blue-900">
+                             <span className="font-medium">일반</span>
+                             <span className="font-bold">{stat.normal}건 <span className="text-blue-600 font-normal">({stat.normalRate}%)</span></span>
+                           </div>
+                           <div className="flex justify-between items-center bg-red-50/50 px-2 py-1.5 rounded text-red-900">
+                             <span className="font-medium">불만</span>
+                             <span className="font-bold text-red-600">{stat.complaint}건 <span className="text-red-500 font-normal">({stat.complaintRate}%)</span></span>
+                           </div>
+                         </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {dashboardTab === '모델별 현황' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                {dashboardStats.map(buStat => (
+                  <div key={buStat.unit} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col">
+                    <h3 className="text-lg font-bold text-gray-900 mb-6 text-center border-b border-gray-100 pb-4">
+                      {buStat.unit} 모델별 접수 현황
+                    </h3>
+                    <div className="flex justify-center mb-8">
+                      <MultiDonutChart 
+                        data={buStat.modelsArr.map(m => ({ label: m.label, value: m.total, color: m.color }))} 
+                        size={180} strokeWidth={24} 
+                      />
+                    </div>
+                    <div className="flex-1 w-full mt-2">
+                      <table className="w-full text-sm text-left">
+                        <thead>
+                          <tr className="border-b border-gray-200 text-gray-500">
+                            <th className="pb-2 font-semibold">모델군</th>
+                            <th className="pb-2 font-semibold text-right">접수</th>
+                            <th className="pb-2 font-semibold text-right">일반 / 불만</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {buStat.modelsArr.map(m => (
+                            <tr key={m.label} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
+                              <td className="py-3 font-medium text-gray-800 flex items-center gap-2">
+                                <span className="w-3 shrink-0 h-3 rounded-full" style={{ backgroundColor: m.color }}></span>
+                                {m.label}
+                              </td>
+                              <td className="py-3 text-right">
+                                <span className="font-bold text-gray-900">{m.total}</span>
+                                <span className="text-[10px] text-gray-400 font-normal ml-1">({m.rate}%)</span>
+                              </td>
+                              <td className="py-3 text-right whitespace-nowrap">
+                                <div className="text-[11px]">
+                                  <span className="text-blue-600 font-medium">{m.normal}</span> 
+                                  <span className="text-gray-300 mx-1">/</span>
+                                  <span className="text-red-500 font-medium">{m.complaint}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                          {buStat.modelsArr.length === 0 && (
+                            <tr><td colSpan="3" className="py-6 text-center text-gray-400">데이터가 없습니다.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {dashboardTab === '유형별 분석' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {causeAndProcessStats.map(buStat => (
+                  <div key={buStat.unit} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col">
+                    <h3 className="text-lg font-bold text-gray-900 mb-4 text-center border-b border-gray-100 pb-4">
+                      {buStat.unit} 상세 집계
+                    </h3>
+                    
+                    <div className="space-y-6 flex-1">
+                      <div>
+                        <div className="text-sm font-bold text-gray-700 bg-gray-50 px-3 py-2 rounded-md mb-3">원인 분석 (상위 항목)</div>
+                        <HorizontalBarChart data={buStat.causesArr} color="bg-indigo-500" />
+                      </div>
+                      
+                      <div className="pt-4 border-t border-gray-100">
+                        <div className="text-sm font-bold text-gray-700 bg-gray-50 px-3 py-2 rounded-md mb-3">처리 내역</div>
+                        <HorizontalBarChart data={buStat.processesArr} color="bg-teal-500" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {causeAndProcessStats.length === 0 && (
+                  <div className="col-span-full py-12 text-center text-gray-500 bg-white rounded-xl border border-gray-200">
+                    분석할 데이터가 없습니다. 원인 분석 및 처리 내역을 입력해주세요.
+                  </div>
+                )}
+              </div>
+            )}
 
           </div>
 
@@ -2098,11 +2285,11 @@ export default function App() {
                   <label className="block text-sm font-bold text-indigo-900">PT 보드 구분 선택</label>
                   <div className="flex gap-6">
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="ptBoardType" value="ZMDI" checked={formData.ptBoardType === 'ZMDI'} onChange={handleFormChange} className="w-4 h-4 text-indigo-600 focus:ring-indigo-500" />
+                      <input type="radio" name="ptBoardType" value="ZMDI" checked={formData.ptBoardType === 'ZMDI'} onChange={handleFormChange} className="w-4 h-4 text-indigo-600 focus:ring-indigo-500" disabled={!isQM} />
                       <span className="text-sm font-medium text-gray-900">ZMDI</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="ptBoardType" value="N" checked={formData.ptBoardType === 'N'} onChange={handleFormChange} className="w-4 h-4 text-indigo-600 focus:ring-indigo-500" />
+                      <input type="radio" name="ptBoardType" value="N" checked={formData.ptBoardType === 'N'} onChange={handleFormChange} className="w-4 h-4 text-indigo-600 focus:ring-indigo-500" disabled={!isQM} />
                       <span className="text-sm font-medium text-gray-900">N</span>
                     </label>
                   </div>
@@ -2111,7 +2298,7 @@ export default function App() {
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <FormGroup label="사업부">
-                  <select name="businessUnit" value={formData.businessUnit} onChange={handleFormChange} className="form-input" required>
+                  <select name="businessUnit" value={formData.businessUnit} onChange={handleFormChange} className="form-input" required disabled={!isQM}>
                     <option value="">사업부 선택</option>
                     <option value="PMD">PMD</option>
                     <option value="TMD">TMD</option>
@@ -2122,13 +2309,13 @@ export default function App() {
                   </select>
                 </FormGroup>
                 <FormGroup label="접수번호">
-                  <input type="text" name="asNumber" value={formData.asNumber} onChange={handleFormChange} className="form-input" required />
+                  <input type="text" name="asNumber" value={formData.asNumber} onChange={handleFormChange} className="form-input" required disabled={!isQM} />
                 </FormGroup>
                 <FormGroup label="수주번호">
-                  <input type="text" name="orderNumber" value={formData.orderNumber} onChange={handleFormChange} className="form-input" />
+                  <input type="text" name="orderNumber" value={formData.orderNumber} onChange={handleFormChange} className="form-input" disabled={!isQM} />
                 </FormGroup>
                 <FormGroup label="처리방식 (접수단계)">
-                  <select name="processType" value={formData.processType} onChange={handleFormChange} className="form-input">
+                  <select name="processType" value={formData.processType} onChange={handleFormChange} className="form-input" disabled={!isQM}>
                     <option value="">선택안함</option>
                     <option value="견적 후 착수">견적 후 착수</option>
                     <option value="선조치">선조치</option>
@@ -2140,10 +2327,10 @@ export default function App() {
               {/* 달력 선택 폼 (접수일, 납기일, 완료일) */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-gray-100 pb-4">
                 <FormGroup label="접수일자 (클릭 시 달력)">
-                  <input type="date" name="receiptDate" value={formatForDateInput(formData.receiptDate)} onChange={handleFormChange} className="form-input cursor-pointer" />
+                  <input type="date" name="receiptDate" value={formatForDateInput(formData.receiptDate)} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} />
                 </FormGroup>
                 <FormGroup label="납기요구일 (자동 5영업일 계산)">
-                  <input type="date" name="reqDeliveryDate" value={formatForDateInput(formData.reqDeliveryDate)} onChange={handleFormChange} className="form-input cursor-pointer" />
+                  <input type="date" name="reqDeliveryDate" value={formatForDateInput(formData.reqDeliveryDate)} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} />
                 </FormGroup>
                 <FormGroup label="처리완료일">
                   <input type="date" name="processDate" value={formatForDateInput(formData.processDate)} onChange={handleFormChange} className="form-input cursor-pointer" />
@@ -2152,25 +2339,25 @@ export default function App() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
                 <FormGroup label="대리점명">
-                  <input type="text" name="agencyName" value={formData.agencyName} onChange={handleFormChange} className="form-input" />
+                  <input type="text" name="agencyName" value={formData.agencyName} onChange={handleFormChange} className="form-input" disabled={!isQM} />
                 </FormGroup>
                 <FormGroup label="업체명">
-                  <input type="text" name="companyName" value={formData.companyName} onChange={handleFormChange} className="form-input" />
+                  <input type="text" name="companyName" value={formData.companyName} onChange={handleFormChange} className="form-input" disabled={!isQM} />
                 </FormGroup>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <FormGroup label="MODEL">
-                  <input type="text" name="model" value={formData.model} onChange={handleFormChange} className="form-input" />
+                  <input type="text" name="model" value={formData.model} onChange={handleFormChange} className="form-input" disabled={!isQM} />
                 </FormGroup>
                 <FormGroup label="불량 수량">
                   <input type="number" name="qtyDefect" value={formData.qtyDefect} onChange={handleFormChange} className="form-input" min="1" />
                 </FormGroup>
                 <FormGroup label="출고일자 (달력 선택)">
-                  <input type="date" name="releaseDate" value={formatForDateInput(formData.releaseDate)} onChange={handleFormChange} className="form-input cursor-pointer" />
+                  <input type="date" name="releaseDate" value={formatForDateInput(formData.releaseDate)} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} />
                 </FormGroup>
                 <FormGroup label="기존수주번호">
-                  <input type="text" name="originalOrderNumber" value={formData.originalOrderNumber} onChange={handleFormChange} className="form-input" />
+                  <input type="text" name="originalOrderNumber" value={formData.originalOrderNumber} onChange={handleFormChange} className="form-input" disabled={!isQM} />
                 </FormGroup>
               </div>
 
@@ -2183,23 +2370,105 @@ export default function App() {
                 
                 <div className="flex gap-6 mb-2">
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="claimType" value="일반 A/S" checked={formData.claimType === '일반 A/S'} onChange={handleFormChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" />
+                    <input type="radio" name="claimType" value="일반 A/S" checked={formData.claimType === '일반 A/S'} onChange={handleFormChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" disabled={!isQM} />
                     <span className="text-sm font-bold text-gray-900">일반 A/S</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="claimType" value="고객불만" checked={formData.claimType === '고객불만'} onChange={handleFormChange} className="w-4 h-4 text-red-600 focus:ring-red-500" />
+                    <input type="radio" name="claimType" value="고객불만" checked={formData.claimType === '고객불만'} onChange={handleFormChange} className="w-4 h-4 text-red-600 focus:ring-red-500" disabled={!isQM} />
                     <span className="text-sm font-bold text-red-600">고객불만</span>
                   </label>
                 </div>
 
                 <FormGroup label="하자 내용">
-                  <textarea name="defectContent" value={formData.defectContent} onChange={handleFormChange} className="form-input h-20" />
+                  <textarea name="defectContent" value={formData.defectContent} onChange={handleFormChange} className="form-input h-20" disabled={!isQM} />
                 </FormGroup>
+
                 <FormGroup label="원인 분석">
                   <textarea name="causeAnalysis" value={formData.causeAnalysis} onChange={handleFormChange} className="form-input h-20" />
+                  
+                  {['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (() => {
+                    const config = getCauseTableConfig(formData.businessUnit);
+                    return (
+                      <div className="mt-3 overflow-x-auto">
+                        <table className="w-full text-[10px] text-center border-collapse border border-gray-300 min-w-[700px]">
+                          <thead>
+                            <tr>
+                              <th colSpan={config.totalCols} className="border border-gray-300 bg-[#eef4ea] py-1.5 font-bold text-gray-800">원인 분석 결과 (중복 선택 가능)</th>
+                            </tr>
+                            <tr>
+                              <th colSpan="3" rowSpan="2" className="border border-gray-300 bg-[#eef4ea] font-medium text-gray-800 px-1 py-1">고객<br/>(대리점 또는 사용자)</th>
+                              <th colSpan={config.wiseCols} className="border border-gray-300 bg-[#eef4ea] font-medium text-gray-800 px-1 py-1">WISE</th>
+                              <th colSpan={config.otherGroupCols} className="border border-gray-300 bg-[#eef4ea] font-medium text-gray-800 px-1 py-1">기타</th>
+                            </tr>
+                            <tr>
+                              <th className="border border-gray-300 bg-[#eef4ea] font-medium text-gray-800 px-1 py-0.5">영업</th>
+                              <th className="border border-gray-300 bg-[#eef4ea] font-medium text-gray-800 px-1 py-0.5">설계</th>
+                              <th colSpan={config.prodCols} className="border border-gray-300 bg-[#eef4ea] font-medium text-gray-800 px-1 py-0.5">생산</th>
+                              <th className="border border-gray-300 bg-[#eef4ea] font-medium text-gray-800 px-1 py-0.5">품질</th>
+                              <th className="border border-gray-300 bg-[#eef4ea] font-medium text-gray-800 px-1 py-0.5">공급자</th>
+                              <th colSpan={config.otherCols} className="border border-gray-300 bg-[#eef4ea] font-medium text-gray-800 px-1 py-0.5">기타</th>
+                            </tr>
+                            <tr>
+                              {config.headers.map(h => (
+                                <th key={h.id} className="border border-gray-300 bg-[#eef4ea] font-normal text-gray-800 py-1 px-0.5 whitespace-pre-wrap leading-tight">{h.label}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              {config.headers.map(h => (
+                                <td key={h.id} className="border border-gray-300 p-1.5 bg-white">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={(formData.causeAnalysisTypes || []).includes(h.id)} 
+                                    onChange={() => handleCauseCheckbox(h.id)} 
+                                    className="w-3.5 h-3.5 text-blue-600 cursor-pointer" 
+                                  />
+                                </td>
+                              ))}
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
                 </FormGroup>
+
                 <FormGroup label="처리 내역 및 대책">
                   <textarea name="processDetails" value={formData.processDetails} onChange={handleFormChange} className="form-input h-24" />
+                  
+                  {['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="w-full text-[11px] text-center border-collapse border border-gray-300 max-w-[400px]">
+                        <thead>
+                          <tr>
+                            <th colSpan="5" className="border border-gray-300 bg-[#eef4ea] py-1.5 font-bold text-gray-800">처리 내역</th>
+                          </tr>
+                          <tr>
+                            {PROCESS_HEADERS.map(h => (
+                              <th key={h.id} className="border border-gray-300 bg-[#eef4ea] font-normal text-gray-800 py-1 px-2 whitespace-pre-wrap">{h.label}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            {PROCESS_HEADERS.map(h => (
+                              <td key={h.id} className="border border-gray-300 p-2 bg-white">
+                                <input 
+                                  type="radio" 
+                                  name="processDetailType" 
+                                  value={h.value} 
+                                  checked={formData.processDetailType === h.value} 
+                                  onChange={handleFormChange} 
+                                  className="w-4 h-4 text-blue-600 cursor-pointer" 
+                                />
+                              </td>
+                            ))}
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </FormGroup>
                 
                 <div className="pt-4 border-t border-gray-100 bg-gray-50 p-4 rounded-xl mt-4">
@@ -2348,6 +2617,8 @@ export default function App() {
           line-height: 1.25rem; border: 1px solid #d1d5db; border-radius: 0.375rem; outline: none; transition: border-color .15s;
         }
         .form-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6; }
+        .form-input:disabled { background-color: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
+        input[type="radio"]:disabled { opacity: 0.5; cursor: not-allowed; }
       `}} />
     </div>
   );
