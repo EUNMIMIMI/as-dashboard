@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Search, Filter, X, FileText, Calendar, CheckCircle2, Clock, AlertCircle, 
-  Download, Upload, FileCode, Plus, Edit, Trash2, Save, BarChart3, PieChart, Layers, Lock, LogOut, RotateCcw, FileSpreadsheet
+  Download, Upload, FileCode, Plus, Edit, Trash2, Save, BarChart3, PieChart, Layers, Lock, LogOut, RotateCcw, FileSpreadsheet, TrendingUp, Copy
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
@@ -30,7 +30,6 @@ const firebaseConfig = isCanvasEnv
       messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
       appId: import.meta.env.VITE_FIREBASE_APP_ID
     };
-
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -280,20 +279,19 @@ const MultiDonutChart = ({ data, size = 160, strokeWidth = 24 }) => {
           const rad = (midAngle * Math.PI) / 180;
           const x = 50 + radius * Math.cos(rad);
           const y = 50 + radius * Math.sin(rad);
-          const percentage = ((item.value / total) * 100).toFixed(0) + '%';
+          const percentage = ((item.value / total) * 100).toFixed(1) + '%';
           
           return (
             <text 
               key={`text-${item.label}`} 
               x={x} y={y} 
               fill="#ffffff" 
-              fontSize="6.5" 
-              fontWeight="bold" 
               textAnchor="middle" 
               dominantBaseline="central"
-              style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.6)' }}
+              style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.8)' }}
             >
-              {percentage}
+              <tspan x={x} dy="-3" fontSize="4.5" fontWeight="bold">{item.label}</tspan>
+              <tspan x={x} dy="5.5" fontSize="4.5" fontWeight="bold">{percentage}</tspan>
             </text>
           );
         })}
@@ -350,12 +348,12 @@ const DonutChart = ({ normal, complaint, size = 120, strokeWidth = 12 }) => {
         </g>
         {normal > 0 && (normal / total >= 0.08) && (
            <text x={normalPos.x} y={normalPos.y} fill="#ffffff" fontSize="8" fontWeight="bold" textAnchor="middle" dominantBaseline="central" style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}>
-             {((normal / total) * 100).toFixed(0)}%
+             {((normal / total) * 100).toFixed(1)}%
            </text>
         )}
         {complaint > 0 && (complaint / total >= 0.08) && (
            <text x={complaintPos.x} y={complaintPos.y} fill="#ffffff" fontSize="8" fontWeight="bold" textAnchor="middle" dominantBaseline="central" style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}>
-             {((complaint / total) * 100).toFixed(0)}%
+             {((complaint / total) * 100).toFixed(1)}%
            </text>
         )}
       </svg>
@@ -363,6 +361,69 @@ const DonutChart = ({ normal, complaint, size = 120, strokeWidth = 12 }) => {
         <span className="text-[10px] text-gray-500 mb-0.5">총 접수</span>
         <span className="text-sm font-bold text-gray-900 leading-none">{total}건</span>
       </div>
+    </div>
+  );
+};
+
+const YearlyTrendChart = ({ data }) => {
+  if (!data || data.length === 0) return <div className="text-sm text-gray-400 flex items-center justify-center h-full">데이터가 없습니다.</div>;
+
+  const maxVal = Math.max(...data.map(d => Math.max(d.total, d.complaint)), 10) * 1.1; 
+  const w = 400;
+  const h = 200;
+  const px = 40;
+  const py = 30;
+  const cw = w - px * 2;
+  const ch = h - py * 2;
+
+  const getX = (index) => px + (cw / (data.length * 2)) * (index * 2 + 1);
+  const getY = (val) => py + ch - (val / maxVal) * ch;
+
+  const points = data.map((d, i) => `${getX(i)},${getY(d.complaint)}`).join(' ');
+
+  return (
+    <div className="w-full flex justify-center items-center h-[200px]">
+      <svg viewBox={`0 0 ${w} ${h}`} className="w-full max-w-full h-full font-sans">
+        {/* Background grid */}
+        {[0, 0.25, 0.5, 0.75, 1].map(ratio => {
+          const yPos = py + ch * ratio;
+          return (
+            <g key={ratio}>
+              <line x1={px} y1={yPos} x2={w-px} y2={yPos} stroke="#e5e7eb" strokeWidth="1" />
+            </g>
+          );
+        })}
+
+        {/* Bars for Total */}
+        {data.map((d, i) => {
+          const barH = (d.total / maxVal) * ch;
+          const xPos = getX(i);
+          return (
+            <g key={`bar-${i}`}>
+              <rect x={xPos - 20} y={py + ch - barH} width="40" height={barH} fill="#dc2626" />
+              <text x={xPos} y={py + ch - barH - 8} textAnchor="middle" fontSize="12" fill="#dc2626" fontWeight="bold">{d.total}</text>
+              <text x={xPos} y={h - 10} textAnchor="middle" fontSize="12" fill="#6b7280">{d.year}년</text>
+            </g>
+          );
+        })}
+
+        {/* Line and Dots for Complaint */}
+        {data.length > 1 && <polyline points={points} fill="none" stroke="#fca5a5" strokeWidth="2.5" />}
+        {data.map((d, i) => (
+          <g key={`dot-${i}`}>
+            <circle cx={getX(i)} cy={getY(d.complaint)} r="5" fill="#fca5a5" />
+            <text x={getX(i)} y={getY(d.complaint) - 10} textAnchor="middle" fontSize="12" fill="#fca5a5" fontWeight="bold">{d.complaint}</text>
+          </g>
+        ))}
+
+        {/* Legend */}
+        <g transform={`translate(${w/2 - 70}, ${h - 2})`}>
+          <rect x="0" y="-8" width="12" height="4" fill="#dc2626" />
+          <text x="16" y="-3" fontSize="10" fill="#4b5563">A/S접수건</text>
+          <circle cx="75" cy="-6" r="4" fill="#fca5a5" />
+          <text x="84" y="-3" fontSize="10" fill="#4b5563">고객불만건</text>
+        </g>
+      </svg>
     </div>
   );
 };
@@ -382,6 +443,34 @@ const HorizontalBarChart = ({ data, color }) => {
               style={{ width: `${maxVal > 0 ? (item.value / maxVal) * 100 : 0}%`, minWidth: item.value > 0 ? '4px' : '0' }}
             ></div>
             <span className="text-gray-600 font-bold w-6">{item.value}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// 가로 막대 차트 (모델별 현황 전용)
+const ModelHorizontalBarChart = ({ data }) => {
+  if (!data || data.length === 0) return <div className="text-sm text-gray-400 flex items-center justify-center h-full w-full">데이터가 없습니다.</div>;
+
+  const maxVal = Math.max(...data.map(d => d.total));
+
+  return (
+    <div className="space-y-3 w-full px-2 h-full overflow-y-auto hide-scrollbar">
+      {data.map((item, i) => (
+        <div key={i} className="flex items-center text-xs">
+          <div className="w-16 text-right pr-2 font-bold text-gray-700 truncate" title={item.label}>{item.label}</div>
+          <div className="flex-1 flex items-center gap-1">
+            <div 
+              className="h-4 rounded-sm flex" 
+              style={{ 
+                width: `${maxVal > 0 ? (item.total / maxVal) * 100 : 0}%`, 
+                minWidth: item.total > 0 ? '4px' : '0',
+                backgroundColor: item.color 
+              }}
+            ></div>
+            <span className="text-gray-900 font-bold w-8 text-left pl-1">{item.total}</span>
           </div>
         </div>
       ))}
@@ -424,6 +513,8 @@ export default function App() {
   const [data, setData] = useState([]); 
   const [activeTab, setActiveTab] = useState('전체'); 
   const [dashboardTab, setDashboardTab] = useState('종합 지표');
+  const [totalChartType, setTotalChartType] = useState('donut');
+  const [modelChartType, setModelChartType] = useState({}); // 각 사업부별 모델 차트 상태
   const [user, setUser] = useState(null);
   const [isSeeded, setIsSeeded] = useState(false);
   
@@ -473,8 +564,8 @@ export default function App() {
 
   useEffect(() => {
     if (currentUserRole) {
-      const isQM = currentUserRole.name === '품질경영팀';
-      if (!isQM && (activeTab === '휴지통' || activeTab === '보고서' || activeTab === '집계')) {
+      const isQMUser = currentUserRole.name === '품질경영팀';
+      if (!isQMUser && (activeTab === '휴지통' || activeTab === '보고서' || activeTab === '집계')) {
         setActiveTab(currentUserRole.tabs[0]);
       } else if (currentUserRole.tabs !== 'ALL' && !currentUserRole.tabs.includes(activeTab)) {
         setActiveTab(currentUserRole.tabs[0]);
@@ -609,6 +700,29 @@ export default function App() {
       totalClaims: grandTotalClaims, normalRate: grandNormalRate, complaintRate: grandComplaintRate
     });
     return result;
+  }, [allowedProcessedData]);
+
+  // 연도별 집계 데이터 생성
+  const yearlyStats = useMemo(() => {
+    const stats = {};
+    allowedProcessedData.forEach(item => {
+      if (!item.receiptDate) return;
+      const yearMatch = item.receiptDate.match(/^(\d{2})\./); 
+      if (yearMatch) {
+        const year = `20${yearMatch[1]}`;
+        if (!stats[year]) stats[year] = { year, total: 0, complaint: 0, _totalSet: new Set(), _compSet: new Set() };
+        
+        stats[year]._totalSet.add(item.asNumber);
+        if (item.claimType === '고객불만') {
+          stats[year]._compSet.add(item.asNumber);
+        }
+      }
+    });
+    return Object.values(stats).map(s => ({
+      year: s.year,
+      total: s._totalSet.size,
+      complaint: s._compSet.size
+    })).sort((a, b) => a.year.localeCompare(b.year));
   }, [allowedProcessedData]);
 
   const dashboardStats = useMemo(() => {
@@ -1088,6 +1202,48 @@ export default function App() {
     
     reader.readAsText(file, 'euc-kr');
     e.target.value = null;
+  };
+
+  const handleCopyChart = (containerId) => {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    
+    const clone = el.cloneNode(true);
+    const btns = clone.querySelectorAll('button');
+    btns.forEach(btn => btn.remove());
+
+    const html = clone.outerHTML;
+    const text = clone.innerText;
+
+    if (navigator.clipboard && window.ClipboardItem) {
+      try {
+        const htmlBlob = new Blob([html], { type: 'text/html' });
+        const textBlob = new Blob([text], { type: 'text/plain' });
+        const item = new window.ClipboardItem({
+          'text/html': htmlBlob,
+          'text/plain': textBlob
+        });
+        navigator.clipboard.write([item]).then(() => {
+          customAlert('그래프가 클립보드에 복사되었습니다. (문서 등에 Ctrl+V로 붙여넣어 보세요)');
+        }).catch(() => fallbackCopy(text));
+      } catch (e) {
+        fallbackCopy(text);
+      }
+    } else {
+      fallbackCopy(text);
+    }
+  };
+
+  const fallbackCopy = (text) => {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    document.body.appendChild(textArea);
+    textArea.select();
+    try {
+      document.execCommand('copy');
+      customAlert('그래프 데이터가 클립보드에 텍스트로 복사되었습니다.');
+    } catch (err) {}
+    document.body.removeChild(textArea);
   };
 
   useEffect(() => {
@@ -1828,26 +1984,50 @@ export default function App() {
 
             {dashboardTab === '종합 지표' && (
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-1 flex flex-col items-center justify-center">
-                  <h3 className="text-base font-bold text-gray-900 mb-6 flex items-center gap-2 w-full">
-                    <PieChart className="w-5 h-5 text-blue-600" /> 전체 A/S 종합 현황
-                  </h3>
-                  <DonutChart 
-                    normal={aggregatedStats.find(s => s.isTotal)?.normal || 0} 
-                    complaint={aggregatedStats.find(s => s.isTotal)?.complaint || 0} 
-                    size={180} 
-                    strokeWidth={16} 
-                  />
-                  <div className="w-full mt-8 space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
-                    <div className="flex justify-between items-center text-sm">
-                      <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500"></span><span className="font-medium text-gray-700">일반 A/S</span></div>
-                      <span className="font-bold text-gray-900">{aggregatedStats.find(s => s.isTotal)?.normal || 0}건 <span className="text-gray-500 font-normal ml-1">({aggregatedStats.find(s => s.isTotal)?.normalRate || 0}%)</span></span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm">
-                      <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500"></span><span className="font-medium text-gray-700">고객불만</span></div>
-                      <span className="font-bold text-red-600">{aggregatedStats.find(s => s.isTotal)?.complaint || 0}건 <span className="text-red-400 font-normal ml-1">({aggregatedStats.find(s => s.isTotal)?.complaintRate || 0}%)</span></span>
+                <div id="total-chart-container" className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-1 flex flex-col relative group">
+                  <div className="flex justify-between items-start w-full mb-6">
+                    <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                      <PieChart className="w-5 h-5 text-blue-600" /> 전체 A/S 종합 현황
+                    </h3>
+                    <div className="flex bg-gray-100 p-0.5 rounded-md">
+                      <button onClick={() => setTotalChartType('donut')} className={`p-1.5 rounded ${totalChartType === 'donut' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="도넛 차트 보기">
+                        <PieChart className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setTotalChartType('trend')} className={`p-1.5 rounded ${totalChartType === 'trend' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="연도별 트렌드 보기">
+                        <TrendingUp className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
+
+                  <div className="flex-1 flex flex-col items-center justify-center w-full">
+                    {totalChartType === 'donut' ? (
+                      <DonutChart 
+                        normal={aggregatedStats.find(s => s.isTotal)?.normal || 0} 
+                        complaint={aggregatedStats.find(s => s.isTotal)?.complaint || 0} 
+                        size={180} 
+                        strokeWidth={16} 
+                      />
+                    ) : (
+                      <YearlyTrendChart data={yearlyStats} />
+                    )}
+                  </div>
+
+                  {totalChartType === 'donut' && (
+                    <div className="w-full mt-8 space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                      <div className="flex justify-between items-center text-sm">
+                        <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500"></span><span className="font-medium text-gray-700">일반 A/S</span></div>
+                        <span className="font-bold text-gray-900">{aggregatedStats.find(s => s.isTotal)?.normal || 0}건 <span className="text-gray-500 font-normal ml-1">({aggregatedStats.find(s => s.isTotal)?.normalRate || 0}%)</span></span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm">
+                        <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500"></span><span className="font-medium text-gray-700">고객불만</span></div>
+                        <span className="font-bold text-red-600">{aggregatedStats.find(s => s.isTotal)?.complaint || 0}건 <span className="text-red-400 font-normal ml-1">({aggregatedStats.find(s => s.isTotal)?.complaintRate || 0}%)</span></span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <button onClick={() => handleCopyChart('total-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100" title="차트 데이터/이미지 복사">
+                    <Copy className="w-4 h-4" />
+                  </button>
                 </div>
 
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-3">
@@ -1856,7 +2036,7 @@ export default function App() {
                   </h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
                     {aggregatedStats.filter(s => !s.isTotal).map(stat => (
-                      <div key={stat.unit} className="border border-gray-100 rounded-xl p-5 bg-white shadow-sm hover:shadow-md transition-shadow flex flex-col items-center relative overflow-hidden group">
+                      <div key={stat.unit} id={`sub-chart-${stat.unit}`} className="border border-gray-100 rounded-xl p-5 bg-white shadow-sm hover:shadow-md transition-shadow flex flex-col items-center relative overflow-hidden group">
                          <div className="w-full text-center pb-3 mb-4 border-b border-gray-100">
                            <h4 className="font-bold text-gray-800 text-sm">{stat.unit}</h4>
                          </div>
@@ -1873,6 +2053,9 @@ export default function App() {
                              <span className="font-bold text-red-600">{stat.complaint}건 <span className="text-red-500 font-normal">({stat.complaintRate}%)</span></span>
                            </div>
                          </div>
+                         <button onClick={() => handleCopyChart(`sub-chart-${stat.unit}`)} className="absolute bottom-2 right-2 p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100" title="차트 복사">
+                           <Copy className="w-3.5 h-3.5" />
+                         </button>
                       </div>
                     ))}
                   </div>
@@ -1883,15 +2066,29 @@ export default function App() {
             {dashboardTab === '모델별 현황' && (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                 {dashboardStats.map(buStat => (
-                  <div key={buStat.unit} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col">
-                    <h3 className="text-lg font-bold text-gray-900 mb-6 text-center border-b border-gray-100 pb-4">
-                      {buStat.unit} 모델별 접수 현황
-                    </h3>
-                    <div className="flex justify-center mb-8">
-                      <MultiDonutChart 
-                        data={buStat.modelsArr.map(m => ({ label: m.label, value: m.total, color: m.color }))} 
-                        size={180} strokeWidth={24} 
-                      />
+                  <div key={buStat.unit} id={`model-chart-${buStat.unit}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
+                    <div className="flex justify-between items-center w-full mb-6 border-b border-gray-100 pb-4">
+                      <h3 className="text-lg font-bold text-gray-900">
+                        {buStat.unit} 모델별 접수 현황
+                      </h3>
+                      <div className="flex bg-gray-100 p-0.5 rounded-md">
+                        <button onClick={() => setModelChartType(prev => ({...prev, [buStat.unit]: 'donut'}))} className={`p-1 rounded ${modelChartType[buStat.unit] !== 'bar' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="도넛 차트 보기">
+                          <PieChart className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => setModelChartType(prev => ({...prev, [buStat.unit]: 'bar'}))} className={`p-1 rounded ${modelChartType[buStat.unit] === 'bar' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="가로 막대 차트 보기">
+                          <BarChart3 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex justify-center mb-8 h-[180px] w-full items-center">
+                      {modelChartType[buStat.unit] === 'bar' ? (
+                        <ModelHorizontalBarChart data={buStat.modelsArr} />
+                      ) : (
+                        <MultiDonutChart 
+                          data={buStat.modelsArr.map(m => ({ label: m.label, value: m.total, color: m.color }))} 
+                          size={180} strokeWidth={24} 
+                        />
+                      )}
                     </div>
                     <div className="flex-1 w-full mt-2">
                       <table className="w-full text-sm text-left">
@@ -1928,6 +2125,9 @@ export default function App() {
                         </tbody>
                       </table>
                     </div>
+                    <button onClick={() => handleCopyChart(`model-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100" title="차트 복사">
+                      <Copy className="w-4 h-4" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -1936,7 +2136,7 @@ export default function App() {
             {dashboardTab === '유형별 분석' && (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {causeAndProcessStats.map(buStat => (
-                  <div key={buStat.unit} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col">
+                  <div key={buStat.unit} id={`cause-chart-${buStat.unit}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 text-center border-b border-gray-100 pb-4">
                       {buStat.unit} 상세 집계
                     </h3>
@@ -1952,6 +2152,9 @@ export default function App() {
                         <HorizontalBarChart data={buStat.processesArr} color="bg-teal-500" />
                       </div>
                     </div>
+                    <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100" title="차트 복사">
+                      <Copy className="w-4 h-4" />
+                    </button>
                   </div>
                 ))}
                 {causeAndProcessStats.length === 0 && (
@@ -1971,110 +2174,89 @@ export default function App() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">사업부</th>
-                    <th scope="col" className="px-3.5 py-2.5 text-center text-xs font-bold text-gray-500 uppercase whitespace-nowrap">상태</th>
-                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">접수번호</th>
-                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">수주번호</th>
-                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">대리점</th>
-                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">업체명</th>
-                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">모델명</th>
-                    <th scope="col" className="px-3.5 py-2.5 text-right text-xs font-bold text-gray-500 uppercase whitespace-nowrap">수량</th>
-                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">하자내용</th>
-                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">원인분석</th>
-                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">일정</th>
-                    <th scope="col" className="px-3.5 py-2.5 text-right text-xs font-bold text-gray-500 uppercase whitespace-nowrap">처리방법</th>
-                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">기존 주문정보</th>
-                    <th scope="col" className="px-3.5 py-2.5 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">처리방식</th>
-                    <th scope="col" className="px-3.5 py-2.5 text-center text-xs font-bold text-gray-500 uppercase whitespace-nowrap">관리</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">사업부</th>
+                    <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">상태</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">접수번호</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">수주번호</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">대리점</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">업체명</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">모델명</th>
+                    <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">수량</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">하자내용</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">기존 주문정보</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">처리방식</th>
+                    <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">처리방법</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">일정</th>
+                    <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">관리</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {paginatedData.length > 0 ? (
-                    paginatedData.map((row) => (
+                  {filteredData.length > 0 ? (
+                    filteredData.map((row) => (
                       <tr key={row.id} onClick={() => setSelectedRow(row)} className="hover:bg-blue-50 transition-colors cursor-pointer">
-                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] font-medium text-gray-900">
+                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
                           {row.businessUnit}
                           {row.businessUnit === 'PT' && row.ptBoardType && (
-                            <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-800">
+                            <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-800">
                               {row.ptBoardType}
                             </span>
                           )}
                         </td>
-                        <td className="px-3.5 py-2.5 whitespace-nowrap text-center align-middle">
+                        <td className="px-4 py-3 whitespace-nowrap text-center align-middle">
                           {renderStatusBadge(row.complianceStatus)}
                         </td>
-                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] font-medium text-blue-600">{row.asNumber}</td>
-                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] text-gray-500">{row.orderNumber}</td>
-                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] text-gray-900">{row.agencyName}</td>
-                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] text-gray-500">{row.companyName}</td>
-                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] text-gray-900">{row.model}</td>
-                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] text-gray-900 text-right">{row.qtyDefect}</td>
-                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] text-gray-500 max-w-[150px] truncate">
+                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-blue-600">{row.asNumber}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{row.orderNumber}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{row.agencyName}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{row.companyName}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{row.model}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">{row.qtyDefect}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 max-w-[150px] truncate">
                           <span className="inline-block px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded mr-1 mb-1">{row.claimType || '일반 A/S'}</span>
-                          <div className="truncate" title={row.defectContent}>{row.defectContent || '-'}</div>
+                          <div className="truncate">{row.defectContent || '-'}</div>
                         </td>
-                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] text-gray-500 max-w-[150px] truncate">
-                          <div className="truncate" title={row.causeAnalysis}>{row.causeAnalysis || '-'}</div>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="flex flex-col gap-1 text-xs">
+                            <div className="flex items-center"><span className="text-gray-400 w-8">S/N:</span> <span className="text-gray-900 max-w-[120px] truncate">{row.serialNo || '-'}</span></div>
+                            <div className="flex items-center"><span className="text-gray-400 w-8">출고:</span> <span className="text-gray-900">{row.releaseDate || '-'}</span></div>
+                            <div className="flex items-center"><span className="text-gray-400 w-8">수주:</span> <span className="text-gray-900">{row.originalOrderNumber || '-'}</span></div>
+                          </div>
                         </td>
-                        <td className="px-3.5 py-2.5 whitespace-nowrap">
-                          <div className="flex flex-col gap-0.5 text-[11px]">
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{row.processType || '-'}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-right align-middle">
+                          {row.repairMethod === '유상수리' ? (
+                            <div>
+                              <span className="font-medium text-blue-700">{row.repairMethod}</span>
+                              <span className="block text-xs text-gray-500">₩ {row.cost != null && row.cost !== '' ? Number(row.cost).toLocaleString() : '0'}</span>
+                            </div>
+                          ) : (
+                            <span className="font-medium text-gray-700">{row.repairMethod || '-'}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="flex flex-col gap-1 text-xs">
                             <div className="flex items-center"><span className="text-gray-400 w-8">접수:</span> <span className="text-gray-900">{row.receiptDate}</span></div>
                             <div className="flex items-center"><span className="text-gray-400 w-8">요구:</span> <span className="text-red-500">{row.reqDeliveryDate}</span></div>
                             <div className="flex items-center"><span className="text-gray-400 w-8">납기:</span> <span className="text-gray-900">{row.processDate || '-'}</span></div>
                             <div className="flex items-center"><span className="text-gray-400 w-8">소요:</span> <span className="text-gray-900">{row.duration}</span></div>
                           </div>
                         </td>
-                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] text-right align-middle">
-                          {row.repairMethod === '유상수리' ? (
-                            <div>
-                              <span className="font-medium text-blue-700">{row.repairMethod}</span>
-                              <span className="block text-[11px] text-gray-500">₩ {row.cost != null && row.cost !== '' ? Number(row.cost).toLocaleString() : '0'}</span>
-                            </div>
-                          ) : (
-                            <span className="font-medium text-gray-700">{row.repairMethod || '-'}</span>
-                          )}
-                        </td>
-                        <td className="px-3.5 py-2.5 whitespace-nowrap">
-                          <div className="flex flex-col gap-0.5 text-[11px]">
-                            <div className="flex items-center"><span className="text-gray-400 w-8">S/N:</span> <span className="text-gray-900 max-w-[110px] truncate">{row.serialNo || '-'}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-8">출고:</span> <span className="text-gray-900">{row.releaseDate || '-'}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-8">수주:</span> <span className="text-gray-900">{row.originalOrderNumber || '-'}</span></div>
-                          </div>
-                        </td>
-                        <td className="px-3.5 py-2.5 whitespace-nowrap text-[13px] text-gray-500">{row.processType || '-'}</td>
-                        <td className="px-3.5 py-2.5 whitespace-nowrap text-center align-middle">
+                        <td className="px-4 py-3 whitespace-nowrap text-center align-middle">
                           <div className="flex items-center justify-center gap-1">
-                            {activeTab === '휴지통' ? (
-                              <>
-                                <button onClick={(e) => handleRestore(row.id, e)} className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors" title="데이터 복구">
-                                  <RotateCcw className="w-3.5 h-3.5" />
-                                </button>
-                                <button onClick={(e) => handlePermanentDeletePrepare(row.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="영구 삭제">
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button onClick={(e) => { e.stopPropagation(); handleOpenForm(row); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="수정">
-                                  <Edit className="w-3.5 h-3.5" />
-                                </button>
-                                {currentUserRole?.name === '품질경영팀' && (
-                                  <button onClick={(e) => handleDeletePrepare(row.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="삭제 (휴지통으로 이동)">
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                              </>
-                            )}
+                            <button onClick={(e) => { e.stopPropagation(); handleOpenForm(row); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="수정">
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="삭제">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="15" className="px-6 py-12 text-center text-gray-500">
-                        조건에 맞는 데이터가 없습니다. 
-                        {activeTab === '미입력' && ' 모든 핵심 데이터가 완벽하게 입력되어 있습니다!'}
-                        {activeTab === '휴지통' && ' 휴지통이 비어 있습니다.'}
+                      <td colSpan="14" className="px-6 py-12 text-center text-gray-500">
+                        조건에 맞는 데이터가 없습니다. 필터를 변경해보세요.
                       </td>
                     </tr>
                   )}
@@ -2167,8 +2349,8 @@ export default function App() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm text-gray-500 mb-1">처리 일정 <span className="font-bold text-blue-600 ml-1">(소요: {selectedRow.duration || '-'})</span></div>
-                  <div className="text-sm font-medium text-gray-900">접수: {selectedRow.receiptDate || '-'} / 요구: <span className="text-red-600">{selectedRow.reqDeliveryDate || '-'}</span> / 완료: {selectedRow.processDate || '미정'}</div>
+                  <div className="text-sm text-gray-500 mb-1">납기 일정</div>
+                  <div className="text-sm font-medium text-gray-900">요구: <span className="text-red-600">{selectedRow.reqDeliveryDate}</span> / 완료: {selectedRow.processDate || '미정'}</div>
                 </div>
               </div>
 
@@ -2181,7 +2363,7 @@ export default function App() {
                   <DetailItem label="업체명" value={selectedRow.companyName} />
                   <DetailItem label="접수번호" value={selectedRow.asNumber} />
                   <DetailItem label="수주번호" value={selectedRow.orderNumber} />
-                  <DetailItem label="접수일 (소요기간)" value={`${selectedRow.receiptDate || '-'} (총 ${selectedRow.duration || '-'})`} />
+                  <DetailItem label="접수일" value={selectedRow.receiptDate} />
                 </div>
               </div>
 
@@ -2231,37 +2413,17 @@ export default function App() {
             </div>
 
             <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-between shrink-0 rounded-b-2xl">
-              {selectedRow.deletedAt ? (
-                <div className="flex gap-2 w-full justify-between">
-                  <button onClick={(e) => handlePermanentDeletePrepare(selectedRow.id, e)} className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center text-sm font-medium">
-                    <Trash2 className="w-4 h-4 mr-2" /> 영구 삭제
-                  </button>
-                  <div className="flex gap-2">
-                    <button onClick={(e) => handleRestore(selectedRow.id, e)} className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center text-sm font-medium">
-                      <RotateCcw className="w-4 h-4 mr-2" /> 복구하기
-                    </button>
-                    <button onClick={() => setSelectedRow(null)} className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium">
-                      닫기
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {currentUserRole?.name === '품질경영팀' ? (
-                    <button onClick={(e) => handleDeletePrepare(selectedRow.id, e)} className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center text-sm font-medium">
-                      <Trash2 className="w-4 h-4 mr-2" /> 삭제
-                    </button>
-                  ) : <div />}
-                  <div className="flex gap-2">
-                    <button onClick={(e) => handleOpenForm(selectedRow)} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm font-medium">
-                      <Edit className="w-4 h-4 mr-2" /> 이 데이터 수정하기
-                    </button>
-                    <button onClick={() => setSelectedRow(null)} className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium">
-                      닫기
-                    </button>
-                  </div>
-                </>
-              )}
+              <button onClick={() => handleDelete(selectedRow.id)} className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center text-sm font-medium">
+                <Trash2 className="w-4 h-4 mr-2" /> 삭제
+              </button>
+              <div className="flex gap-2">
+                <button onClick={() => handleOpenForm(selectedRow)} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm font-medium">
+                  <Edit className="w-4 h-4 mr-2" /> 이 데이터 수정하기
+                </button>
+                <button onClick={() => setSelectedRow(null)} className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium">
+                  닫기
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2368,6 +2530,7 @@ export default function App() {
               {/* 하자 및 처리내용 입력 섹션 */}
               <div className="border-t border-gray-200 pt-6 space-y-4">
                 
+                {/* 1. 클레임 유형 라디오 버튼 */}
                 <div className="flex gap-6 mb-2">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="radio" name="claimType" value="일반 A/S" checked={formData.claimType === '일반 A/S'} onChange={handleFormChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" disabled={!isQM} />
@@ -2382,7 +2545,6 @@ export default function App() {
                 <FormGroup label="하자 내용">
                   <textarea name="defectContent" value={formData.defectContent} onChange={handleFormChange} className="form-input h-20" disabled={!isQM} />
                 </FormGroup>
-
                 <FormGroup label="원인 분석">
                   <textarea name="causeAnalysis" value={formData.causeAnalysis} onChange={handleFormChange} className="form-input h-20" />
                   
@@ -2433,7 +2595,6 @@ export default function App() {
                     );
                   })()}
                 </FormGroup>
-
                 <FormGroup label="처리 내역 및 대책">
                   <textarea name="processDetails" value={formData.processDetails} onChange={handleFormChange} className="form-input h-24" />
                   
@@ -2471,6 +2632,7 @@ export default function App() {
                   )}
                 </FormGroup>
                 
+                {/* 2. 처리 결과 및 수리방법 라디오 버튼 */}
                 <div className="pt-4 border-t border-gray-100 bg-gray-50 p-4 rounded-xl mt-4">
                   <label className="block text-sm font-bold text-gray-700 mb-3">수리 결과 및 방법 선택</label>
                   <div className="flex flex-wrap items-center gap-6">
@@ -2481,6 +2643,7 @@ export default function App() {
                       </label>
                     ))}
                     
+                    {/* 3. 유상수리 선택 시에만 나타나는 금액 입력칸 */}
                     {formData.repairMethod === '유상수리' && (
                       <div className="ml-auto flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border border-gray-200 shadow-sm transition-all">
                         <span className="text-sm font-bold text-gray-700">금액 (₩)</span>
@@ -2625,19 +2788,14 @@ export default function App() {
 }
 
 function DetailItem({ label, value, isMultiline = false }) {
-  let displayValue = value;
-  if (typeof value === 'object' && value !== null) {
-     displayValue = JSON.stringify(value);
-  }
-  if (!displayValue && displayValue !== 0) displayValue = '-';
-  
+  if (!value && value !== 0) value = '-';
   return (
     <div>
       <div className="text-xs text-gray-500 mb-1">{label}</div>
       {isMultiline ? (
-        <div className="text-sm text-gray-900 whitespace-pre-wrap leading-relaxed">{displayValue}</div>
+        <div className="text-sm text-gray-900 whitespace-pre-wrap leading-relaxed">{value}</div>
       ) : (
-        <div className="text-sm font-medium text-gray-900">{displayValue}</div>
+        <div className="text-sm font-medium text-gray-900">{value}</div>
       )}
     </div>
   );
