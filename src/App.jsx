@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Search, Filter, X, FileText, Calendar, CheckCircle2, Clock, AlertCircle, 
-  Download, Upload, FileCode, Plus, Edit, Trash2, Save, BarChart3, PieChart, Layers, Lock, LogOut, RotateCcw, FileSpreadsheet, TrendingUp, Copy
+  Download, Upload, FileCode, Plus, Edit, Trash2, Save, BarChart3, PieChart, Layers, Lock, LogOut, RotateCcw, FileSpreadsheet, TrendingUp, Copy, LineChart
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
@@ -153,6 +153,12 @@ const parseDateObj = (dateStr) => {
   }
   if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
   return new Date(y, m - 1, d);
+};
+
+const getYearFromDate = (dateStr) => {
+  const d = parseDateObj(dateStr);
+  if (d) return String(d.getFullYear());
+  return null;
 };
 
 const formatDisplayDate = (dateStr) => {
@@ -365,24 +371,26 @@ const DonutChart = ({ normal, complaint, size = 120, strokeWidth = 12 }) => {
   );
 };
 
-const YearlyTrendChart = ({ data }) => {
+const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) => {
+  // data is expected to have exactly 3 years: [{year: '2024', total, complaint}, {year: '2025', ...}, {year: '2026', ...}]
   if (!data || data.length === 0) return <div className="text-sm text-gray-400 flex items-center justify-center h-full">데이터가 없습니다.</div>;
 
-  const maxVal = Math.max(...data.map(d => Math.max(d.total, d.complaint)), 10) * 1.1; 
-  const w = 400;
-  const h = 200;
+  const maxVal = Math.max(...data.map(d => Math.max(d.total, d.complaint)), 10) * 1.2; 
+  const w = 500;
+  const h = 250;
   const px = 40;
-  const py = 30;
+  const py = 40;
   const cw = w - px * 2;
   const ch = h - py * 2;
 
   const getX = (index) => px + (cw / (data.length * 2)) * (index * 2 + 1);
   const getY = (val) => py + ch - (val / maxVal) * ch;
 
-  const points = data.map((d, i) => `${getX(i)},${getY(d.complaint)}`).join(' ');
+  const totalPoints = data.map((d, i) => `${getX(i)},${getY(d.total)}`).join(' ');
+  const complaintPoints = data.map((d, i) => `${getX(i)},${getY(d.complaint)}`).join(' ');
 
   return (
-    <div className="w-full flex justify-center items-center h-[200px]">
+    <div className={`w-full flex justify-center items-center ${heightClass}`}>
       <svg viewBox={`0 0 ${w} ${h}`} className="w-full max-w-full h-full font-sans">
         {/* Background grid */}
         {[0, 0.25, 0.5, 0.75, 1].map(ratio => {
@@ -394,34 +402,74 @@ const YearlyTrendChart = ({ data }) => {
           );
         })}
 
-        {/* Bars for Total */}
-        {data.map((d, i) => {
-          const barH = (d.total / maxVal) * ch;
-          const xPos = getX(i);
-          return (
-            <g key={`bar-${i}`}>
-              <rect x={xPos - 20} y={py + ch - barH} width="40" height={barH} fill="#dc2626" />
-              <text x={xPos} y={py + ch - barH - 8} textAnchor="middle" fontSize="12" fill="#dc2626" fontWeight="bold">{d.total}</text>
-              <text x={xPos} y={h - 10} textAnchor="middle" fontSize="12" fill="#6b7280">{d.year}년</text>
-            </g>
-          );
-        })}
+        {type === 'mixed' ? (
+          <>
+            {/* Bars for Total */}
+            {data.map((d, i) => {
+              const barH = (d.total / maxVal) * ch;
+              const xPos = getX(i);
+              return (
+                <g key={`bar-${i}`}>
+                  <rect x={xPos - 20} y={py + ch - barH} width="40" height={barH} fill="#3b82f6" opacity="0.9" rx="2" />
+                  <text x={xPos} y={py + ch - barH - 8} textAnchor="middle" fontSize="14" fill="#2563eb" fontWeight="bold">{d.total}</text>
+                  <text x={xPos} y={h - 15} textAnchor="middle" fontSize="13" fill="#6b7280" fontWeight="bold">{d.year}년</text>
+                </g>
+              );
+            })}
 
-        {/* Line and Dots for Complaint */}
-        {data.length > 1 && <polyline points={points} fill="none" stroke="#fca5a5" strokeWidth="2.5" />}
-        {data.map((d, i) => (
-          <g key={`dot-${i}`}>
-            <circle cx={getX(i)} cy={getY(d.complaint)} r="5" fill="#fca5a5" />
-            <text x={getX(i)} y={getY(d.complaint) - 10} textAnchor="middle" fontSize="12" fill="#fca5a5" fontWeight="bold">{d.complaint}</text>
-          </g>
-        ))}
+            {/* Line and Dots for Complaint */}
+            {data.length > 1 && <polyline points={complaintPoints} fill="none" stroke="#ef4444" strokeWidth="3" />}
+            {data.map((d, i) => (
+              <g key={`dot-${i}`}>
+                <circle cx={getX(i)} cy={getY(d.complaint)} r="5" fill="#ef4444" stroke="#ffffff" strokeWidth="2" />
+                <text x={getX(i)} y={getY(d.complaint) - 12} textAnchor="middle" fontSize="14" fill="#dc2626" fontWeight="bold">{d.complaint}</text>
+              </g>
+            ))}
+          </>
+        ) : (
+          <>
+            {/* Line and Dots for Total */}
+            {data.length > 1 && <polyline points={totalPoints} fill="none" stroke="#b91c1c" strokeWidth="2.5" />}
+            {data.map((d, i) => (
+              <g key={`total-dot-${i}`}>
+                <circle cx={getX(i)} cy={getY(d.total)} r="4" fill="#b91c1c" />
+                <text x={getX(i)} y={getY(d.total) - 10} textAnchor="middle" fontSize="13" fill="#b91c1c" fontWeight="bold">{d.total}</text>
+                <text x={getX(i)} y={h - 15} textAnchor="middle" fontSize="13" fill="#6b7280" fontWeight="bold">{d.year}년</text>
+              </g>
+            ))}
+
+            {/* Line and Dots for Complaint */}
+            {data.length > 1 && <polyline points={complaintPoints} fill="none" stroke="#fca5a5" strokeWidth="2.5" />}
+            {data.map((d, i) => (
+              <g key={`comp-dot-${i}`}>
+                <circle cx={getX(i)} cy={getY(d.complaint)} r="4" fill="#fca5a5" />
+                <text x={getX(i)} y={getY(d.complaint) - 10} textAnchor="middle" fontSize="13" fill="#fca5a5" fontWeight="bold">{d.complaint}</text>
+              </g>
+            ))}
+          </>
+        )}
 
         {/* Legend */}
-        <g transform={`translate(${w/2 - 70}, ${h - 2})`}>
-          <rect x="0" y="-8" width="12" height="4" fill="#dc2626" />
-          <text x="16" y="-3" fontSize="10" fill="#4b5563">A/S접수건</text>
-          <circle cx="75" cy="-6" r="4" fill="#fca5a5" />
-          <text x="84" y="-3" fontSize="10" fill="#4b5563">고객불만건</text>
+        <g transform={`translate(${w/2 - 80}, ${h - 2})`}>
+          {type === 'mixed' ? (
+            <>
+              <rect x="0" y="-8" width="16" height="6" fill="#3b82f6" opacity="0.9" />
+              <text x="22" y="-2" fontSize="12" fill="#4b5563" fontWeight="bold">A/S접수건수</text>
+              <polyline points="95,-5 115,-5" fill="none" stroke="#ef4444" strokeWidth="2" />
+              <circle cx="105" cy="-5" r="4" fill="#ef4444" />
+              <text x="120" y="-2" fontSize="12" fill="#4b5563" fontWeight="bold">고객불만</text>
+            </>
+          ) : (
+            <>
+              <polyline points="0,-5 20,-5" fill="none" stroke="#b91c1c" strokeWidth="2" />
+              <circle cx="10" cy="-5" r="4" fill="#b91c1c" />
+              <text x="26" y="-2" fontSize="12" fill="#4b5563" fontWeight="bold">A/S접수건수</text>
+              
+              <polyline points="95,-5 115,-5" fill="none" stroke="#fca5a5" strokeWidth="2" />
+              <circle cx="105" cy="-5" r="4" fill="#fca5a5" />
+              <text x="120" y="-2" fontSize="12" fill="#4b5563" fontWeight="bold">고객불만</text>
+            </>
+          )}
         </g>
       </svg>
     </div>
@@ -515,6 +563,8 @@ export default function App() {
   const [dashboardTab, setDashboardTab] = useState('종합 지표');
   const [totalChartType, setTotalChartType] = useState('donut');
   const [modelChartType, setModelChartType] = useState({}); // 각 사업부별 모델 차트 상태
+  const [buChartType, setBuChartType] = useState({}); // 사업부 세부 지표 차트 토글 상태
+  const [yearlyTabChartType, setYearlyTabChartType] = useState({}); // 년도별 현황 차트 토글 상태
   const [user, setUser] = useState(null);
   const [isSeeded, setIsSeeded] = useState(false);
   
@@ -650,10 +700,14 @@ export default function App() {
     return processedData.filter(item => currentUserRole.tabs.includes(item.businessUnit));
   }, [processedData, currentUserRole]);
 
+  // 공통적으로 사용하는 직전 3개년
+  const currentYear = new Date().getFullYear();
+  const targetYears = [String(currentYear - 2), String(currentYear - 1), String(currentYear)];
+
   const aggregatedStats = useMemo(() => {
     const stats = {};
     const AGGREGATION_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT (ZMDI)', 'PT (N)', 'UPT900'];
-    AGGREGATION_ORDER.forEach(unit => stats[unit] = { unit, normalSet: new Set(), complaintSet: new Set() });
+    AGGREGATION_ORDER.forEach(unit => stats[unit] = { unit, normal: 0, complaint: 0 });
 
     allowedProcessedData.forEach(item => {
       let unit = item.businessUnit || '미분류';
@@ -661,25 +715,24 @@ export default function App() {
         const boardType = item.ptBoardType === 'ZMDI' ? 'ZMDI' : 'N';
         unit = `PT (${boardType})`;
       }
-      if (!stats[unit]) stats[unit] = { unit, normalSet: new Set(), complaintSet: new Set() }; 
+      if (!stats[unit]) stats[unit] = { unit, normal: 0, complaint: 0 }; 
       
+      const qty = Number(item.qtyDefect) || 1;
       if (item.claimType === '고객불만') {
-        stats[unit].complaintSet.add(item.asNumber);
+        stats[unit].complaint += qty;
       } else {
-        stats[unit].normalSet.add(item.asNumber);
+        stats[unit].normal += qty;
       }
     });
 
     let totalNormal = 0; let totalComplaint = 0;
     const result = Object.values(stats).map(stat => {
-      const normal = stat.normalSet.size;
-      const complaint = stat.complaintSet.size;
-      const totalClaims = normal + complaint;
-      const normalRate = totalClaims > 0 ? ((normal / totalClaims) * 100).toFixed(1) : 0;
-      const complaintRate = totalClaims > 0 ? ((complaint / totalClaims) * 100).toFixed(1) : 0;
-      totalNormal += normal; 
-      totalComplaint += complaint;
-      return { unit: stat.unit, normal, complaint, totalClaims, normalRate, complaintRate };
+      const totalClaims = stat.normal + stat.complaint;
+      const normalRate = totalClaims > 0 ? ((stat.normal / totalClaims) * 100).toFixed(1) : 0;
+      const complaintRate = totalClaims > 0 ? ((stat.complaint / totalClaims) * 100).toFixed(1) : 0;
+      totalNormal += stat.normal; 
+      totalComplaint += stat.complaint;
+      return { ...stat, totalClaims, normalRate, complaintRate };
     });
 
     result.sort((a, b) => {
@@ -702,69 +755,86 @@ export default function App() {
     return result;
   }, [allowedProcessedData]);
 
-  // 연도별 집계 데이터 생성
+  // 연도별 전체 집계 데이터 생성 (최근 3년만 표시 및 qtyDefect 합계)
   const yearlyStats = useMemo(() => {
     const stats = {};
+    targetYears.forEach(y => stats[y] = { year: y, total: 0, complaint: 0 });
+
     allowedProcessedData.forEach(item => {
       if (!item.receiptDate) return;
-      const yearMatch = item.receiptDate.match(/^(\d{2})\./); 
-      if (yearMatch) {
-        const year = `20${yearMatch[1]}`;
-        if (!stats[year]) stats[year] = { year, total: 0, complaint: 0, _totalSet: new Set(), _compSet: new Set() };
-        
-        stats[year]._totalSet.add(item.asNumber);
+      const year = getYearFromDate(item.receiptDate);
+      if (year && stats[year]) {
+        const qty = Number(item.qtyDefect) || 1;
+        stats[year].total += qty;
         if (item.claimType === '고객불만') {
-          stats[year]._compSet.add(item.asNumber);
+          stats[year].complaint += qty;
         }
       }
     });
-    return Object.values(stats).map(s => ({
-      year: s.year,
-      total: s._totalSet.size,
-      complaint: s._compSet.size
-    })).sort((a, b) => a.year.localeCompare(b.year));
-  }, [allowedProcessedData]);
+    return targetYears.map(y => stats[y]);
+  }, [allowedProcessedData, targetYears]);
+
+  // 사업부별 연도별 집계 데이터 생성 (최근 3년만 표시 및 qtyDefect 합계)
+  const buYearlyStats = useMemo(() => {
+    const stats = {};
+    FIXED_UNITS_ORDER.forEach(bu => {
+      stats[bu] = {};
+      targetYears.forEach(y => stats[bu][y] = { year: y, total: 0, complaint: 0 });
+    });
+
+    allowedProcessedData.forEach(item => {
+      let unit = item.businessUnit || '미분류';
+      
+      if (stats[unit]) {
+        const year = getYearFromDate(item.receiptDate);
+        if (year && stats[unit][year]) {
+          const qty = Number(item.qtyDefect) || 1;
+          stats[unit][year].total += qty;
+          if (item.claimType === '고객불만') {
+            stats[unit][year].complaint += qty;
+          }
+        }
+      }
+    });
+
+    const result = {};
+    Object.keys(stats).forEach(bu => {
+      result[bu] = targetYears.map(y => stats[bu][y]);
+    });
+    return result;
+  }, [allowedProcessedData, targetYears]);
 
   const dashboardStats = useMemo(() => {
     const stats = {};
-    FIXED_UNITS_ORDER.forEach(bu => stats[bu] = { unit: bu, totalSet: new Set(), models: {} });
+    FIXED_UNITS_ORDER.forEach(bu => stats[bu] = { unit: bu, total: 0, models: {} });
 
     allowedProcessedData.forEach(item => {
       const bu = FIXED_UNITS_ORDER.includes(item.businessUnit) ? item.businessUnit : '기타사업부';
-      if (!stats[bu]) stats[bu] = { unit: bu, totalSet: new Set(), models: {} };
+      if (!stats[bu]) stats[bu] = { unit: bu, total: 0, models: {} };
       
-      stats[bu].totalSet.add(item.asNumber);
-
       const groupLabel = getModelGroup(item.businessUnit, item.model, item.ptBoardType);
+      const qty = Number(item.qtyDefect) || 1;
+
+      stats[bu].total += qty;
       if (!stats[bu].models[groupLabel]) {
-        stats[bu].models[groupLabel] = { label: groupLabel, totalSet: new Set(), normalSet: new Set(), complaintSet: new Set() };
+        stats[bu].models[groupLabel] = { label: groupLabel, total: 0, normal: 0, complaint: 0 };
       }
       
-      stats[bu].models[groupLabel].totalSet.add(item.asNumber);
+      stats[bu].models[groupLabel].total += qty;
       if (item.claimType === '고객불만') {
-        stats[bu].models[groupLabel].complaintSet.add(item.asNumber);
+        stats[bu].models[groupLabel].complaint += qty;
       } else {
-        stats[bu].models[groupLabel].normalSet.add(item.asNumber);
+        stats[bu].models[groupLabel].normal += qty;
       }
     });
 
     return Object.values(stats).map(buStat => {
-      const buTotal = buStat.totalSet.size;
-      const modelsArr = Object.values(buStat.models).map(m => {
-        const mTotal = m.totalSet.size;
-        return {
-          label: m.label,
-          total: mTotal,
-          normal: m.normalSet.size,
-          complaint: m.complaintSet.size,
-          rate: buTotal > 0 ? ((mTotal / buTotal) * 100).toFixed(1) : 0
-        };
-      }).sort((a, b) => b.total - a.total);
-
+      const modelsArr = Object.values(buStat.models).sort((a, b) => b.total - a.total);
       modelsArr.forEach((m, idx) => {
         m.color = CHART_COLORS[idx % CHART_COLORS.length];
+        m.rate = buStat.total > 0 ? ((m.total / buStat.total) * 100).toFixed(1) : 0;
       });
-      return { unit: buStat.unit, total: buTotal, modelsArr };
+      return { ...buStat, modelsArr };
     }).sort((a, b) => {
       let ia = FIXED_UNITS_ORDER.indexOf(a.unit);
       let ib = FIXED_UNITS_ORDER.indexOf(b.unit);
@@ -1790,7 +1860,7 @@ export default function App() {
               ))}
             </div>
             
-            {currentUserRole?.name === '품질경영팀' && (
+            {isQM && (
               <div className="flex shrink-0">
                 <button
                   onClick={() => setActiveTab('보고서')}
@@ -1966,12 +2036,12 @@ export default function App() {
         ) : activeTab === '집계' ? (
           
           <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="flex border-b border-gray-200 bg-white rounded-t-xl px-4 pt-4">
-              {['종합 지표', '모델별 현황', '유형별 분석'].map(tab => (
+            <div className="flex border-b border-gray-200 bg-white rounded-t-xl px-4 pt-4 overflow-x-auto hide-scrollbar">
+              {['종합 지표', '모델별 현황', '유형별 분석', '년도별 현황'].map(tab => (
                 <button
                   key={tab}
                   onClick={() => setDashboardTab(tab)}
-                  className={`px-6 py-3 font-bold text-sm transition-colors border-b-2 -mb-[2px] ${
+                  className={`px-6 py-3 font-bold text-sm transition-colors border-b-2 -mb-[2px] whitespace-nowrap ${
                     dashboardTab === tab 
                       ? 'text-blue-600 border-blue-600' 
                       : 'text-gray-500 border-transparent hover:text-gray-700'
@@ -1989,7 +2059,7 @@ export default function App() {
                     <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
                       <PieChart className="w-5 h-5 text-blue-600" /> 전체 A/S 종합 현황
                     </h3>
-                    <div className="flex bg-gray-100 p-0.5 rounded-md">
+                    <div className="flex bg-gray-100 p-0.5 rounded-md relative z-10">
                       <button onClick={() => setTotalChartType('donut')} className={`p-1.5 rounded ${totalChartType === 'donut' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="도넛 차트 보기">
                         <PieChart className="w-4 h-4" />
                       </button>
@@ -1999,7 +2069,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="flex-1 flex flex-col items-center justify-center w-full">
+                  <div className="flex-1 flex flex-col items-center justify-center w-full relative z-0">
                     {totalChartType === 'donut' ? (
                       <DonutChart 
                         normal={aggregatedStats.find(s => s.isTotal)?.normal || 0} 
@@ -2008,7 +2078,7 @@ export default function App() {
                         strokeWidth={16} 
                       />
                     ) : (
-                      <YearlyTrendChart data={yearlyStats} />
+                      <YearlyTrendChart data={yearlyStats} type="mixed" />
                     )}
                   </div>
 
@@ -2025,40 +2095,58 @@ export default function App() {
                     </div>
                   )}
                   
-                  <button onClick={() => handleCopyChart('total-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100" title="차트 데이터/이미지 복사">
+                  <button onClick={() => handleCopyChart('total-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
                     <Copy className="w-4 h-4" />
                   </button>
                 </div>
 
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-3">
-                  <h3 className="text-base font-bold text-gray-900 mb-6 flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5 text-gray-600" /> 사업부별 세부 비율 지표
-                  </h3>
-                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-3 flex flex-col relative group" id="sub-chart-container">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                      <BarChart3 className="w-5 h-5 text-gray-600" /> 사업부별 세부 비율 지표
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 relative z-0">
                     {aggregatedStats.filter(s => !s.isTotal).map(stat => (
-                      <div key={stat.unit} id={`sub-chart-${stat.unit}`} className="border border-gray-100 rounded-xl p-5 bg-white shadow-sm hover:shadow-md transition-shadow flex flex-col items-center relative overflow-hidden group">
-                         <div className="w-full text-center pb-3 mb-4 border-b border-gray-100">
+                      <div key={stat.unit} className="border border-gray-100 rounded-xl p-5 bg-white shadow-sm hover:shadow-md transition-shadow flex flex-col items-center overflow-hidden">
+                         <div className="w-full flex justify-between items-center pb-2 mb-3 border-b border-gray-100">
                            <h4 className="font-bold text-gray-800 text-sm">{stat.unit}</h4>
-                         </div>
-                         
-                         <DonutChart normal={stat.normal} complaint={stat.complaint} size={110} strokeWidth={12} />
-                         
-                         <div className="w-full mt-5 space-y-2 text-xs">
-                           <div className="flex justify-between items-center bg-blue-50/50 px-2 py-1.5 rounded text-blue-900">
-                             <span className="font-medium">일반</span>
-                             <span className="font-bold">{stat.normal}건 <span className="text-blue-600 font-normal">({stat.normalRate}%)</span></span>
-                           </div>
-                           <div className="flex justify-between items-center bg-red-50/50 px-2 py-1.5 rounded text-red-900">
-                             <span className="font-medium">불만</span>
-                             <span className="font-bold text-red-600">{stat.complaint}건 <span className="text-red-500 font-normal">({stat.complaintRate}%)</span></span>
+                           <div className="flex bg-gray-50 p-0.5 rounded-md relative z-10">
+                             <button onClick={() => setBuChartType(prev => ({...prev, [stat.unit]: 'donut'}))} className={`p-1 rounded ${buChartType[stat.unit] !== 'trend' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="도넛 차트 보기">
+                               <PieChart className="w-3 h-3" />
+                             </button>
+                             <button onClick={() => setBuChartType(prev => ({...prev, [stat.unit]: 'trend'}))} className={`p-1 rounded ${buChartType[stat.unit] === 'trend' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="연도별 트렌드 보기">
+                               <TrendingUp className="w-3 h-3" />
+                             </button>
                            </div>
                          </div>
-                         <button onClick={() => handleCopyChart(`sub-chart-${stat.unit}`)} className="absolute bottom-2 right-2 p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100" title="차트 복사">
-                           <Copy className="w-3.5 h-3.5" />
-                         </button>
+                         
+                         <div className="flex-1 flex w-full items-center justify-center min-h-[120px] relative z-0">
+                           {buChartType[stat.unit] === 'trend' ? (
+                             <YearlyTrendChart data={buYearlyStats[stat.unit] || []} heightClass="h-[120px]" type="mixed" />
+                           ) : (
+                             <DonutChart normal={stat.normal} complaint={stat.complaint} size={110} strokeWidth={12} />
+                           )}
+                         </div>
+                         
+                         {buChartType[stat.unit] !== 'trend' && (
+                           <div className="w-full mt-4 space-y-2 text-xs">
+                             <div className="flex justify-between items-center bg-blue-50/50 px-2 py-1.5 rounded text-blue-900">
+                               <span className="font-medium">일반</span>
+                               <span className="font-bold">{stat.normal}건 <span className="text-blue-600 font-normal">({stat.normalRate}%)</span></span>
+                             </div>
+                             <div className="flex justify-between items-center bg-red-50/50 px-2 py-1.5 rounded text-red-900">
+                               <span className="font-medium">불만</span>
+                               <span className="font-bold text-red-600">{stat.complaint}건 <span className="text-red-500 font-normal">({stat.complaintRate}%)</span></span>
+                             </div>
+                           </div>
+                         )}
                       </div>
                     ))}
                   </div>
+                  <button onClick={() => handleCopyChart('sub-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="전체 사업부 차트 복사">
+                    <Copy className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             )}
@@ -2071,7 +2159,7 @@ export default function App() {
                       <h3 className="text-lg font-bold text-gray-900">
                         {buStat.unit} 모델별 접수 현황
                       </h3>
-                      <div className="flex bg-gray-100 p-0.5 rounded-md">
+                      <div className="flex bg-gray-100 p-0.5 rounded-md relative z-10">
                         <button onClick={() => setModelChartType(prev => ({...prev, [buStat.unit]: 'donut'}))} className={`p-1 rounded ${modelChartType[buStat.unit] !== 'bar' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="도넛 차트 보기">
                           <PieChart className="w-3.5 h-3.5" />
                         </button>
@@ -2080,7 +2168,7 @@ export default function App() {
                         </button>
                       </div>
                     </div>
-                    <div className="flex justify-center mb-8 h-[180px] w-full items-center">
+                    <div className="flex justify-center mb-8 h-[180px] w-full items-center relative z-0">
                       {modelChartType[buStat.unit] === 'bar' ? (
                         <ModelHorizontalBarChart data={buStat.modelsArr} />
                       ) : (
@@ -2108,7 +2196,7 @@ export default function App() {
                               </td>
                               <td className="py-3 text-right">
                                 <span className="font-bold text-gray-900">{m.total}</span>
-                                <span className="text-[10px] text-gray-400 font-normal ml-1">({m.rate}%)</span>
+                                <span className="text-[10px] text-gray-400 font-normal ml-1">({Number(m.rate).toFixed(1)}%)</span>
                               </td>
                               <td className="py-3 text-right whitespace-nowrap">
                                 <div className="text-[11px]">
@@ -2125,7 +2213,7 @@ export default function App() {
                         </tbody>
                       </table>
                     </div>
-                    <button onClick={() => handleCopyChart(`model-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100" title="차트 복사">
+                    <button onClick={() => handleCopyChart(`model-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
                       <Copy className="w-4 h-4" />
                     </button>
                   </div>
@@ -2141,7 +2229,7 @@ export default function App() {
                       {buStat.unit} 상세 집계
                     </h3>
                     
-                    <div className="space-y-6 flex-1">
+                    <div className="space-y-6 flex-1 relative z-0">
                       <div>
                         <div className="text-sm font-bold text-gray-700 bg-gray-50 px-3 py-2 rounded-md mb-3">원인 분석 (상위 항목)</div>
                         <HorizontalBarChart data={buStat.causesArr} color="bg-indigo-500" />
@@ -2152,7 +2240,7 @@ export default function App() {
                         <HorizontalBarChart data={buStat.processesArr} color="bg-teal-500" />
                       </div>
                     </div>
-                    <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100" title="차트 복사">
+                    <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
                       <Copy className="w-4 h-4" />
                     </button>
                   </div>
@@ -2162,6 +2250,39 @@ export default function App() {
                     분석할 데이터가 없습니다. 원인 분석 및 처리 내역을 입력해주세요.
                   </div>
                 )}
+              </div>
+            )}
+
+            {dashboardTab === '년도별 현황' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {FIXED_UNITS_ORDER.map(bu => {
+                  const unitData = buYearlyStats[bu] || [];
+                  return (
+                    <div key={bu} id={`yearly-chart-${bu}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
+                      <div className="flex justify-between items-center w-full mb-6 border-b border-gray-100 pb-4">
+                        <h3 className="text-lg font-bold text-gray-900">
+                          {bu} 사업부
+                        </h3>
+                        <div className="flex bg-gray-100 p-0.5 rounded-md relative z-10">
+                          <button onClick={() => setYearlyTabChartType(prev => ({...prev, [bu]: 'line'}))} className={`p-1 rounded ${yearlyTabChartType[bu] !== 'mixed' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="다중 꺾은선 차트 보기">
+                            <LineChart className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => setYearlyTabChartType(prev => ({...prev, [bu]: 'mixed'}))} className={`p-1 rounded ${yearlyTabChartType[bu] === 'mixed' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="막대-꺾은선 혼합 차트 보기">
+                            <TrendingUp className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className="flex-1 flex flex-col items-center justify-center w-full relative z-0">
+                        <YearlyTrendChart data={unitData} type={yearlyTabChartType[bu] === 'mixed' ? 'mixed' : 'line'} />
+                      </div>
+                      
+                      <button onClick={() => handleCopyChart(`yearly-chart-${bu}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                        <Copy className="w-4 h-4" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -2263,65 +2384,6 @@ export default function App() {
                 </tbody>
               </table>
             </div>
-
-            {/* 페이지네이션 컨트롤 바 */}
-            {filteredData.length > 0 && (
-              <div className="px-6 py-4 flex items-center justify-between border-t border-gray-200 bg-white">
-                <div className="text-sm text-gray-700">
-                  총 <span className="font-bold text-gray-900">{filteredData.length}</span>건 중 
-                  <span className="font-medium ml-1">{(currentPage - 1) * itemsPerPage + 1}</span> - 
-                  <span className="font-medium mr-1">{Math.min(currentPage * itemsPerPage, filteredData.length)}</span> 표시
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    이전
-                  </button>
-                  <div className="flex gap-1 overflow-x-auto max-w-[200px] md:max-w-none hide-scrollbar">
-                    {currentBlock > 1 && (
-                      <button
-                        onClick={() => setCurrentPage(startPage - 1)}
-                        className="px-2 py-1.5 text-gray-500 hover:text-gray-700 bg-white font-bold"
-                      >
-                        ...
-                      </button>
-                    )}
-                    {visiblePages.map(page => (
-                      <button
-                        key={page}
-                        onClick={() => setCurrentPage(page)}
-                        className={`px-3 py-1.5 border rounded-md text-sm font-medium ${
-                          currentPage === page
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
-                        }`}
-                      >
-                        {page}
-                      </button>
-                    ))}
-                    {endPage < totalPages && (
-                      <button
-                        onClick={() => setCurrentPage(endPage + 1)}
-                        className="px-2 py-1.5 text-gray-500 hover:text-gray-700 bg-white font-bold"
-                      >
-                        ...
-                      </button>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    다음
-                  </button>
-                </div>
-              </div>
-            )}
-
           </div>
 
         )}
@@ -2413,7 +2475,7 @@ export default function App() {
             </div>
 
             <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-between shrink-0 rounded-b-2xl">
-              <button onClick={() => handleDelete(selectedRow.id)} className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center text-sm font-medium">
+              <button onClick={() => handleDeletePrepare(selectedRow.id)} className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center text-sm font-medium">
                 <Trash2 className="w-4 h-4 mr-2" /> 삭제
               </button>
               <div className="flex gap-2">
@@ -2545,6 +2607,7 @@ export default function App() {
                 <FormGroup label="하자 내용">
                   <textarea name="defectContent" value={formData.defectContent} onChange={handleFormChange} className="form-input h-20" disabled={!isQM} />
                 </FormGroup>
+
                 <FormGroup label="원인 분석">
                   <textarea name="causeAnalysis" value={formData.causeAnalysis} onChange={handleFormChange} className="form-input h-20" />
                   
@@ -2595,6 +2658,7 @@ export default function App() {
                     );
                   })()}
                 </FormGroup>
+
                 <FormGroup label="처리 내역 및 대책">
                   <textarea name="processDetails" value={formData.processDetails} onChange={handleFormChange} className="form-input h-24" />
                   
