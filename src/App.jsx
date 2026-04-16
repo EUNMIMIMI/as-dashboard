@@ -44,6 +44,15 @@ const getCollectionPath = () => {
 };
 // -----------------------
 
+// --- 하드코딩된 연도별 과거 데이터 ---
+const HISTORICAL_YEARLY = {
+  'PMD': { '2023': { total: 287, complaint: 4 }, '2024': { total: 251, complaint: 29 }, '2025': { total: 215, complaint: 15 } },
+  'TMD': { '2023': { total: 116, complaint: 5 }, '2024': { total: 112, complaint: 24 }, '2025': { total: 96, complaint: 16 } },
+  'FLD': { '2023': { total: 15, complaint: 0 }, '2024': { total: 7, complaint: 1 }, '2025': { total: 14, complaint: 3 } },
+  'UHP': { '2023': { total: 134, complaint: 9 }, '2024': { total: 154, complaint: 140 }, '2025': { total: 127, complaint: 12 } }
+};
+const TREND_UNITS = ['PMD', 'TMD', 'FLD', 'UHP']; 
+
 const CAUSE_HEADERS = [
   { id: 'c1', label: '설치\n조건' }, { id: 'c2', label: '취급\n부주의' }, { id: 'c3', label: '품질\n보증\n기간' },
   { id: 'w1', label: '사양\n검토\n미흡' }, { id: 'w2', label: '설계\n미흡' }, { id: 'w3', label: '사양\n검토\n미흡' },
@@ -110,6 +119,22 @@ const getCauseTableConfig = (bu) => {
       prodCols: 9, otherCols: 4
     };
   }
+};
+
+const getCauseGroup = (id) => {
+  if (['c1'].includes(id)) return '설치조건';
+  if (['c2'].includes(id)) return '취급부주의';
+  if (['c3'].includes(id)) return '품질보증기간';
+  if (['w1'].includes(id)) return '영업 검토 미흡';
+  if (['w2'].includes(id)) return '설계 미흡';
+  if (['w3', 'w4', 'w5', 'w6', 'w7', 'w8', 'w9', 'w10', 'pt1', 'pt2', 'pt3', 'pt4', 'pt5', 'pt6', 'upt1', 'upt2', 'upt3'].includes(id)) return '생산 불량';
+  if (['w11', 'w12', 'pt7'].includes(id)) return '품질 검사 미흡';
+  if (['e1'].includes(id)) return '공급자 불량';
+  if (['e2'].includes(id)) return '운송 중 충격';
+  if (['e3'].includes(id)) return '원인분석 불가';
+  if (['e4'].includes(id)) return '정상';
+  if (['e5'].includes(id)) return '연구 및 개선';
+  return '기타';
 };
 
 const parseDateObj = (dateStr) => {
@@ -215,7 +240,7 @@ const addBusinessDays = (dateStr, days) => {
 };
 
 const FIXED_UNITS_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'];
-const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'];
+const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6', '#84cc16', '#a855f7'];
 
 const generateNextAsNumber = (currentData) => {
   const currentYear = new Date().getFullYear().toString().slice(-2);
@@ -372,7 +397,6 @@ const DonutChart = ({ normal, complaint, size = 120, strokeWidth = 12 }) => {
 };
 
 const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) => {
-  // data is expected to have exactly 3 years: [{year: '2024', total, complaint}, {year: '2025', ...}, {year: '2026', ...}]
   if (!data || data.length === 0) return <div className="text-sm text-gray-400 flex items-center justify-center h-full">데이터가 없습니다.</div>;
 
   const maxVal = Math.max(...data.map(d => Math.max(d.total, d.complaint)), 10) * 1.2; 
@@ -421,7 +445,7 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
             {data.length > 1 && <polyline points={complaintPoints} fill="none" stroke="#ef4444" strokeWidth="3" />}
             {data.map((d, i) => (
               <g key={`dot-${i}`}>
-                <circle cx={getX(i)} cy={getY(d.complaint)} r="5" fill="#ef4444" stroke="#ffffff" strokeWidth="2" />
+                <circle cx={getX(i)} cy={getY(d.complaint)} r="6" fill="#ef4444" stroke="#ffffff" strokeWidth="2" />
                 <text x={getX(i)} y={getY(d.complaint) - 12} textAnchor="middle" fontSize="14" fill="#dc2626" fontWeight="bold">{d.complaint}</text>
               </g>
             ))}
@@ -526,32 +550,6 @@ const ModelHorizontalBarChart = ({ data }) => {
   );
 };
 
-const getModelGroup = (bu, modelName, ptBoardType) => {
-  if (bu === 'PT') return ptBoardType === 'ZMDI' ? 'ZMDI' : 'N';
-  if (!modelName) return bu === 'PMD' ? 'ACC' : '기타';
-  const upperModel = modelName.toUpperCase().trim();
-  
-  if (bu === 'PMD') {
-    const match = upperModel.match(/^P(\d+)/);
-    if (match) {
-      const num = parseInt(match[1], 10);
-      const rounded = Math.floor(num / 100) * 100;
-      return `P${rounded}`;
-    }
-    return 'ACC';
-  }
-  
-  const match = upperModel.match(/^([A-Z]+-?)(\d+)/);
-  if (match) {
-    const prefix = match[1];
-    const num = parseInt(match[2], 10);
-    const rounded = Math.floor(num / 100) * 100;
-    return `${prefix}${rounded}`;
-  }
-  
-  return upperModel;
-};
-
 export default function App() {
   const [currentUserRole, setCurrentUserRole] = useState(null);
   const [loginPassword, setLoginPassword] = useState('');
@@ -562,9 +560,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('전체'); 
   const [dashboardTab, setDashboardTab] = useState('종합 지표');
   const [totalChartType, setTotalChartType] = useState('donut');
-  const [modelChartType, setModelChartType] = useState({}); // 각 사업부별 모델 차트 상태
-  const [buChartType, setBuChartType] = useState({}); // 사업부 세부 지표 차트 토글 상태
-  const [yearlyTabChartType, setYearlyTabChartType] = useState({}); // 년도별 현황 차트 토글 상태
+  const [modelChartType, setModelChartType] = useState({}); 
+  const [buChartType, setBuChartType] = useState({}); 
+  const [yearlyTabChartType, setYearlyTabChartType] = useState({}); 
   const [user, setUser] = useState(null);
   const [isSeeded, setIsSeeded] = useState(false);
   
@@ -700,7 +698,7 @@ export default function App() {
     return processedData.filter(item => currentUserRole.tabs.includes(item.businessUnit));
   }, [processedData, currentUserRole]);
 
-  // 공통적으로 사용하는 직전 3개년
+  // 공통적으로 사용하는 직전 3개년 산출
   const currentYear = new Date().getFullYear();
   const targetYears = [String(currentYear - 2), String(currentYear - 1), String(currentYear)];
 
@@ -755,15 +753,34 @@ export default function App() {
     return result;
   }, [allowedProcessedData]);
 
-  // 연도별 전체 집계 데이터 생성 (최근 3년만 표시 및 qtyDefect 합계)
+  // 연도별 전체 집계 데이터 생성 (최근 3년, 하드코딩 데이터 통합)
   const yearlyStats = useMemo(() => {
     const stats = {};
-    targetYears.forEach(y => stats[y] = { year: y, total: 0, complaint: 0 });
+    targetYears.forEach(y => {
+       let histTotal = 0;
+       let histComp = 0;
+       let hasHistorical = false;
+       
+       TREND_UNITS.forEach(bu => {
+          if (HISTORICAL_YEARLY[bu]?.[y]) {
+             hasHistorical = true;
+             histTotal += HISTORICAL_YEARLY[bu][y].total;
+             histComp += HISTORICAL_YEARLY[bu][y].complaint;
+          }
+       });
+       
+       stats[y] = { 
+           year: y, 
+           total: histTotal, 
+           complaint: histComp,
+           isHistorical: hasHistorical
+       };
+    });
 
     allowedProcessedData.forEach(item => {
       if (!item.receiptDate) return;
       const year = getYearFromDate(item.receiptDate);
-      if (year && stats[year]) {
+      if (year && stats[year] && !stats[year].isHistorical) {
         const qty = Number(item.qtyDefect) || 1;
         stats[year].total += qty;
         if (item.claimType === '고객불만') {
@@ -771,23 +788,28 @@ export default function App() {
         }
       }
     });
-    return targetYears.map(y => stats[y]);
+    return targetYears.map(y => ({ year: y, total: stats[y].total, complaint: stats[y].complaint }));
   }, [allowedProcessedData, targetYears]);
 
-  // 사업부별 연도별 집계 데이터 생성 (최근 3년만 표시 및 qtyDefect 합계)
+  // 사업부별 연도별 집계 데이터 생성 (최근 3년, 하드코딩 데이터 통합)
   const buYearlyStats = useMemo(() => {
     const stats = {};
-    FIXED_UNITS_ORDER.forEach(bu => {
+    TREND_UNITS.forEach(bu => {
       stats[bu] = {};
-      targetYears.forEach(y => stats[bu][y] = { year: y, total: 0, complaint: 0 });
+      targetYears.forEach(y => {
+        stats[bu][y] = { 
+          year: y, 
+          total: HISTORICAL_YEARLY[bu]?.[y]?.total || 0, 
+          complaint: HISTORICAL_YEARLY[bu]?.[y]?.complaint || 0 
+        };
+      });
     });
 
     allowedProcessedData.forEach(item => {
       let unit = item.businessUnit || '미분류';
-      
-      if (stats[unit]) {
+      if (TREND_UNITS.includes(unit)) {
         const year = getYearFromDate(item.receiptDate);
-        if (year && stats[unit][year]) {
+        if (year && stats[unit][year] && !HISTORICAL_YEARLY[unit]?.[year]) {
           const qty = Number(item.qtyDefect) || 1;
           stats[unit][year].total += qty;
           if (item.claimType === '고객불만') {
@@ -843,6 +865,48 @@ export default function App() {
     });
   }, [allowedProcessedData]);
 
+  // 원인 분석 및 처리 내역 요약 (생산 관련 통합)
+  const groupedCauseStats = useMemo(() => {
+    const normalStats = {};
+    const complaintStats = {};
+
+    const groups = ['설치조건', '취급부주의', '품질보증기간', '영업 검토 미흡', '설계 미흡', '생산 불량', '품질 검사 미흡', '공급자 불량', '운송 중 충격', '원인분석 불가', '정상', '연구 및 개선', '기타'];
+    groups.forEach(g => {
+      normalStats[g] = 0;
+      complaintStats[g] = 0;
+    });
+
+    allowedProcessedData.forEach(item => {
+      if (Array.isArray(item.causeAnalysisTypes)) {
+        item.causeAnalysisTypes.forEach(causeId => {
+          const group = getCauseGroup(causeId);
+          const qty = Number(item.qtyDefect) || 1;
+          if (item.claimType === '고객불만') {
+             complaintStats[group] += qty;
+          } else {
+             normalStats[group] += qty;
+          }
+        });
+      }
+    });
+
+    const formatChartData = (statsObj) => {
+      return Object.entries(statsObj)
+        .filter(([_, value]) => value > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([label, value], idx) => ({
+          label,
+          value,
+          color: CHART_COLORS[idx % CHART_COLORS.length]
+        }));
+    };
+
+    return {
+      normalData: formatChartData(normalStats),
+      complaintData: formatChartData(complaintStats)
+    };
+  }, [allowedProcessedData]);
+
   const causeAndProcessStats = useMemo(() => {
     const stats = {};
     FIXED_UNITS_ORDER.forEach(bu => {
@@ -883,7 +947,7 @@ export default function App() {
 
   const dynamicUnits = Array.from(new Set(processedData.map(d => d.businessUnit).filter(Boolean)));
   const otherUnits = dynamicUnits.filter(unit => !FIXED_UNITS_ORDER.includes(unit));
-  
+
   const isQM = currentUserRole?.name === '품질경영팀';
 
   const allBusinessUnits = isQM 
@@ -2222,40 +2286,84 @@ export default function App() {
             )}
 
             {dashboardTab === '유형별 분석' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {causeAndProcessStats.map(buStat => (
-                  <div key={buStat.unit} id={`cause-chart-${buStat.unit}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
-                    <h3 className="text-lg font-bold text-gray-900 mb-4 text-center border-b border-gray-100 pb-4">
-                      {buStat.unit} 상세 집계
-                    </h3>
-                    
-                    <div className="space-y-6 flex-1 relative z-0">
-                      <div>
-                        <div className="text-sm font-bold text-gray-700 bg-gray-50 px-3 py-2 rounded-md mb-3">원인 분석 (상위 항목)</div>
-                        <HorizontalBarChart data={buStat.causesArr} color="bg-indigo-500" />
-                      </div>
-                      
-                      <div className="pt-4 border-t border-gray-100">
-                        <div className="text-sm font-bold text-gray-700 bg-gray-50 px-3 py-2 rounded-md mb-3">처리 내역</div>
-                        <HorizontalBarChart data={buStat.processesArr} color="bg-teal-500" />
+              <div className="space-y-6">
+                
+                <div id="grouped-cause-chart" className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
+                  <h3 className="text-lg font-bold text-gray-900 mb-6 text-center border-b border-gray-100 pb-4">
+                    전체 원인 분석 요약 (생산 불량 통합)
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="flex flex-col items-center">
+                      <h4 className="text-sm font-bold text-gray-700 mb-6 bg-gray-50 px-4 py-2 rounded-md w-full text-center">일반 A/S 원인 분석</h4>
+                      <MultiDonutChart data={groupedCauseStats.normalData} size={200} strokeWidth={28} />
+                      <div className="w-full mt-6 grid grid-cols-2 gap-x-4 gap-y-2 text-xs px-4">
+                        {groupedCauseStats.normalData.map(d => (
+                          <div key={d.label} className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{backgroundColor: d.color}}></span>
+                              <span className="text-gray-600 truncate" title={d.label}>{d.label}</span>
+                            </div>
+                            <span className="font-bold text-gray-900">{d.value}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                    <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
-                      <Copy className="w-4 h-4" />
-                    </button>
+                    <div className="flex flex-col items-center">
+                      <h4 className="text-sm font-bold text-red-700 mb-6 bg-red-50 px-4 py-2 rounded-md w-full text-center">고객불만 원인 분석</h4>
+                      <MultiDonutChart data={groupedCauseStats.complaintData} size={200} strokeWidth={28} />
+                      <div className="w-full mt-6 grid grid-cols-2 gap-x-4 gap-y-2 text-xs px-4">
+                        {groupedCauseStats.complaintData.map(d => (
+                          <div key={d.label} className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{backgroundColor: d.color}}></span>
+                              <span className="text-gray-600 truncate" title={d.label}>{d.label}</span>
+                            </div>
+                            <span className="font-bold text-gray-900">{d.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                ))}
-                {causeAndProcessStats.length === 0 && (
-                  <div className="col-span-full py-12 text-center text-gray-500 bg-white rounded-xl border border-gray-200">
-                    분석할 데이터가 없습니다. 원인 분석 및 처리 내역을 입력해주세요.
-                  </div>
-                )}
+                  <button onClick={() => handleCopyChart('grouped-cause-chart')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {causeAndProcessStats.map(buStat => (
+                    <div key={buStat.unit} id={`cause-chart-${buStat.unit}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
+                      <h3 className="text-lg font-bold text-gray-900 mb-4 text-center border-b border-gray-100 pb-4">
+                        {buStat.unit} 상세 집계
+                      </h3>
+                      
+                      <div className="space-y-6 flex-1 relative z-0">
+                        <div>
+                          <div className="text-sm font-bold text-gray-700 bg-gray-50 px-3 py-2 rounded-md mb-3">원인 분석 (상위 항목)</div>
+                          <HorizontalBarChart data={buStat.causesArr} color="bg-indigo-500" />
+                        </div>
+                        
+                        <div className="pt-4 border-t border-gray-100">
+                          <div className="text-sm font-bold text-gray-700 bg-gray-50 px-3 py-2 rounded-md mb-3">처리 내역</div>
+                          <HorizontalBarChart data={buStat.processesArr} color="bg-teal-500" />
+                        </div>
+                      </div>
+                      <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                        <Copy className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  {causeAndProcessStats.length === 0 && (
+                    <div className="col-span-full py-12 text-center text-gray-500 bg-white rounded-xl border border-gray-200">
+                      분석할 데이터가 없습니다. 원인 분석 및 처리 내역을 입력해주세요.
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
             {dashboardTab === '년도별 현황' && (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {FIXED_UNITS_ORDER.map(bu => {
+                {TREND_UNITS.map(bu => {
                   const unitData = buYearlyStats[bu] || [];
                   return (
                     <div key={bu} id={`yearly-chart-${bu}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
@@ -2611,7 +2719,7 @@ export default function App() {
                 <FormGroup label="원인 분석">
                   <textarea name="causeAnalysis" value={formData.causeAnalysis} onChange={handleFormChange} className="form-input h-20" />
                   
-                  {['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (() => {
+                  {isQM && ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (() => {
                     const config = getCauseTableConfig(formData.businessUnit);
                     return (
                       <div className="mt-3 overflow-x-auto">
@@ -2662,7 +2770,7 @@ export default function App() {
                 <FormGroup label="처리 내역 및 대책">
                   <textarea name="processDetails" value={formData.processDetails} onChange={handleFormChange} className="form-input h-24" />
                   
-                  {['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (
+                  {isQM && ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (
                     <div className="mt-3 overflow-x-auto">
                       <table className="w-full text-[11px] text-center border-collapse border border-gray-300 max-w-[400px]">
                         <thead>
