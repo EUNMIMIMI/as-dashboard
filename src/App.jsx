@@ -31,7 +31,6 @@ const firebaseConfig = isCanvasEnv
       appId: import.meta.env.VITE_FIREBASE_APP_ID
     };
 
-
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -549,6 +548,32 @@ const ModelHorizontalBarChart = ({ data }) => {
       ))}
     </div>
   );
+};
+
+const getModelGroup = (bu, modelName, ptBoardType) => {
+  if (bu === 'PT') return ptBoardType === 'ZMDI' ? 'ZMDI' : 'N';
+  if (!modelName) return bu === 'PMD' ? 'ACC' : '기타';
+  const upperModel = modelName.toUpperCase().trim();
+  
+  if (bu === 'PMD') {
+    const match = upperModel.match(/^P(\d+)/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      const rounded = Math.floor(num / 100) * 100;
+      return `P${rounded}`;
+    }
+    return 'ACC';
+  }
+  
+  const match = upperModel.match(/^([A-Z]+-?)(\d+)/);
+  if (match) {
+    const prefix = match[1];
+    const num = parseInt(match[2], 10);
+    const rounded = Math.floor(num / 100) * 100;
+    return `${prefix}${rounded}`;
+  }
+  
+  return upperModel;
 };
 
 export default function App() {
@@ -2493,6 +2518,65 @@ export default function App() {
                 </tbody>
               </table>
             </div>
+
+            {/* 페이지네이션 컨트롤 바 */}
+            {filteredData.length > 0 && (
+              <div className="px-6 py-4 flex items-center justify-between border-t border-gray-200 bg-white">
+                <div className="text-sm text-gray-700">
+                  총 <span className="font-bold text-gray-900">{filteredData.length}</span>건 중 
+                  <span className="font-medium ml-1">{(currentPage - 1) * itemsPerPage + 1}</span> - 
+                  <span className="font-medium mr-1">{Math.min(currentPage * itemsPerPage, filteredData.length)}</span> 표시
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    이전
+                  </button>
+                  <div className="flex gap-1 overflow-x-auto max-w-[200px] md:max-w-none hide-scrollbar">
+                    {currentBlock > 1 && (
+                      <button
+                        onClick={() => setCurrentPage(startPage - 1)}
+                        className="px-2 py-1.5 text-gray-500 hover:text-gray-700 bg-white font-bold"
+                      >
+                        ...
+                      </button>
+                    )}
+                    {visiblePages.map(page => (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`px-3 py-1.5 border rounded-md text-sm font-medium ${
+                          currentPage === page
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                    {endPage < totalPages && (
+                      <button
+                        onClick={() => setCurrentPage(endPage + 1)}
+                        className="px-2 py-1.5 text-gray-500 hover:text-gray-700 bg-white font-bold"
+                      >
+                        ...
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    다음
+                  </button>
+                </div>
+              </div>
+            )}
+
           </div>
 
         )}
