@@ -641,6 +641,14 @@ export default function App() {
 
   const isQM = currentUserRole?.name === '품질경영팀';
 
+  const todayStr = useMemo(() => {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }, []);
+
   const handleLogin = (e) => {
     e.preventDefault();
     const role = ACCESS_ROLES[loginPassword];
@@ -2884,13 +2892,13 @@ export default function App() {
               {/* 달력 선택 폼 (접수일, 납기일, 완료일) */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-gray-100 pb-4">
                 <FormGroup label="접수일자 (클릭 시 달력)">
-                  <input type="date" name="receiptDate" value={formatForDateInput(formData.receiptDate)} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} />
+                  <input type="date" name="receiptDate" value={formatForDateInput(formData.receiptDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} />
                 </FormGroup>
                 <FormGroup label="납기요구일 (자동 5영업일 계산)">
                   <input type="date" name="reqDeliveryDate" value={formatForDateInput(formData.reqDeliveryDate)} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} />
                 </FormGroup>
                 <FormGroup label="처리완료일">
-                  <input type="date" name="processDate" value={formatForDateInput(formData.processDate)} onChange={handleFormChange} className="form-input cursor-pointer" />
+                  <input type="date" name="processDate" value={formatForDateInput(formData.processDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" />
                 </FormGroup>
               </div>
 
@@ -2911,7 +2919,7 @@ export default function App() {
                   <input type="number" name="qtyDefect" value={formData.qtyDefect} onChange={handleFormChange} className="form-input" min="1" />
                 </FormGroup>
                 <FormGroup label="출고일자 (달력 선택)">
-                  <input type="date" name="releaseDate" value={formatForDateInput(formData.releaseDate)} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} />
+                  <input type="date" name="releaseDate" value={formatForDateInput(formData.releaseDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} />
                 </FormGroup>
                 <FormGroup label="기존수주번호">
                   <input type="text" name="originalOrderNumber" value={formData.originalOrderNumber} onChange={handleFormChange} className="form-input" disabled={!isQM} />
