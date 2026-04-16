@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Search, Filter, X, FileText, Calendar, CheckCircle2, Clock, AlertCircle, 
-  Download, Upload, FileCode, Plus, Edit, Trash2, Save, BarChart3, PieChart, Layers, Lock, LogOut, RotateCcw, FileSpreadsheet, TrendingUp, Copy, LineChart
+  Download, Upload, FileCode, Plus, Edit, Trash2, Save, BarChart3, PieChart, Layers, Lock, LogOut, RotateCcw, FileSpreadsheet, TrendingUp, Copy, LineChart, CheckCircle, Wrench, Archive
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
@@ -240,7 +240,18 @@ const addBusinessDays = (dateStr, days) => {
 };
 
 const FIXED_UNITS_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'];
+const STATUS_STEPS = ['접수 대기', '접수 완료', '견적 승인 대기', '수리 중', '수리 완료', '종결'];
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6', '#84cc16', '#a855f7'];
+
+const DASHBOARD_CONFIG = [
+  { status: '전체', label: '전체', icon: Layers, hex: '#D9D5D2' },
+  { status: '접수 대기', label: '접수 대기', icon: AlertCircle, hex: '#F886A8' },
+  { status: '접수 완료', label: '접수 완료', icon: CheckCircle2, hex: '#FE8D6F' },
+  { status: '견적 승인 대기', label: '견적 대기', icon: FileText, hex: '#FDC453' },
+  { status: '수리 중', label: '수리 진행 중', icon: Wrench, hex: '#DFDD6C' },
+  { status: '수리 완료', label: '수리 완료', icon: CheckCircle, hex: '#A0DDE0' },
+  { status: '종결', label: '최종 종결', icon: Archive, hex: '#9ADBC5' }
+];
 
 const generateNextAsNumber = (currentData) => {
   const currentYear = new Date().getFullYear().toString().slice(-2);
@@ -589,6 +600,8 @@ export default function App() {
   const [modelChartType, setModelChartType] = useState({}); 
   const [buChartType, setBuChartType] = useState({}); 
   const [yearlyTabChartType, setYearlyTabChartType] = useState({}); 
+  const [selectedDashboardStatus, setSelectedDashboardStatus] = useState(null);
+  
   const [user, setUser] = useState(null);
   const [isSeeded, setIsSeeded] = useState(false);
   
@@ -636,16 +649,25 @@ export default function App() {
     setIsCapsLockOn(false);
   };
 
+  const isQM = currentUserRole?.name === '품질경영팀';
+
   useEffect(() => {
     if (currentUserRole) {
-      const isQMUser = currentUserRole.name === '품질경영팀';
-      if (!isQMUser && (activeTab === '휴지통' || activeTab === '보고서' || activeTab === '집계')) {
+      if (!isQM && (activeTab === '휴지통' || activeTab === '보고서' || activeTab === '집계')) {
         setActiveTab(currentUserRole.tabs[0]);
       } else if (currentUserRole.tabs !== 'ALL' && !currentUserRole.tabs.includes(activeTab)) {
         setActiveTab(currentUserRole.tabs[0]);
       }
     }
-  }, [currentUserRole, activeTab]);
+  }, [currentUserRole, activeTab, isQM]);
+
+  useEffect(() => {
+    if (isQM) {
+      setSelectedDashboardStatus('all');
+    } else {
+      setSelectedDashboardStatus(null);
+    }
+  }, [activeTab, isQM]);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -974,8 +996,6 @@ export default function App() {
   const dynamicUnits = Array.from(new Set(processedData.map(d => d.businessUnit).filter(Boolean)));
   const otherUnits = dynamicUnits.filter(unit => !FIXED_UNITS_ORDER.includes(unit));
 
-  const isQM = currentUserRole?.name === '품질경영팀';
-
   const allBusinessUnits = isQM 
     ? ['전체', ...FIXED_UNITS_ORDER, ...otherUnits, '미입력', '집계']
     : ['전체', ...FIXED_UNITS_ORDER, ...otherUnits, '미입력'];
@@ -1008,6 +1028,15 @@ export default function App() {
   const filteredData = useMemo(() => {
     return tabFilteredData.filter(item => {
       if (activeTab === '집계') return true; 
+      
+      // 대시보드 상태 필터 적용
+      if (activeTab !== '보고서' && activeTab !== '휴지통' && activeTab !== '전체' && activeTab !== '미입력') {
+         if (selectedDashboardStatus !== 'all' && selectedDashboardStatus !== null) {
+            const status = item.currentStatus || '접수 대기';
+            if (status !== selectedDashboardStatus) return false;
+         }
+      }
+
       if (filterCompliance !== 'all' && item.complianceStatus !== filterCompliance) return false;
       if (filterAgency !== 'all' && item.agencyName !== filterAgency) return false;
       if (filterModel !== 'all' && item.model !== filterModel) return false;
@@ -1044,15 +1073,25 @@ export default function App() {
       }
       return true;
     });
-  }, [tabFilteredData, activeTab, filterCompliance, filterAgency, filterModel, filterPtBoard, filterExcludeReport, searchQuery]);
+  }, [tabFilteredData, activeTab, filterCompliance, filterAgency, filterModel, filterPtBoard, filterExcludeReport, searchQuery, selectedDashboardStatus]);
 
-  const renderStatusBadge = (status) => {
-    switch (status) {
-      case '준수': return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800"><CheckCircle2 className="w-3 h-3 mr-1" />준수</span>;
-      case '지연': return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800"><AlertCircle className="w-3 h-3 mr-1" />지연</span>;
-      case '미완료': return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-100 text-yellow-800"><Clock className="w-3 h-3 mr-1" />처리중</span>;
-      default: return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-800">알수없음</span>;
+  const renderStatusBadge = (row) => {
+    const status = row.currentStatus || '접수 대기';
+    
+    if (status === '종결') {
+      if (row.complianceStatus === '준수') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-800"><CheckCircle2 className="w-3 h-3 mr-1" />준수 (종결)</span>;
+      if (row.complianceStatus === '지연') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800"><AlertCircle className="w-3 h-3 mr-1" />지연 (종결)</span>;
+      return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-200 text-gray-800"><CheckCircle className="w-3 h-3 mr-1" />종결</span>;
     }
+
+    let colorClass = 'bg-gray-100 text-gray-600';
+    if (status === '접수 대기') colorClass = 'bg-yellow-100 text-yellow-800';
+    else if (status === '접수 완료') colorClass = 'bg-blue-100 text-blue-800';
+    else if (status === '견적 승인 대기') colorClass = 'bg-purple-100 text-purple-800';
+    else if (status === '수리 중') colorClass = 'bg-orange-100 text-orange-800';
+    else if (status === '수리 완료') colorClass = 'bg-teal-100 text-teal-800';
+    
+    return <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${colorClass}`}><Clock className="w-3 h-3 mr-1" />{status}</span>;
   };
 
   const handleOpenForm = (record = null) => {
@@ -1076,7 +1115,8 @@ export default function App() {
         defectContent: '', causeAnalysis: '', processDetails: '',
         processType: '견적 후 착수', cost: '', ptBoardType: 'N',
         claimType: '일반 A/S', repairMethod: '처리중',
-        causeAnalysisTypes: [], processDetailType: ''
+        causeAnalysisTypes: [], processDetailType: '',
+        currentStatus: '접수 대기'
       });
     }
     setIsFormOpen(true);
@@ -1343,6 +1383,7 @@ export default function App() {
             ptBoardType: ptBoard,
             causeAnalysisTypes: [],
             processDetailType: '',
+            currentStatus: '접수 대기',
             deletedAt: null 
           });
         }
@@ -1408,7 +1449,7 @@ export default function App() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, filterCompliance, filterAgency, filterModel, filterPtBoard, filterExcludeReport, searchQuery]);
+  }, [activeTab, filterCompliance, filterAgency, filterModel, filterPtBoard, filterExcludeReport, searchQuery, selectedDashboardStatus]);
 
   const totalPages = Math.ceil(filteredData.length / itemsPerPage) || 1;
   const paginatedData = useMemo(() => {
@@ -1926,6 +1967,63 @@ export default function App() {
           </div>
         </header>
 
+        {/* 상단 단독 대시보드 영역 */}
+        {activeTab !== '집계' && activeTab !== '휴지통' && activeTab !== '보고서' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 md:p-6">
+            {isQM && selectedDashboardStatus !== 'all' && selectedDashboardStatus !== null && (
+              <div className="flex justify-end mb-4">
+                <button onClick={() => setSelectedDashboardStatus('all')} className="text-sm text-blue-600 font-bold hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors flex items-center">
+                  <RotateCcw className="w-4 h-4 mr-1.5" /> 필터 해제 (전체 보기)
+                </button>
+              </div>
+            )}
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 md:gap-4">
+              {DASHBOARD_CONFIG.map(config => {
+                const isTotal = config.status === '전체';
+                const count = isTotal 
+                  ? tabFilteredData.length 
+                  : tabFilteredData.filter(d => (d.currentStatus || '접수 대기') === config.status).length;
+                const isSelected = selectedDashboardStatus === config.status;
+                const hexColor = config.hex;
+                
+                return (
+                  <div 
+                    key={config.status}
+                    onClick={isTotal ? undefined : () => setSelectedDashboardStatus(isSelected && isQM ? 'all' : config.status)}
+                    className={`relative p-3 md:p-4 rounded-xl flex items-center gap-3 transition-all duration-200 bg-white ${!isTotal ? 'cursor-pointer' : ''}`}
+                    style={{
+                      borderWidth: '2px',
+                      borderStyle: 'solid',
+                      borderColor: hexColor,
+                      boxShadow: isSelected ? `0 4px 12px ${hexColor}40` : '0 1px 2px rgba(0,0,0,0.05)',
+                      transform: isSelected ? 'scale(1.02)' : 'scale(1)'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isTotal && !isSelected) e.currentTarget.style.boxShadow = `0 4px 12px ${hexColor}20`;
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isTotal && !isSelected) e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
+                    }}
+                  >
+                    <div 
+                      className="w-10 h-10 md:w-12 md:h-12 rounded-lg flex items-center justify-center shrink-0 relative overflow-hidden"
+                    >
+                       <div className="absolute inset-0 opacity-20" style={{ backgroundColor: hexColor }}></div>
+                       <config.icon className="w-5 h-5 md:w-6 md:h-6 relative z-10" style={{ color: hexColor }} />
+                    </div>
+                    <div className="flex flex-col">
+                       <span className="text-[11px] md:text-xs text-gray-500 font-medium mb-0.5">{config.label}</span>
+                       <span className="text-lg md:text-2xl font-black text-gray-900 leading-none tracking-tight">
+                         {count}<span className="text-xs md:text-sm font-bold text-gray-500 ml-0.5">건</span>
+                       </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="border-b border-gray-200 flex justify-between items-center bg-white overflow-x-auto hide-scrollbar">
             <div className="flex">
@@ -1978,85 +2076,95 @@ export default function App() {
 
           {activeTab !== '집계' && activeTab !== '휴지통' && activeTab !== '보고서' && (
             <>
-              {activeTab === 'PT' && (
-                <div className="bg-indigo-50/50 px-6 py-3 border-b border-indigo-100 flex items-center gap-4">
-                  <span className="text-sm font-semibold text-indigo-800">PT 보드 필터:</span>
-                  <div className="flex bg-white rounded-lg shadow-sm border border-indigo-200 p-1">
-                    {['all', 'ZMDI', 'N'].map(board => (
-                      <button
-                        key={board}
-                        onClick={() => setFilterPtBoard(board)}
-                        className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${
-                          filterPtBoard === board ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-                        }`}
-                      >
-                        {board === 'all' ? '전체 보기' : board}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* 하위 테이블 렌더링 조건부 처리 (isQM 또는 필터가 선택된 경우만 표시) */}
+              {(isQM || selectedDashboardStatus !== null) ? (
+                <>
+                  {activeTab === 'PT' && (
+                    <div className="bg-indigo-50/50 px-6 py-3 border-b border-indigo-100 flex items-center gap-4">
+                      <span className="text-sm font-semibold text-indigo-800">PT 보드 필터:</span>
+                      <div className="flex bg-white rounded-lg shadow-sm border border-indigo-200 p-1">
+                        {['all', 'ZMDI', 'N'].map(board => (
+                          <button
+                            key={board}
+                            onClick={() => setFilterPtBoard(board)}
+                            className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${
+                              filterPtBoard === board ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+                            }`}
+                          >
+                            {board === 'all' ? '전체 보기' : board}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
-              <div className="p-4 bg-gray-50/50 flex flex-wrap gap-4 items-center">
-                <div className="flex items-center text-sm font-medium text-gray-700 mr-2">
-                  <Filter className="w-4 h-4 mr-2" /> 상세 필터
-                </div>
-                <div className="flex items-center space-x-2">
-                  <label className="text-sm text-gray-600">상태:</label>
-                  <select value={filterCompliance} onChange={(e) => setFilterCompliance(e.target.value)} className="text-sm border border-gray-300 rounded-md shadow-sm py-1.5 px-3">
-                    <option value="all">전체</option>
-                    <option value="준수">준수</option>
-                    <option value="지연">지연</option>
-                    <option value="미완료">처리중</option>
-                  </select>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <label className="text-sm text-gray-600">대리점:</label>
-                  <select value={filterAgency} onChange={(e) => setFilterAgency(e.target.value)} className="text-sm border border-gray-300 rounded-md shadow-sm py-1.5 px-3 max-w-[150px]">
-                    <option value="all">전체 대리점</option>
-                    {agencies.filter(a => a !== 'all').map(agency => <option key={agency} value={agency}>{agency}</option>)}
-                  </select>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <label className="text-sm text-gray-600">모델명:</label>
-                  <select value={filterModel} onChange={(e) => setFilterModel(e.target.value)} className="text-sm border border-gray-300 rounded-md shadow-sm py-1.5 px-3 max-w-[150px]">
-                    <option value="all">전체 모델</option>
-                    {models.filter(m => m !== 'all').map(model => <option key={model} value={model}>{model}</option>)}
-                  </select>
-                </div>
+                  <div className="p-4 bg-gray-50/50 flex flex-wrap gap-4 items-center border-b border-gray-200">
+                    <div className="flex items-center text-sm font-medium text-gray-700 mr-2">
+                      <Filter className="w-4 h-4 mr-2" /> 상세 필터
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <label className="text-sm text-gray-600">준수 상태:</label>
+                      <select value={filterCompliance} onChange={(e) => setFilterCompliance(e.target.value)} className="text-sm border border-gray-300 rounded-md shadow-sm py-1.5 px-3">
+                        <option value="all">전체</option>
+                        <option value="준수">준수</option>
+                        <option value="지연">지연</option>
+                        <option value="미완료">처리중</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <label className="text-sm text-gray-600">대리점:</label>
+                      <select value={filterAgency} onChange={(e) => setFilterAgency(e.target.value)} className="text-sm border border-gray-300 rounded-md shadow-sm py-1.5 px-3 max-w-[150px]">
+                        <option value="all">전체 대리점</option>
+                        {agencies.filter(a => a !== 'all').map(agency => <option key={agency} value={agency}>{agency}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <label className="text-sm text-gray-600">모델명:</label>
+                      <select value={filterModel} onChange={(e) => setFilterModel(e.target.value)} className="text-sm border border-gray-300 rounded-md shadow-sm py-1.5 px-3 max-w-[150px]">
+                        <option value="all">전체 모델</option>
+                        {models.filter(m => m !== 'all').map(model => <option key={model} value={model}>{model}</option>)}
+                      </select>
+                    </div>
 
-                {activeTab === 'PT' && (
-                  <div className="flex items-center space-x-3 border-l border-gray-300 pl-4 ml-2">
-                    <label className="text-sm text-gray-600 font-medium">성적서발행:</label>
-                    <div className="flex items-center gap-3">
-                      <label className="flex items-center gap-1 cursor-pointer">
-                        <input type="radio" value="all" checked={filterExcludeReport === 'all'} onChange={(e) => setFilterExcludeReport(e.target.value)} className="w-3.5 h-3.5 text-blue-600" />
-                        <span className="text-sm text-gray-700">포함</span>
-                      </label>
-                      <label className="flex items-center gap-1 cursor-pointer">
-                        <input type="radio" value="exclude" checked={filterExcludeReport === 'exclude'} onChange={(e) => setFilterExcludeReport(e.target.value)} className="w-3.5 h-3.5 text-red-500" />
-                        <span className="text-sm text-gray-700">제외</span>
-                      </label>
+                    {activeTab === 'PT' && (
+                      <div className="flex items-center space-x-3 border-l border-gray-300 pl-4 ml-2">
+                        <label className="text-sm text-gray-600 font-medium">성적서발행:</label>
+                        <div className="flex items-center gap-3">
+                          <label className="flex items-center gap-1 cursor-pointer">
+                            <input type="radio" value="all" checked={filterExcludeReport === 'all'} onChange={(e) => setFilterExcludeReport(e.target.value)} className="w-3.5 h-3.5 text-blue-600" />
+                            <span className="text-sm text-gray-700">포함</span>
+                          </label>
+                          <label className="flex items-center gap-1 cursor-pointer">
+                            <input type="radio" value="exclude" checked={filterExcludeReport === 'exclude'} onChange={(e) => setFilterExcludeReport(e.target.value)} className="w-3.5 h-3.5 text-red-500" />
+                            <span className="text-sm text-gray-700">제외</span>
+                          </label>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="relative ml-auto">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Search className="h-4 w-4 text-gray-400" />
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="검색어 입력..."
+                        className="block w-64 pl-10 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                      />
+                    </div>
+                    <div className="text-sm text-gray-500 bg-white px-3 py-1.5 rounded-md border border-gray-200">
+                      총 <span className="font-bold text-gray-900">{filteredData.length}</span>건
                     </div>
                   </div>
-                )}
-
-                <div className="relative ml-auto">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Search className="h-4 w-4 text-gray-400" />
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="검색어 입력..."
-                    className="block w-64 pl-10 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
+                </>
+              ) : (
+                <div className="bg-white p-12 text-center border-b border-gray-200">
+                  <div className="text-gray-400 font-medium mb-2">상단 대시보드에서 상태 항목을 클릭해주세요.</div>
+                  <p className="text-xs text-gray-400">선택된 상태에 해당하는 데이터 목록이 여기에 표시됩니다.</p>
                 </div>
-                <div className="text-sm text-gray-500 bg-white px-3 py-1.5 rounded-md border border-gray-200">
-                  총 <span className="font-bold text-gray-900">{filteredData.length}</span>건
-                </div>
-              </div>
+              )}
             </>
           )}
         </div>
@@ -2425,158 +2533,102 @@ export default function App() {
         ) : (
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">사업부</th>
-                    <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">상태</th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">접수번호</th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">수주번호</th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">대리점</th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">업체명</th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">모델명</th>
-                    <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">수량</th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">하자내용</th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">기존 주문정보</th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">처리방식</th>
-                    <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">처리방법</th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">일정</th>
-                    <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">관리</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredData.length > 0 ? (
-                    filteredData.map((row) => (
-                      <tr key={row.id} onClick={() => setSelectedRow(row)} className="hover:bg-blue-50 transition-colors cursor-pointer">
-                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {row.businessUnit}
-                          {row.businessUnit === 'PT' && row.ptBoardType && (
-                            <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-800">
-                              {row.ptBoardType}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-center align-middle">
-                          {renderStatusBadge(row.complianceStatus)}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-blue-600">{row.asNumber}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{row.orderNumber}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{row.agencyName}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{row.companyName}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{row.model}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">{row.qtyDefect}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 max-w-[150px] truncate">
-                          <span className="inline-block px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded mr-1 mb-1">{row.claimType || '일반 A/S'}</span>
-                          <div className="truncate">{row.defectContent || '-'}</div>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex flex-col gap-1 text-xs">
-                            <div className="flex items-center"><span className="text-gray-400 w-8">S/N:</span> <span className="text-gray-900 max-w-[120px] truncate">{row.serialNo || '-'}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-8">출고:</span> <span className="text-gray-900">{row.releaseDate || '-'}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-8">수주:</span> <span className="text-gray-900">{row.originalOrderNumber || '-'}</span></div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{row.processType || '-'}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-right align-middle">
-                          {row.repairMethod === '유상수리' ? (
-                            <div>
-                              <span className="font-medium text-blue-700">{row.repairMethod}</span>
-                              <span className="block text-xs text-gray-500">₩ {row.cost != null && row.cost !== '' ? Number(row.cost).toLocaleString() : '0'}</span>
+            {/* 데이터 테이블 렌더링 영역 (조건부) */}
+            {(isQM || selectedDashboardStatus !== null) && (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">사업부</th>
+                      <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">상태</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">접수번호</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">수주번호</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">대리점</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">업체명</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">모델명</th>
+                      <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">수량</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">하자내용</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">기존 주문정보</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">처리방식</th>
+                      <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">처리방법</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">일정</th>
+                      <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">관리</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredData.length > 0 ? (
+                      filteredData.map((row) => (
+                        <tr key={row.id} onClick={() => setSelectedRow(row)} className="hover:bg-blue-50 transition-colors cursor-pointer">
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {row.businessUnit}
+                            {row.businessUnit === 'PT' && row.ptBoardType && (
+                              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-800">
+                                {row.ptBoardType}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-center align-middle">
+                            {renderStatusBadge(row)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-blue-600">{row.asNumber}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{row.orderNumber}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{row.agencyName}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{row.companyName}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{row.model}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">{row.qtyDefect}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 max-w-[150px] truncate">
+                            <span className="inline-block px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded mr-1 mb-1">{row.claimType || '일반 A/S'}</span>
+                            <div className="truncate">{row.defectContent || '-'}</div>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="flex flex-col gap-1 text-xs">
+                              <div className="flex items-center"><span className="text-gray-400 w-8">S/N:</span> <span className="text-gray-900 max-w-[120px] truncate">{row.serialNo || '-'}</span></div>
+                              <div className="flex items-center"><span className="text-gray-400 w-8">출고:</span> <span className="text-gray-900">{row.releaseDate || '-'}</span></div>
+                              <div className="flex items-center"><span className="text-gray-400 w-8">수주:</span> <span className="text-gray-900">{row.originalOrderNumber || '-'}</span></div>
                             </div>
-                          ) : (
-                            <span className="font-medium text-gray-700">{row.repairMethod || '-'}</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex flex-col gap-1 text-xs">
-                            <div className="flex items-center"><span className="text-gray-400 w-8">접수:</span> <span className="text-gray-900">{row.receiptDate}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-8">요구:</span> <span className="text-red-500">{row.reqDeliveryDate}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-8">납기:</span> <span className="text-gray-900">{row.processDate || '-'}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-8">소요:</span> <span className="text-gray-900">{row.duration}</span></div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-center align-middle">
-                          <div className="flex items-center justify-center gap-1">
-                            <button onClick={(e) => { e.stopPropagation(); handleOpenForm(row); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="수정">
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="삭제">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{row.processType || '-'}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-right align-middle">
+                            {row.repairMethod === '유상수리' ? (
+                              <div>
+                                <span className="font-medium text-blue-700">{row.repairMethod}</span>
+                                <span className="block text-xs text-gray-500">₩ {row.cost != null && row.cost !== '' ? Number(row.cost).toLocaleString() : '0'}</span>
+                              </div>
+                            ) : (
+                              <span className="font-medium text-gray-700">{row.repairMethod || '-'}</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="flex flex-col gap-1 text-xs">
+                              <div className="flex items-center"><span className="text-gray-400 w-8">접수:</span> <span className="text-gray-900">{row.receiptDate}</span></div>
+                              <div className="flex items-center"><span className="text-gray-400 w-8">요구:</span> <span className="text-red-500">{row.reqDeliveryDate}</span></div>
+                              <div className="flex items-center"><span className="text-gray-400 w-8">납기:</span> <span className="text-gray-900">{row.processDate || '-'}</span></div>
+                              <div className="flex items-center"><span className="text-gray-400 w-8">소요:</span> <span className="text-gray-900">{row.duration}</span></div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-center align-middle">
+                            <div className="flex items-center justify-center gap-1">
+                              <button onClick={(e) => { e.stopPropagation(); handleOpenForm(row); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="수정">
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="삭제">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="14" className="px-6 py-12 text-center text-gray-500">
+                          조건에 맞는 데이터가 없습니다. 필터를 변경해보세요.
                         </td>
                       </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan="14" className="px-6 py-12 text-center text-gray-500">
-                        조건에 맞는 데이터가 없습니다. 필터를 변경해보세요.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* 페이지네이션 컨트롤 바 */}
-            {filteredData.length > 0 && (
-              <div className="px-6 py-4 flex items-center justify-between border-t border-gray-200 bg-white">
-                <div className="text-sm text-gray-700">
-                  총 <span className="font-bold text-gray-900">{filteredData.length}</span>건 중 
-                  <span className="font-medium ml-1">{(currentPage - 1) * itemsPerPage + 1}</span> - 
-                  <span className="font-medium mr-1">{Math.min(currentPage * itemsPerPage, filteredData.length)}</span> 표시
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    이전
-                  </button>
-                  <div className="flex gap-1 overflow-x-auto max-w-[200px] md:max-w-none hide-scrollbar">
-                    {currentBlock > 1 && (
-                      <button
-                        onClick={() => setCurrentPage(startPage - 1)}
-                        className="px-2 py-1.5 text-gray-500 hover:text-gray-700 bg-white font-bold"
-                      >
-                        ...
-                      </button>
                     )}
-                    {visiblePages.map(page => (
-                      <button
-                        key={page}
-                        onClick={() => setCurrentPage(page)}
-                        className={`px-3 py-1.5 border rounded-md text-sm font-medium ${
-                          currentPage === page
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
-                        }`}
-                      >
-                        {page}
-                      </button>
-                    ))}
-                    {endPage < totalPages && (
-                      <button
-                        onClick={() => setCurrentPage(endPage + 1)}
-                        className="px-2 py-1.5 text-gray-500 hover:text-gray-700 bg-white font-bold"
-                      >
-                        ...
-                      </button>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    다음
-                  </button>
-                </div>
+                  </tbody>
+                </table>
               </div>
             )}
-
           </div>
 
         )}
@@ -2599,7 +2651,7 @@ export default function App() {
                 <div>
                   <div className="text-sm text-gray-500 mb-1">현재 상태</div>
                   <div className="flex items-center gap-3">
-                    {renderStatusBadge(selectedRow.complianceStatus)}
+                    {renderStatusBadge(selectedRow)}
                     <span className="text-sm font-medium text-gray-900">{selectedRow.processType || '미처리'}</span>
                   </div>
                 </div>
@@ -2697,6 +2749,47 @@ export default function App() {
 
             <form onSubmit={handleFormSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
               
+              {/* 진행 상태 변경 버튼 그룹 */}
+              <div className="mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                <label className="block text-sm font-bold text-gray-700 mb-3">진행 상태 변경</label>
+                <div className="flex flex-wrap gap-2">
+                  {STATUS_STEPS.map(status => {
+                    const config = DASHBOARD_CONFIG.find(c => c.status === status);
+                    const hexColor = config ? config.hex : '#3b82f6';
+                    const isSelected = formData.currentStatus === status;
+                    return (
+                      <button
+                        type="button"
+                        key={status}
+                        onClick={() => {
+                          setFormData(prev => {
+                            const newData = { ...prev, currentStatus: status };
+                            if (status === '종결' && !newData.processDate) {
+                              const today = new Date();
+                              const yy = String(today.getFullYear()).slice(-2);
+                              const mm = String(today.getMonth() + 1).padStart(2, '0');
+                              const dd = String(today.getDate()).padStart(2, '0');
+                              newData.processDate = `${yy}.${mm}.${dd}`;
+                            }
+                            return newData;
+                          });
+                        }}
+                        className="px-4 py-2 text-sm font-bold rounded-lg transition-all border"
+                        style={{
+                          backgroundColor: isSelected ? hexColor : '#ffffff',
+                          color: isSelected ? '#ffffff' : '#4b5563',
+                          borderColor: isSelected ? hexColor : '#d1d5db',
+                          boxShadow: isSelected ? `0 4px 10px ${hexColor}50` : 'none',
+                          textShadow: isSelected ? '0 1px 2px rgba(0,0,0,0.2)' : 'none'
+                        }}
+                      >
+                        {status}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
               {formData.businessUnit === 'PT' && (
                 <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex items-center gap-6">
                   <label className="block text-sm font-bold text-indigo-900">PT 보드 구분 선택</label>
