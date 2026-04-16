@@ -279,6 +279,15 @@ const isIncomplete = (item) => {
   });
 };
 
+const getUniqueCount = (dataList, statusFilter) => {
+  let filtered = dataList;
+  if (statusFilter !== '전체') {
+    filtered = dataList.filter(d => (d.currentStatus || '접수 대기') === statusFilter);
+  }
+  const uniqueAsNumbers = new Set(filtered.map(d => d.asNumber).filter(Boolean));
+  return uniqueAsNumbers.size;
+};
+
 const MultiDonutChart = ({ data, size = 160, strokeWidth = 24 }) => {
   const total = data.reduce((acc, item) => acc + item.value, 0);
   const radius = 50 - strokeWidth / 2;
@@ -600,7 +609,7 @@ export default function App() {
   const [modelChartType, setModelChartType] = useState({}); 
   const [buChartType, setBuChartType] = useState({}); 
   const [yearlyTabChartType, setYearlyTabChartType] = useState({}); 
-  const [selectedDashboardStatus, setSelectedDashboardStatus] = useState(null);
+  const [selectedDashboardStatus, setSelectedDashboardStatus] = useState('all');
   
   const [user, setUser] = useState(null);
   const [isSeeded, setIsSeeded] = useState(false);
@@ -662,12 +671,8 @@ export default function App() {
   }, [currentUserRole, activeTab, isQM]);
 
   useEffect(() => {
-    if (isQM) {
-      setSelectedDashboardStatus('all');
-    } else {
-      setSelectedDashboardStatus(null);
-    }
-  }, [activeTab, isQM]);
+    setSelectedDashboardStatus('all');
+  }, [activeTab]);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -1029,12 +1034,10 @@ export default function App() {
     return tabFilteredData.filter(item => {
       if (activeTab === '집계') return true; 
       
-      // 대시보드 상태 필터 적용
-      if (activeTab !== '보고서' && activeTab !== '휴지통' && activeTab !== '전체' && activeTab !== '미입력') {
-         if (selectedDashboardStatus !== 'all' && selectedDashboardStatus !== null) {
-            const status = item.currentStatus || '접수 대기';
-            if (status !== selectedDashboardStatus) return false;
-         }
+      // 대시보드 상태 필터 적용 (전체(all) 선택 시 모든 데이터 표시)
+      if (selectedDashboardStatus !== 'all' && selectedDashboardStatus !== null) {
+         const status = item.currentStatus || '접수 대기';
+         if (status !== selectedDashboardStatus) return false;
       }
 
       if (filterCompliance !== 'all' && item.complianceStatus !== filterCompliance) return false;
@@ -1077,27 +1080,26 @@ export default function App() {
 
   const renderStatusBadge = (row) => {
     const status = row.currentStatus || '접수 대기';
+    const config = DASHBOARD_CONFIG.find(c => c.status === status);
+    const hexColor = config ? config.hex : '#D9D5D2';
     
+    const badgeStyle = { backgroundColor: hexColor, color: '#fff', textShadow: '0 1px 1px rgba(0,0,0,0.2)' };
+    const delayedStyle = { backgroundColor: '#ef4444', color: '#fff', textShadow: '0 1px 1px rgba(0,0,0,0.2)' };
+
     if (status === '종결') {
-      if (row.complianceStatus === '준수') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-800"><CheckCircle2 className="w-3 h-3 mr-1" />준수</span>;
-      if (row.complianceStatus === '지연') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800"><AlertCircle className="w-3 h-3 mr-1" />지연</span>;
-      return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-200 text-gray-800"><CheckCircle className="w-3 h-3 mr-1" />종결</span>;
+      if (row.complianceStatus === '준수') return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold shadow-sm" style={badgeStyle}><CheckCircle2 className="w-3.5 h-3.5 mr-1" />준수</span>;
+      if (row.complianceStatus === '지연') return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold shadow-sm" style={delayedStyle}><AlertCircle className="w-3.5 h-3.5 mr-1" />지연</span>;
+      return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold shadow-sm" style={badgeStyle}><Archive className="w-3.5 h-3.5 mr-1" />종결</span>;
     }
 
-    let colorClass = 'bg-gray-100 text-gray-600';
-    if (status === '접수 대기') colorClass = 'bg-yellow-100 text-yellow-800';
-    else if (status === '접수 완료') colorClass = 'bg-blue-100 text-blue-800';
-    else if (status === '견적 승인 대기') colorClass = 'bg-purple-100 text-purple-800';
-    else if (status === '수리 중') colorClass = 'bg-orange-100 text-orange-800';
-    else if (status === '수리 완료') colorClass = 'bg-teal-100 text-teal-800';
-    
-    return <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${colorClass}`}><Clock className="w-3 h-3 mr-1" />{status}</span>;
+    let Icon = config ? config.icon : Clock;
+    return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold shadow-sm" style={badgeStyle}><Icon className="w-3.5 h-3.5 mr-1" />{status}</span>;
   };
 
   const handleOpenForm = (record = null) => {
     if (record) {
       setFormData({ 
-        ptBoardType: 'N', claimType: '일반 A/S', repairMethod: '처리중', 
+        ptBoardType: 'N', claimType: '일반 A/S', repairMethod: '', 
         causeAnalysisTypes: [], processDetailType: '',
         ...record 
       });
@@ -1114,7 +1116,7 @@ export default function App() {
         model: '', qtyDefect: 1, serialNo: '', releaseDate: '',
         defectContent: '', causeAnalysis: '', processDetails: '',
         processType: '견적 후 착수', cost: '', ptBoardType: 'N',
-        claimType: '일반 A/S', repairMethod: '처리중',
+        claimType: '일반 A/S', repairMethod: '',
         causeAnalysisTypes: [], processDetailType: '',
         currentStatus: '접수 대기'
       });
@@ -1311,7 +1313,7 @@ export default function App() {
           else if (cols[17 + offset] && cols[17 + offset].includes('●')) repairMethod = '유상수리';
           else if (cols[18 + offset] && cols[18 + offset].includes('●')) repairMethod = '수리불가';
           else if (cols[19 + offset] && cols[19 + offset].includes('●')) repairMethod = '수리취소';
-          else repairMethod = '처리중';
+          else repairMethod = ''; // 처리중 기본값 제거
 
           let claimType = '일반 A/S'; 
           if (cols[22 + offset] && cols[22 + offset].includes('●')) claimType = '고객불만';
@@ -1346,7 +1348,7 @@ export default function App() {
 
           if (defectContent.includes('성적서 발행') || defectContent.includes('성적서발행')) {
             if (cost === null || cost === 0) cost = qtyDefect * 1000;
-            if (!repairMethod || repairMethod === '처리중') repairMethod = '유상수리';
+            if (!repairMethod || repairMethod === '') repairMethod = '유상수리';
           }
 
           let receiptDate = formatDisplayDate(cols[13 + offset] ? cols[13 + offset].trim() : '');
@@ -1456,12 +1458,6 @@ export default function App() {
     const startIndex = (currentPage - 1) * itemsPerPage;
     return filteredData.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredData, currentPage]);
-
-  const maxVisiblePages = 5;
-  const currentBlock = Math.ceil(currentPage / maxVisiblePages) || 1;
-  const startPage = (currentBlock - 1) * maxVisiblePages + 1;
-  const endPage = Math.min(startPage + maxVisiblePages - 1, totalPages);
-  const visiblePages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
 
   const exportToExcel = async () => {
     try {
@@ -1760,7 +1756,6 @@ export default function App() {
         '유상수리': 'Paid Repair',
         '수리불가': 'Beyond Economical Repair',
         '수리취소': 'Repair Canceled',
-        '처리중': 'In Progress',
         '견적 후 착수': 'Proceed after Quotation',
         '선조치': 'Advance Replacement/Repair',
         '출장': 'On-site Service',
@@ -1970,19 +1965,10 @@ export default function App() {
         {/* 상단 단독 대시보드 영역 */}
         {activeTab !== '집계' && activeTab !== '휴지통' && activeTab !== '보고서' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 md:p-6">
-            {isQM && selectedDashboardStatus !== 'all' && selectedDashboardStatus !== null && (
-              <div className="flex justify-end mb-4">
-                <button onClick={() => setSelectedDashboardStatus('all')} className="text-sm text-blue-600 font-bold hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors flex items-center">
-                  <RotateCcw className="w-4 h-4 mr-1.5" /> 필터 해제 (전체 보기)
-                </button>
-              </div>
-            )}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 md:gap-4">
               {DASHBOARD_CONFIG.map(config => {
                 const isTotal = config.status === '전체';
-                const count = isTotal 
-                  ? tabFilteredData.length 
-                  : tabFilteredData.filter(d => (d.currentStatus || '접수 대기') === config.status).length;
+                const count = getUniqueCount(tabFilteredData, config.status);
                 const isSelected = isTotal ? (selectedDashboardStatus === 'all' || selectedDashboardStatus === null) : selectedDashboardStatus === config.status;
                 const hexColor = config.hex;
                 
@@ -1990,7 +1976,7 @@ export default function App() {
                   <div 
                     key={config.status}
                     onClick={() => setSelectedDashboardStatus(isTotal ? 'all' : config.status)}
-                    className={`relative p-3 md:p-4 rounded-xl flex items-center gap-3 transition-all duration-200 bg-white cursor-pointer`}
+                    className="relative p-3 md:p-4 rounded-xl flex items-center gap-3 transition-all duration-200 bg-white cursor-pointer"
                     style={{
                       borderWidth: '2px',
                       borderStyle: 'solid',
@@ -2108,7 +2094,6 @@ export default function App() {
                         <option value="all">전체</option>
                         <option value="준수">준수</option>
                         <option value="지연">지연</option>
-                        <option value="미완료">처리중</option>
                       </select>
                     </div>
                     <div className="flex items-center space-x-2">
@@ -3048,7 +3033,7 @@ export default function App() {
                 <div className="pt-4 border-t border-gray-100 bg-gray-50 p-4 rounded-xl mt-4">
                   <label className="block text-sm font-bold text-gray-700 mb-3">수리 결과 및 방법 선택</label>
                   <div className="flex flex-wrap items-center gap-6">
-                    {['처리중', '무상수리', '유상수리', '수리불가', '수리취소'].map(method => (
+                    {['무상수리', '유상수리', '수리불가', '수리취소'].map(method => (
                       <label key={method} className="flex items-center gap-2 cursor-pointer">
                         <input type="radio" name="repairMethod" value={method} checked={formData.repairMethod === method} onChange={handleFormChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" />
                         <span className="text-sm font-medium text-gray-900">{method}</span>
@@ -3122,7 +3107,7 @@ export default function App() {
               <AlertCircle className="w-8 h-8 text-red-600" />
             </div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">영구 삭제하시겠습니까?</h3>
-            <p className="text-sm text-red-500 mb-6 font-medium">이 작업은 되돌릴 수 없습니다.</p>
+            <p className="text-sm text-red-500 mb-6 font-medium">이 작업은 되돌릴 수 검없습니다.</p>
             <div className="flex justify-center gap-3">
               <button onClick={() => setItemToPermanentDelete(null)} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors">취소</button>
               <button onClick={executePermanentDelete} className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors">영구 삭제</button>
@@ -3192,8 +3177,6 @@ export default function App() {
           line-height: 1.25rem; border: 1px solid #d1d5db; border-radius: 0.375rem; outline: none; transition: border-color .15s;
         }
         .form-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6; }
-        .form-input:disabled { background-color: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
-        input[type="radio"]:disabled { opacity: 0.5; cursor: not-allowed; }
       `}} />
     </div>
   );
