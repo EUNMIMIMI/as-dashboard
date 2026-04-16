@@ -250,7 +250,7 @@ const DASHBOARD_CONFIG = [
   { status: '견적 승인 대기', label: '견적 대기', icon: FileText, hex: '#FDC453' },
   { status: '수리 중', label: '수리 진행 중', icon: Wrench, hex: '#DFDD6C' },
   { status: '수리 완료', label: '수리 완료', icon: CheckCircle, hex: '#A0DDE0' },
-  { status: '종결', label: '최종 종결', icon: Archive, hex: '#9ADBC5' }
+  { status: '종결', label: '종결', icon: Archive, hex: '#9ADBC5' }
 ];
 
 const generateNextAsNumber = (currentData) => {
@@ -630,6 +630,8 @@ export default function App() {
 
   const customAlert = (message) => setAlertMessage(message);
 
+  const isQM = currentUserRole?.name === '품질경영팀';
+
   const handleLogin = (e) => {
     e.preventDefault();
     const role = ACCESS_ROLES[loginPassword];
@@ -648,8 +650,6 @@ export default function App() {
     setLoginPassword('');
     setIsCapsLockOn(false);
   };
-
-  const isQM = currentUserRole?.name === '품질경영팀';
 
   useEffect(() => {
     if (currentUserRole) {
@@ -1079,8 +1079,8 @@ export default function App() {
     const status = row.currentStatus || '접수 대기';
     
     if (status === '종결') {
-      if (row.complianceStatus === '준수') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-800"><CheckCircle2 className="w-3 h-3 mr-1" />준수 (종결)</span>;
-      if (row.complianceStatus === '지연') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800"><AlertCircle className="w-3 h-3 mr-1" />지연 (종결)</span>;
+      if (row.complianceStatus === '준수') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-800"><CheckCircle2 className="w-3 h-3 mr-1" />준수</span>;
+      if (row.complianceStatus === '지연') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800"><AlertCircle className="w-3 h-3 mr-1" />지연</span>;
       return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-200 text-gray-800"><CheckCircle className="w-3 h-3 mr-1" />종결</span>;
     }
 
@@ -1983,14 +1983,14 @@ export default function App() {
                 const count = isTotal 
                   ? tabFilteredData.length 
                   : tabFilteredData.filter(d => (d.currentStatus || '접수 대기') === config.status).length;
-                const isSelected = selectedDashboardStatus === config.status;
+                const isSelected = isTotal ? (selectedDashboardStatus === 'all' || selectedDashboardStatus === null) : selectedDashboardStatus === config.status;
                 const hexColor = config.hex;
                 
                 return (
                   <div 
                     key={config.status}
-                    onClick={isTotal ? undefined : () => setSelectedDashboardStatus(isSelected && isQM ? 'all' : config.status)}
-                    className={`relative p-3 md:p-4 rounded-xl flex items-center gap-3 transition-all duration-200 bg-white ${!isTotal ? 'cursor-pointer' : ''}`}
+                    onClick={() => setSelectedDashboardStatus(isTotal ? 'all' : config.status)}
+                    className={`relative p-3 md:p-4 rounded-xl flex items-center gap-3 transition-all duration-200 bg-white cursor-pointer`}
                     style={{
                       borderWidth: '2px',
                       borderStyle: 'solid',
@@ -1999,10 +1999,10 @@ export default function App() {
                       transform: isSelected ? 'scale(1.02)' : 'scale(1)'
                     }}
                     onMouseEnter={(e) => {
-                      if (!isTotal && !isSelected) e.currentTarget.style.boxShadow = `0 4px 12px ${hexColor}20`;
+                      if (!isSelected) e.currentTarget.style.boxShadow = `0 4px 12px ${hexColor}20`;
                     }}
                     onMouseLeave={(e) => {
-                      if (!isTotal && !isSelected) e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
+                      if (!isSelected) e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
                     }}
                   >
                     <div 
@@ -2543,21 +2543,21 @@ export default function App() {
                       <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">상태</th>
                       <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">접수번호</th>
                       <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">수주번호</th>
-                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">대리점</th>
-                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">업체명</th>
+                      <th scope="col" className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">대리점</th>
+                      <th scope="col" className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">업체명</th>
                       <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">모델명</th>
                       <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">수량</th>
                       <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">하자내용</th>
-                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">기존 주문정보</th>
-                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">처리방식</th>
-                      <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">처리방법</th>
+                      <th scope="col" className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">기존 주문정보</th>
+                      <th scope="col" className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">처리방식</th>
+                      <th scope="col" className="px-2 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">처리방법</th>
                       <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">일정</th>
                       <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">관리</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredData.length > 0 ? (
-                      filteredData.map((row) => (
+                    {paginatedData.length > 0 ? (
+                      paginatedData.map((row) => (
                         <tr key={row.id} onClick={() => setSelectedRow(row)} className="hover:bg-blue-50 transition-colors cursor-pointer">
                           <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
                             {row.businessUnit}
@@ -2572,27 +2572,27 @@ export default function App() {
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-blue-600">{row.asNumber}</td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{row.orderNumber}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{row.agencyName}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{row.companyName}</td>
+                          <td className="px-2 py-3 text-xs text-gray-900 max-w-[100px] truncate" title={row.agencyName}>{row.agencyName}</td>
+                          <td className="px-2 py-3 text-xs text-gray-500 max-w-[100px] truncate" title={row.companyName}>{row.companyName}</td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{row.model}</td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">{row.qtyDefect}</td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 max-w-[150px] truncate">
                             <span className="inline-block px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded mr-1 mb-1">{row.claimType || '일반 A/S'}</span>
-                            <div className="truncate">{row.defectContent || '-'}</div>
+                            <div className="truncate" title={row.defectContent}>{row.defectContent || '-'}</div>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
+                          <td className="px-2 py-3 whitespace-nowrap">
                             <div className="flex flex-col gap-1 text-xs">
-                              <div className="flex items-center"><span className="text-gray-400 w-8">S/N:</span> <span className="text-gray-900 max-w-[120px] truncate">{row.serialNo || '-'}</span></div>
+                              <div className="flex items-center"><span className="text-gray-400 w-8">S/N:</span> <span className="text-gray-900 max-w-[100px] truncate" title={row.serialNo}>{row.serialNo || '-'}</span></div>
                               <div className="flex items-center"><span className="text-gray-400 w-8">출고:</span> <span className="text-gray-900">{row.releaseDate || '-'}</span></div>
                               <div className="flex items-center"><span className="text-gray-400 w-8">수주:</span> <span className="text-gray-900">{row.originalOrderNumber || '-'}</span></div>
                             </div>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{row.processType || '-'}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-right align-middle">
+                          <td className="px-2 py-3 whitespace-nowrap text-xs text-gray-500">{row.processType || '-'}</td>
+                          <td className="px-2 py-3 whitespace-nowrap text-xs text-right align-middle">
                             {row.repairMethod === '유상수리' ? (
                               <div>
                                 <span className="font-medium text-blue-700">{row.repairMethod}</span>
-                                <span className="block text-xs text-gray-500">₩ {row.cost != null && row.cost !== '' ? Number(row.cost).toLocaleString() : '0'}</span>
+                                <span className="block text-gray-500">₩ {row.cost != null && row.cost !== '' ? Number(row.cost).toLocaleString() : '0'}</span>
                               </div>
                             ) : (
                               <span className="font-medium text-gray-700">{row.repairMethod || '-'}</span>
@@ -2627,6 +2627,64 @@ export default function App() {
                     )}
                   </tbody>
                 </table>
+              </div>
+            )}
+            
+            {/* 페이지네이션 컨트롤 바 */}
+            {(isQM || selectedDashboardStatus !== null) && filteredData.length > 0 && (
+              <div className="px-6 py-4 flex items-center justify-between border-t border-gray-200 bg-white">
+                <div className="text-sm text-gray-700">
+                  총 <span className="font-bold text-gray-900">{filteredData.length}</span>건 중 
+                  <span className="font-medium ml-1">{(currentPage - 1) * itemsPerPage + 1}</span> - 
+                  <span className="font-medium mr-1">{Math.min(currentPage * itemsPerPage, filteredData.length)}</span> 표시
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    이전
+                  </button>
+                  <div className="flex gap-1 overflow-x-auto max-w-[200px] md:max-w-none hide-scrollbar">
+                    {currentBlock > 1 && (
+                      <button
+                        onClick={() => setCurrentPage(startPage - 1)}
+                        className="px-2 py-1.5 text-gray-500 hover:text-gray-700 bg-white font-bold"
+                      >
+                        ...
+                      </button>
+                    )}
+                    {visiblePages.map(page => (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`px-3 py-1.5 border rounded-md text-sm font-medium ${
+                          currentPage === page
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                    {endPage < totalPages && (
+                      <button
+                        onClick={() => setCurrentPage(endPage + 1)}
+                        className="px-2 py-1.5 text-gray-500 hover:text-gray-700 bg-white font-bold"
+                      >
+                        ...
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    다음
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -2751,17 +2809,21 @@ export default function App() {
               
               {/* 진행 상태 변경 버튼 그룹 */}
               <div className="mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200">
-                <label className="block text-sm font-bold text-gray-700 mb-3">진행 상태 변경</label>
+                <label className="block text-sm font-bold text-gray-700 mb-3">진행 상태</label>
                 <div className="flex flex-wrap gap-2">
                   {STATUS_STEPS.map(status => {
                     const config = DASHBOARD_CONFIG.find(c => c.status === status);
                     const hexColor = config ? config.hex : '#3b82f6';
                     const isSelected = formData.currentStatus === status;
+                    const isDisabled = !isQM && ['접수 대기', '접수 완료', '종결'].includes(status);
+                    
                     return (
                       <button
                         type="button"
                         key={status}
+                        disabled={isDisabled}
                         onClick={() => {
+                          if (isDisabled) return;
                           setFormData(prev => {
                             const newData = { ...prev, currentStatus: status };
                             if (status === '종결' && !newData.processDate) {
@@ -2774,7 +2836,7 @@ export default function App() {
                             return newData;
                           });
                         }}
-                        className="px-4 py-2 text-sm font-bold rounded-lg transition-all border"
+                        className={`px-4 py-2 text-sm font-bold rounded-lg transition-all border ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                         style={{
                           backgroundColor: isSelected ? hexColor : '#ffffff',
                           color: isSelected ? '#ffffff' : '#4b5563',
