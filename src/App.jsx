@@ -1467,6 +1467,12 @@ export default function App() {
     return filteredData.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredData, currentPage]);
 
+  const maxVisiblePages = 5;
+  const currentBlock = Math.ceil(currentPage / maxVisiblePages) || 1;
+  const startPage = (currentBlock - 1) * maxVisiblePages + 1;
+  const endPage = Math.min(startPage + maxVisiblePages - 1, totalPages);
+  const visiblePages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
+
   const exportToExcel = async () => {
     try {
       const XLSX = await import('https://esm.sh/xlsx-js-style');
@@ -1973,6 +1979,13 @@ export default function App() {
         {/* 상단 단독 대시보드 영역 */}
         {activeTab !== '집계' && activeTab !== '휴지통' && activeTab !== '보고서' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 md:p-6">
+            {isQM && selectedDashboardStatus !== 'all' && selectedDashboardStatus !== null && (
+              <div className="flex justify-end mb-4">
+                <button onClick={() => setSelectedDashboardStatus('all')} className="text-sm text-blue-600 font-bold hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors flex items-center">
+                  <RotateCcw className="w-4 h-4 mr-1.5" /> 필터 해제 (전체 보기)
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 md:gap-4">
               {DASHBOARD_CONFIG.map(config => {
                 const isTotal = config.status === '전체';
@@ -2102,6 +2115,7 @@ export default function App() {
                         <option value="all">전체</option>
                         <option value="준수">준수</option>
                         <option value="지연">지연</option>
+                        <option value="미완료">처리중</option>
                       </select>
                     </div>
                     <div className="flex items-center space-x-2">
