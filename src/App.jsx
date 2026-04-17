@@ -3115,7 +3115,7 @@ export default function App() {
               <AlertCircle className="w-8 h-8 text-red-600" />
             </div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">영구 삭제하시겠습니까?</h3>
-            <p className="text-sm text-red-500 mb-6 font-medium">이 작업은 되돌릴 수 검없습니다.</p>
+            <p className="text-sm text-red-500 mb-6 font-medium">이 작업은 되돌릴 수 없습니다.</p>
             <div className="flex justify-center gap-3">
               <button onClick={() => setItemToPermanentDelete(null)} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors">취소</button>
               <button onClick={executePermanentDelete} className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors">영구 삭제</button>
@@ -3185,6 +3185,8 @@ export default function App() {
           line-height: 1.25rem; border: 1px solid #d1d5db; border-radius: 0.375rem; outline: none; transition: border-color .15s;
         }
         .form-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6; }
+        .form-input:disabled { background-color: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
+        input[type="radio"]:disabled { opacity: 0.5; cursor: not-allowed; }
       `}} />
     </div>
   );
