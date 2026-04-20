@@ -586,12 +586,11 @@ export default function App() {
   const [data, setData] = useState([]); 
   const [activeTab, setActiveTab] = useState('전체'); 
   const [dashboardTab, setDashboardTab] = useState('종합 지표');
-  const [totalChartType, setTotalChartType] = useState('donut');
-  const [modelChartType, setModelChartType] = useState({}); 
-  const [buChartType, setBuChartType] = useState({}); 
-  const [yearlyTabChartType, setYearlyTabChartType] = useState({}); 
   const [selectedDashboardStatus, setSelectedDashboardStatus] = useState('all');
   
+  const [user, setUser] = useState(null);
+  
+  const [filterCompliance, setFilterCompliance] = useState('all');
   const [filterAgency, setFilterAgency] = useState('all');
   const [filterModel, setFilterModel] = useState('all');
   const [filterPtBoard, setFilterPtBoard] = useState('all');
@@ -644,7 +643,6 @@ export default function App() {
   useEffect(() => {
     if (currentUserRole) {
       if (!isQM && (activeTab === '휴지통' || activeTab === '보고서' || activeTab === '미입력')) {
-        // 비품질팀 권한으로 접근 불가능한 탭 방어. '전체' 및 '집계'는 허용.
         setActiveTab(currentUserRole.tabs[0]);
       } else if (currentUserRole.tabs !== 'ALL' && !currentUserRole.tabs.includes(activeTab) && activeTab !== '전체' && activeTab !== '집계') {
         setActiveTab(currentUserRole.tabs[0]);
@@ -656,7 +654,6 @@ export default function App() {
     setSelectedDashboardStatus('all');
   }, [activeTab]);
 
-  // Auth & Data Fetching
   useEffect(() => {
     const initAuth = async () => {
       if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -725,14 +722,10 @@ export default function App() {
     }));
   }, [deletedRecords]);
 
-  // -------------------------------------------------------------
-  // [집계 데이터 구성 로직] : 접수번호 1개 + 일반/고객불만별 1건 중복 방지 처리
-  // -------------------------------------------------------------
   const uniqueClaimsData = useMemo(() => {
     const map = new Map();
     processedData.forEach(item => {
       const claim = item.claimType === '고객불만' ? '고객불만' : '일반 A/S';
-      // 접수번호가 아예 없거나 공란인 경우 서로 덮어쓰지 않도록 고유 id를 사용
       const key = item.asNumber ? `${item.asNumber.trim().toUpperCase()}_${claim}` : `doc_${item.id}_${claim}`;
       
       if (!map.has(key)) {
@@ -755,7 +748,6 @@ export default function App() {
     }));
   }, [processedData]);
 
-  // 현재 사용자 권한 필터링 (집계용 데이터 세팅)
   const allowedProcessedData = useMemo(() => {
     if (!currentUserRole || currentUserRole.tabs === 'ALL') return uniqueClaimsData;
     return uniqueClaimsData.filter(item => currentUserRole.tabs.includes(item.businessUnit));
@@ -764,7 +756,6 @@ export default function App() {
   const currentYear = new Date().getFullYear();
   const targetYears = [String(currentYear - 2), String(currentYear - 1), String(currentYear)];
 
-  // 집계 시 허용된 사업부 순서 (권한 필터 적용)
   const allowedAggOrder = useMemo(() => {
     const order = ['PMD', 'TMD', 'FLD', 'UHP', 'PT (ZMDI)', 'PT (N)', 'UPT900'];
     if (!currentUserRole || currentUserRole.tabs === 'ALL') return order;
@@ -843,7 +834,7 @@ export default function App() {
       if (!item.receiptDate) return;
       const year = getYearFromDate(item.receiptDate);
       if (!year || !targetYears.includes(year)) return;
-      if (stats[year].isHistorical) return; // 하드코딩 값이 있다면 실제 데이터 합산 제외
+      if (stats[year].isHistorical) return; 
 
       stats[year].total += 1;
       if (item.claimType === '고객불만') stats[year].complaint += 1;
@@ -1043,7 +1034,6 @@ export default function App() {
     return tabFilteredData.filter(item => {
       if (activeTab === '집계') return true; 
       
-      // 대시보드 상태 필터 적용 (전체(all) 선택 시 모든 데이터 표시)
       if (selectedDashboardStatus !== 'all' && selectedDashboardStatus !== null) {
          const status = item.currentStatus || '접수 대기';
          if (status !== selectedDashboardStatus) return false;
