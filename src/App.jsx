@@ -15,7 +15,6 @@ const ACCESS_ROLES = {
   'fld123': { name: 'fld 담당자', tabs: ['FLD'] },
   'uhp123': { name: 'uhp 담당자', tabs: ['UHP', 'PT', 'UPT900'] }
 };
-// ------------------------------------
 
 // --- Firebase 초기화 ---
 const isCanvasEnv = typeof __firebase_config !== 'undefined';
@@ -31,21 +30,25 @@ const firebaseConfig = isCanvasEnv
       appId: import.meta.env.VITE_FIREBASE_APP_ID
     };
 
-
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const COLLECTION_NAME = 'as_records';
 
-const getCollectionPath = () => {
-  if (isCanvasEnv) {
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-    return `artifacts/${appId}/public/data/as_records`;
-  }
-  return 'as_records';
+const getColRef = () => {
+  return isCanvasEnv 
+    ? collection(db, 'artifacts', appId, 'public', 'data', COLLECTION_NAME)
+    : collection(db, COLLECTION_NAME);
 };
-// -----------------------
 
-// --- 하드코딩된 연도별 과거 데이터 ---
+const getDocRef = (id) => {
+  return isCanvasEnv 
+    ? doc(db, 'artifacts', appId, 'public', 'data', COLLECTION_NAME, String(id))
+    : doc(db, COLLECTION_NAME, String(id));
+};
+
+// --- 하드코딩 데이터 ---
 const HISTORICAL_YEARLY = {
   'PMD': { '2023': { total: 287, complaint: 4 }, '2024': { total: 251, complaint: 29 }, '2025': { total: 215, complaint: 15 } },
   'TMD': { '2023': { total: 116, complaint: 5 }, '2024': { total: 112, complaint: 24 }, '2025': { total: 96, complaint: 16 } },
@@ -101,25 +104,9 @@ const CAUSE_LABEL_MAP = ALL_CAUSE_HEADERS.reduce((acc, curr) => {
 }, {});
 
 const getCauseTableConfig = (bu) => {
-  if (bu === 'PT') {
-    return {
-      headers: PT_CAUSE_HEADERS,
-      totalCols: 26, wiseCols: 17, otherGroupCols: 6,
-      prodCols: 14, otherCols: 5
-    };
-  } else if (bu === 'UPT900') {
-    return {
-      headers: UPT900_CAUSE_HEADERS,
-      totalCols: 21, wiseCols: 13, otherGroupCols: 5,
-      prodCols: 10, otherCols: 4
-    };
-  } else {
-    return {
-      headers: CAUSE_HEADERS,
-      totalCols: 20, wiseCols: 12, otherGroupCols: 5,
-      prodCols: 9, otherCols: 4
-    };
-  }
+  if (bu === 'PT') return { headers: PT_CAUSE_HEADERS, totalCols: 26, wiseCols: 17, otherGroupCols: 6, prodCols: 14, otherCols: 5 };
+  if (bu === 'UPT900') return { headers: UPT900_CAUSE_HEADERS, totalCols: 21, wiseCols: 13, otherGroupCols: 5, prodCols: 10, otherCols: 4 };
+  return { headers: CAUSE_HEADERS, totalCols: 20, wiseCols: 12, otherGroupCols: 5, prodCols: 9, otherCols: 4 };
 };
 
 const getCauseGroup = (id) => {
@@ -138,95 +125,75 @@ const getCauseGroup = (id) => {
   return '기타';
 };
 
-const parseDateObj = (dateStr) => {
-  if (!dateStr) return null;
+const formatDisplayDate = (dateStr) => {
+  if (!dateStr) return '';
   let str = String(dateStr).trim();
   let y = new Date().getFullYear();
   let m, d;
-  
   if (str.includes('.')) {
     const parts = str.split('.').map(p => p.trim());
     if (parts.length >= 3) {
       y = parts[0].length === 2 ? 2000 + parseInt(parts[0]) : parseInt(parts[0]);
       m = parseInt(parts[1]);
       d = parseInt(parts[2]);
-    } else if (parts.length === 2) {
-      m = parseInt(parts[0]);
-      d = parseInt(parts[1]);
     }
-  } else if (str.includes('월') && str.includes('일')) {
-    m = parseInt(str.split('월')[0].trim());
-    d = parseInt(str.split('월')[1].replace('일', '').trim());
-  } else if (str.includes('/')) {
-    const parts = str.split('/');
+  } else if (str.includes('-')) {
+    const parts = str.split('-');
+    if (parts.length >= 3) { y = parseInt(parts[0]); m = parseInt(parts[1]); d = parseInt(parts[2]); }
+  } else { return dateStr; }
+  if (isNaN(y) || isNaN(m) || isNaN(d)) return dateStr;
+  return `${String(y).slice(-2)}.${String(m).padStart(2, '0')}.${String(d).padStart(2, '0')}`;
+};
+
+const formatForDateInput = (dateStr) => {
+  if (!dateStr || !dateStr.includes('.')) return '';
+  const parts = dateStr.split('.').map(p => p.trim());
+  if (parts.length === 3) return `20${parts[0]}-${parts[1]}-${parts[2]}`;
+  return '';
+};
+
+const calculateCompliance = (reqDate, compDate) => {
+  if (!compDate || compDate === '-' || !reqDate) return '미완료';
+  try {
+    const reqParts = reqDate.split('.').map(Number);
+    const compParts = compDate.split('.').map(Number);
+    const reqObj = new Date(2000 + reqParts[0], reqParts[1] - 1, reqParts[2]);
+    const compObj = new Date(2000 + compParts[0], compParts[1] - 1, compParts[2]);
+    return compObj.getTime() <= reqObj.getTime() ? '준수' : '지연';
+  } catch(e) { return '오류'; }
+};
+
+const calculateDuration = (startDate, endDate) => {
+  if (!startDate || !endDate || endDate === '-') return '-';
+  try {
+    const sParts = startDate.split('.').map(Number);
+    const eParts = endDate.split('.').map(Number);
+    const sObj = new Date(2000 + sParts[0], sParts[1] - 1, sParts[2]);
+    const eObj = new Date(2000 + eParts[0], eParts[1] - 1, eParts[2]);
+    const diffDays = Math.ceil((eObj.getTime() - sObj.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays >= 0 ? `${diffDays}일` : '-';
+  } catch(e) { return '-'; }
+};
+
+const addBusinessDays = (dateStr, days) => {
+  if (!dateStr) return '';
+  let str = String(dateStr).trim();
+  let y = new Date().getFullYear();
+  let m, d;
+  if (str.includes('.')) {
+    const parts = str.split('.').map(p => p.trim());
     if (parts.length >= 3) {
       y = parts[0].length === 2 ? 2000 + parseInt(parts[0]) : parseInt(parts[0]);
       m = parseInt(parts[1]);
       d = parseInt(parts[2]);
-    } else if (parts.length === 2) {
-      m = parseInt(parts[0]);
-      d = parseInt(parts[1]);
     }
   } else if (str.includes('-')) {
-     const parts = str.split('-');
-     if (parts.length >= 3) {
-      y = parts[0].length === 2 ? 2000 + parseInt(parts[0]) : parseInt(parts[0]);
-      m = parseInt(parts[1]);
-      d = parseInt(parts[2]);
-     }
-  } else {
-     return null;
-  }
-  if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
-  return new Date(y, m - 1, d);
-};
-
-const getYearFromDate = (dateStr) => {
-  const d = parseDateObj(dateStr);
-  if (d) return String(d.getFullYear());
-  return null;
-};
-
-const formatDisplayDate = (dateStr) => {
-  const d = parseDateObj(dateStr);
-  if (!d) return dateStr || '';
-  const yy = String(d.getFullYear()).slice(-2);
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yy}.${mm}.${dd}`;
-};
-
-const formatForDateInput = (dateStr) => {
-  const d = parseDateObj(dateStr);
-  if (!d) return '';
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-};
-
-const calculateCompliance = (reqDate, compDate) => {
-  if (!compDate) return '미완료';
-  const reqObj = parseDateObj(reqDate);
-  const compObj = parseDateObj(compDate);
-  if (!reqObj || !compObj) return '오류';
-  if (compObj.getTime() <= reqObj.getTime()) return '준수';
-  return '지연';
-};
-
-const calculateDuration = (startDate, endDate) => {
-  if (!startDate || !endDate) return '-';
-  const startObj = parseDateObj(startDate);
-  const endObj = parseDateObj(endDate);
-  if (!startObj || !endObj) return '-';
-  const diffTime = endObj.getTime() - startObj.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays >= 0 ? `${diffDays}일` : '-';
-};
-
-const addBusinessDays = (dateStr, days) => {
-  const dObj = parseDateObj(dateStr);
-  if (!dObj) return '';
+    const parts = str.split('-');
+    if (parts.length >= 3) { y = parseInt(parts[0]); m = parseInt(parts[1]); d = parseInt(parts[2]); }
+  } else return '';
+  
+  if (isNaN(y) || isNaN(m) || isNaN(d)) return '';
+  const dObj = new Date(y, m - 1, d);
   
   let addedDays = 0;
   while (addedDays < days) {
@@ -296,6 +263,38 @@ const getUniqueCount = (dataList, statusFilter) => {
     }
   });
   return uniqueRecords.size;
+};
+
+const parseDateObj = (dateStr) => {
+  if (!dateStr) return null;
+  let str = String(dateStr).trim();
+  let y = new Date().getFullYear();
+  let m, d;
+  if (str.includes('.')) {
+    const parts = str.split('.').map(p => p.trim());
+    if (parts.length >= 3) {
+      y = parts[0].length === 2 ? 2000 + parseInt(parts[0]) : parseInt(parts[0]);
+      m = parseInt(parts[1]);
+      d = parseInt(parts[2]);
+    }
+  } else if (str.includes('-')) {
+     const parts = str.split('-');
+     if (parts.length >= 3) {
+      y = parseInt(parts[0]);
+      m = parseInt(parts[1]);
+      d = parseInt(parts[2]);
+     }
+  } else {
+     return null;
+  }
+  if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
+  return new Date(y, m - 1, d);
+};
+
+const getYearFromDate = (dateStr) => {
+  const d = parseDateObj(dateStr);
+  if (d) return String(d.getFullYear());
+  return null;
 };
 
 const MultiDonutChart = ({ data, size = 160, strokeWidth = 24 }) => {
@@ -552,33 +551,6 @@ const HorizontalBarChart = ({ data, color }) => {
   );
 };
 
-const ModelHorizontalBarChart = ({ data }) => {
-  if (!data || data.length === 0) return <div className="text-sm text-gray-400 flex items-center justify-center h-full w-full">데이터가 없습니다.</div>;
-
-  const maxVal = Math.max(...data.map(d => d.total));
-
-  return (
-    <div className="space-y-3 w-full px-2 h-full overflow-y-auto hide-scrollbar">
-      {data.map((item, i) => (
-        <div key={i} className="flex items-center text-xs">
-          <div className="w-16 text-right pr-2 font-bold text-gray-700 truncate" title={item.label}>{item.label}</div>
-          <div className="flex-1 flex items-center gap-1">
-            <div 
-              className="h-4 rounded-sm flex" 
-              style={{ 
-                width: `${maxVal > 0 ? (item.total / maxVal) * 100 : 0}%`, 
-                minWidth: item.total > 0 ? '4px' : '0',
-                backgroundColor: item.color 
-              }}
-            ></div>
-            <span className="text-gray-900 font-bold w-8 text-left pl-1">{item.total}</span>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-};
-
 const getModelGroup = (bu, modelName, ptBoardType) => {
   if (bu === 'PT') return ptBoardType === 'ZMDI' ? 'ZMDI' : 'N';
   if (!modelName) return bu === 'PMD' ? 'ACC' : '기타';
@@ -664,6 +636,7 @@ export default function App() {
 
   const handleLogout = () => {
     setCurrentUserRole(null);
+    localStorage.removeItem('as_dashboard_role');
     setLoginPassword('');
     setIsCapsLockOn(false);
   };
@@ -686,7 +659,7 @@ export default function App() {
   // Auth & Data Fetching
   useEffect(() => {
     const initAuth = async () => {
-      if (isCanvasEnv && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
         await signInWithCustomToken(auth, __initial_auth_token);
       } else {
         await signInAnonymously(auth);
@@ -699,7 +672,7 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    const colRef = collection(db, getCollectionPath());
+    const colRef = getColRef();
     
     const unsubscribe = onSnapshot(colRef, (snapshot) => {
       const records = [];
@@ -709,7 +682,7 @@ export default function App() {
       snapshot.forEach(docSnap => {
         const d = docSnap.data();
         if (d.deletedAt && (now - d.deletedAt > THREE_DAYS_MS)) {
-          deleteDoc(doc(db, getCollectionPath(), docSnap.id)).catch(console.error);
+          deleteDoc(getDocRef(docSnap.id)).catch(console.error);
         } else {
           records.push({ id: docSnap.id, ...d });
         }
@@ -735,8 +708,8 @@ export default function App() {
       reqDeliveryDate: formatDisplayDate(item.reqDeliveryDate),
       processDate: formatDisplayDate(item.processDate),
       releaseDate: formatDisplayDate(item.releaseDate),
-      complianceStatus: calculateCompliance(item.reqDeliveryDate, item.processDate),
-      duration: calculateDuration(item.receiptDate, item.processDate)
+      complianceStatus: calculateCompliance(formatDisplayDate(item.reqDeliveryDate), formatDisplayDate(item.processDate)),
+      duration: calculateDuration(formatDisplayDate(item.receiptDate), formatDisplayDate(item.processDate))
     }));
   }, [activeRecords]);
 
@@ -747,8 +720,8 @@ export default function App() {
       reqDeliveryDate: formatDisplayDate(item.reqDeliveryDate),
       processDate: formatDisplayDate(item.processDate),
       releaseDate: formatDisplayDate(item.releaseDate),
-      complianceStatus: calculateCompliance(item.reqDeliveryDate, item.processDate),
-      duration: calculateDuration(item.receiptDate, item.processDate)
+      complianceStatus: calculateCompliance(formatDisplayDate(item.reqDeliveryDate), formatDisplayDate(item.processDate)),
+      duration: calculateDuration(formatDisplayDate(item.receiptDate), formatDisplayDate(item.processDate))
     }));
   }, [deletedRecords]);
 
@@ -1222,9 +1195,7 @@ export default function App() {
     }
 
     const docId = String(formData.id || Date.now());
-    const docRef = doc(db, getCollectionPath(), docId);
-    
-    await setDoc(docRef, { ...formData, id: docId });
+    await setDoc(getDocRef(docId), { ...formData, id: docId });
     setIsFormOpen(false);
   };
 
@@ -1235,7 +1206,7 @@ export default function App() {
 
   const executeDelete = async () => {
     if (!user || !itemToDelete || !isQM) return;
-    await updateDoc(doc(db, getCollectionPath(), String(itemToDelete)), { deletedAt: Date.now() });
+    await updateDoc(getDocRef(itemToDelete), { deletedAt: Date.now() });
     setItemToDelete(null);
     setSelectedRow(null);
   };
@@ -1247,7 +1218,7 @@ export default function App() {
 
   const executePermanentDelete = async () => {
     if (!user || !itemToPermanentDelete || !isQM) return;
-    await deleteDoc(doc(db, getCollectionPath(), String(itemToPermanentDelete)));
+    await deleteDoc(getDocRef(itemToPermanentDelete));
     setItemToPermanentDelete(null);
     setSelectedRow(null);
   };
@@ -1255,7 +1226,7 @@ export default function App() {
   const handleRestore = async (id, e) => {
     if (e) e.stopPropagation();
     if (!user || !isQM) return;
-    await updateDoc(doc(db, getCollectionPath(), String(id)), { deletedAt: null });
+    await updateDoc(getDocRef(id), { deletedAt: null });
     setSelectedRow(null);
     customAlert('데이터가 성공적으로 복구되었습니다.');
   };
@@ -1272,7 +1243,7 @@ export default function App() {
       return;
     }
     records.forEach(async (record) => {
-      await setDoc(doc(db, getCollectionPath(), String(record.id)), record);
+      await setDoc(getDocRef(record.id), record);
     });
     customAlert(`${records.length}건의 데이터를 성공적으로 업로드 중입니다.`);
   };
@@ -2311,9 +2282,9 @@ export default function App() {
                   <div className="flex flex-wrap gap-4 items-center pt-4 border-t border-gray-200">
                     <span className="text-sm font-bold text-gray-600">수리방법:</span>
                     {['무상수리', '유상수리', '수리불가', '수리취소'].map(m => (
-                      <label key={m} className="flex items-center gap-1.5 cursor-pointer text-sm font-medium"><input type="radio" name="repairMethod" value={m} checked={formData.repairMethod === m} onChange={handleFormChange} className="w-4 h-4 text-blue-600" /> {m}</label>
+                      <label key={m} className="flex items-center gap-1.5 cursor-pointer text-sm font-medium"><input type="radio" name="repairMethod" value={m} checked={formData.repairMethod === m} onChange={handleFormChange} className="w-3.5 h-3.5" /> {m}</label>
                     ))}
-                    {formData.repairMethod === '유상수리' && <div className="ml-auto flex items-center gap-2 text-sm"><span className="font-bold text-gray-600">비용:</span><input type="number" name="cost" value={formData.cost || ''} onChange={handleFormChange} placeholder="금액 입력" className="border rounded-md px-3 py-1.5 w-32" /></div>}
+                    {formData.repairMethod === '유상수리' && <div className="ml-auto flex items-center gap-2 text-sm"><span className="font-bold text-gray-600">비용:</span><input type="number" name="cost" value={formData.cost || ''} onChange={handleFormChange} placeholder="금액 입력" className="border rounded px-3 py-1 w-32" /></div>}
                   </div>
                </div>
             </form>
