@@ -678,7 +678,7 @@ export default function App() {
   useEffect(() => {
     if (currentUserRole) {
       if (!isQM && (activeTab === '휴지통' || activeTab === '보고서' || activeTab === '미입력')) {
-        // 비품질팀 권한으로 접근 불가능한 탭 방어. '전체' 및 '집계'는 허용.
+        // 권한 없는 탭 강제 이동 방어
         setActiveTab(currentUserRole.tabs[0]);
       } else if (currentUserRole.tabs !== 'ALL' && !currentUserRole.tabs.includes(activeTab) && activeTab !== '전체' && activeTab !== '집계') {
         setActiveTab(currentUserRole.tabs[0]);
@@ -769,6 +769,7 @@ export default function App() {
     const map = new Map();
     processedData.forEach(item => {
       const claim = item.claimType === '고객불만' ? '고객불만' : '일반 A/S';
+      // 접수번호가 아예 없거나 공란인 경우 서로 덮어쓰지 않도록 고유 id를 사용
       const key = item.asNumber ? `${item.asNumber.trim().toUpperCase()}_${claim}` : `doc_${item.id}_${claim}`;
       
       if (!map.has(key)) {
@@ -791,26 +792,36 @@ export default function App() {
     }));
   }, [processedData]);
 
-  // 집계 탭일 경우에는 권한과 무관하게 전체 집계가 가능하도록 모든 유니크 데이터 허용
+  // 현재 사용자 권한 필터링 (집계용 데이터 세팅)
   const allowedProcessedData = useMemo(() => {
-    if (activeTab === '집계') return uniqueClaimsData;
     if (!currentUserRole || currentUserRole.tabs === 'ALL') return uniqueClaimsData;
     return uniqueClaimsData.filter(item => currentUserRole.tabs.includes(item.businessUnit));
-  }, [uniqueClaimsData, currentUserRole, activeTab]);
+  }, [uniqueClaimsData, currentUserRole]);
 
   const currentYear = new Date().getFullYear();
   const targetYears = [String(currentYear - 2), String(currentYear - 1), String(currentYear)];
 
+  // 집계 시 허용된 사업부 순서 (권한 필터 적용)
+  const allowedAggOrder = useMemo(() => {
+    const order = ['PMD', 'TMD', 'FLD', 'UHP', 'PT (ZMDI)', 'PT (N)', 'UPT900'];
+    if (!currentUserRole || currentUserRole.tabs === 'ALL') return order;
+    return order.filter(bu => {
+      if (bu.startsWith('PT')) return currentUserRole.tabs.includes('PT');
+      return currentUserRole.tabs.includes(bu);
+    });
+  }, [currentUserRole]);
+
   const aggregatedStats = useMemo(() => {
     const stats = {};
-    const AGGREGATION_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT (ZMDI)', 'PT (N)', 'UPT900'];
-    AGGREGATION_ORDER.forEach(unit => stats[unit] = { unit, normal: 0, complaint: 0 });
+    allowedAggOrder.forEach(unit => stats[unit] = { unit, normal: 0, complaint: 0 });
 
     allowedProcessedData.forEach(item => {
       let unit = item.businessUnit === 'PT' ? `PT (${item.ptBoardType === 'ZMDI' ? 'ZMDI' : 'N'})` : (item.businessUnit || '미분류');
-      if (!stats[unit]) stats[unit] = { unit, normal: 0, complaint: 0 }; 
-      if (item.claimType === '고객불만') stats[unit].complaint += 1;
-      else stats[unit].normal += 1;
+      if (!stats[unit] && allowedAggOrder.includes(unit)) stats[unit] = { unit, normal: 0, complaint: 0 }; 
+      if (stats[unit]) {
+        if (item.claimType === '고객불만') stats[unit].complaint += 1;
+        else stats[unit].normal += 1;
+      }
     });
 
     let totalNormal = 0; let totalComplaint = 0;
@@ -823,8 +834,8 @@ export default function App() {
     });
 
     result.sort((a, b) => {
-      const indexA = AGGREGATION_ORDER.indexOf(a.unit);
-      const indexB = AGGREGATION_ORDER.indexOf(b.unit);
+      const indexA = allowedAggOrder.indexOf(a.unit);
+      const indexB = allowedAggOrder.indexOf(b.unit);
       if (indexA !== -1 && indexB !== -1) return indexA - indexB;
       if (indexA !== -1) return -1;
       if (indexB !== -1) return 1;
@@ -840,20 +851,21 @@ export default function App() {
       totalClaims: grandTotalClaims, normalRate: grandNormalRate, complaintRate: grandComplaintRate
     });
     return result;
-  }, [allowedProcessedData]);
+  }, [allowedProcessedData, allowedAggOrder]);
+
+  const allowedTrendUnits = useMemo(() => {
+    if (!currentUserRole || currentUserRole.tabs === 'ALL') return TREND_UNITS;
+    return TREND_UNITS.filter(bu => currentUserRole.tabs.includes(bu));
+  }, [currentUserRole]);
 
   const yearlyStats = useMemo(() => {
     const stats = {};
-    const allowedHistoricalUnits = (currentUserRole?.tabs === 'ALL' || !currentUserRole || activeTab === '집계') 
-      ? TREND_UNITS 
-      : TREND_UNITS.filter(bu => currentUserRole.tabs.includes(bu));
-
     targetYears.forEach(y => {
        let histTotal = 0;
        let histComp = 0;
        let isHistorical = false;
        
-       allowedHistoricalUnits.forEach(bu => {
+       allowedTrendUnits.forEach(bu => {
           if (HISTORICAL_YEARLY[bu]?.[y]) {
              histTotal += HISTORICAL_YEARLY[bu][y].total;
              histComp += HISTORICAL_YEARLY[bu][y].complaint;
@@ -875,11 +887,11 @@ export default function App() {
     });
 
     return targetYears.map(y => ({ year: y, total: stats[y].total, complaint: stats[y].complaint }));
-  }, [allowedProcessedData, targetYears, currentUserRole, activeTab]);
+  }, [allowedProcessedData, targetYears, allowedTrendUnits]);
 
   const buYearlyStats = useMemo(() => {
     const stats = {};
-    TREND_UNITS.forEach(bu => {
+    allowedTrendUnits.forEach(bu => {
       stats[bu] = {};
       targetYears.forEach(y => {
         stats[bu][y] = { 
@@ -893,7 +905,7 @@ export default function App() {
 
     allowedProcessedData.forEach(item => {
       const unit = item.businessUnit || '미분류';
-      if (!TREND_UNITS.includes(unit)) return;
+      if (!allowedTrendUnits.includes(unit)) return;
       const year = getYearFromDate(item.receiptDate);
       if (!year || !targetYears.includes(year)) return;
       if (stats[unit][year].isHistorical) return;
@@ -904,17 +916,24 @@ export default function App() {
 
     const result = {};
     Object.keys(stats).forEach(bu => {
-      result[bu] = targetYears.map(y => ({ year: y, total: stats[bu][y].total, complaint: stats[bu][y].complaint }));
+      result[bu] = targetYears.map(y => stats[bu][y]);
     });
     return result;
-  }, [allowedProcessedData, targetYears]);
+  }, [allowedProcessedData, targetYears, allowedTrendUnits]);
+
+  const allowedFixedUnits = useMemo(() => {
+    if (!currentUserRole || currentUserRole.tabs === 'ALL') return FIXED_UNITS_ORDER;
+    return FIXED_UNITS_ORDER.filter(bu => currentUserRole.tabs.includes(bu));
+  }, [currentUserRole]);
 
   const dashboardStats = useMemo(() => {
     const stats = {};
-    FIXED_UNITS_ORDER.forEach(bu => stats[bu] = { unit: bu, total: 0, models: {} });
+    allowedFixedUnits.forEach(bu => stats[bu] = { unit: bu, total: 0, models: {} });
 
     allowedProcessedData.forEach(item => {
-      const bu = FIXED_UNITS_ORDER.includes(item.businessUnit) ? item.businessUnit : '기타사업부';
+      const bu = allowedFixedUnits.includes(item.businessUnit) ? item.businessUnit : '기타사업부';
+      if (!allowedFixedUnits.includes(bu)) return;
+
       const groupLabel = getModelGroup(item.businessUnit, item.model, item.ptBoardType);
       
       if (!stats[bu]) stats[bu] = { unit: bu, total: 0, models: {} };
@@ -940,12 +959,12 @@ export default function App() {
       });
       return { ...buStat, modelsArr };
     }).sort((a, b) => {
-      let ia = FIXED_UNITS_ORDER.indexOf(a.unit);
-      let ib = FIXED_UNITS_ORDER.indexOf(b.unit);
+      let ia = allowedFixedUnits.indexOf(a.unit);
+      let ib = allowedFixedUnits.indexOf(b.unit);
       if (ia === -1) ia = 99; if (ib === -1) ib = 99;
       return ia - ib;
     });
-  }, [allowedProcessedData]);
+  }, [allowedProcessedData, allowedFixedUnits]);
 
   const groupedCauseStats = useMemo(() => {
     const normalStats = {};
@@ -986,13 +1005,13 @@ export default function App() {
 
   const causeAndProcessStats = useMemo(() => {
     const stats = {};
-    FIXED_UNITS_ORDER.forEach(bu => {
+    allowedFixedUnits.forEach(bu => {
       stats[bu] = { unit: bu, totalCauses: 0, causes: {}, totalProcesses: 0, processes: {} };
     });
 
     allowedProcessedData.forEach(item => {
-       const bu = FIXED_UNITS_ORDER.includes(item.businessUnit) ? item.businessUnit : '기타사업부';
-       if (!stats[bu]) stats[bu] = { unit: bu, totalCauses: 0, causes: {}, totalProcesses: 0, processes: {} };
+       const bu = allowedFixedUnits.includes(item.businessUnit) ? item.businessUnit : '기타사업부';
+       if (!stats[bu]) return;
 
        if (Array.isArray(item.causeAnalysisTypes)) {
          item.causeAnalysisTypes.forEach(causeId => {
@@ -1021,7 +1040,7 @@ export default function App() {
           .sort((a, b) => b.value - a.value);
        return { ...buStat, causesArr, processesArr };
     }).filter(buStat => buStat.totalCauses > 0 || buStat.totalProcesses > 0);
-  }, [allowedProcessedData]);
+  }, [allowedProcessedData, allowedFixedUnits]);
 
   // -------------------------------------------------------------
   // [메인 테이블 조회용 데이터 탭 처리]
@@ -1034,16 +1053,16 @@ export default function App() {
   const visibleBusinessUnits = useMemo(() => {
     if (!currentUserRole) return [];
     if (currentUserRole.tabs === 'ALL') return allBusinessUnits;
-    return ['전체', ...currentUserRole.tabs, '미입력', '집계'];
+    return ['전체', ...currentUserRole.tabs, '집계']; // 비품질팀은 미입력 탭 미노출
   }, [currentUserRole, FIXED_UNITS_ORDER, otherUnits, allBusinessUnits]);
   
   const tabFilteredData = useMemo(() => {
     if (activeTab === '휴지통') return processedDeletedData;
 
     let baseData = processedData; 
-    // 권한이 없더라도 '전체', '집계' 탭에서는 모든 부서 데이터를 확인할 수 있도록 허용
-    if (!isQM && activeTab !== '전체' && activeTab !== '집계') {
-      baseData = processedData.filter(item => currentUserRole?.tabs.includes(item.businessUnit));
+    // 권한이 없으면 자신이 포함된 사업부 탭 데이터만 열람 가능 (전체/집계 탭 포함)
+    if (!isQM && currentUserRole) {
+      baseData = processedData.filter(item => currentUserRole.tabs.includes(item.businessUnit));
     }
 
     if (activeTab === '전체' || activeTab === '집계' || activeTab === '보고서') return baseData;
@@ -1981,27 +2000,130 @@ export default function App() {
     <div className="min-h-screen bg-gray-50 p-4 md:p-8 font-sans">
       <div className="max-w-[1400px] mx-auto space-y-6">
         
+        {/* 헤더 & 기능 버튼 */}
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-200">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
               <FileText className="text-blue-600" />
               A/S 처리 관리대장
             </h1>
-            <p className="text-sm text-gray-500 mt-1 flex items-center">
-              접속 권한: <span className="font-bold text-blue-600 ml-1">{currentUserRole.name}</span>
-            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {isQM && (
-              <button onClick={() => handleOpenForm()} className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-sm ml-2">
-                <Plus className="w-4 h-4 mr-1.5" /> 새 데이터 추가
-              </button>
-            )}
-            <button onClick={handleLogout} className="flex items-center px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors ml-2">
-              <LogOut className="w-4 h-4 mr-1.5" /> 로그아웃
+            <input type="file" accept=".csv" ref={fileInputRef} onChange={importFromCSV} className="hidden" />
+            <button onClick={() => fileInputRef.current.click()} className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+              <Upload className="w-4 h-4 mr-1.5" /> CSV 업로드
+            </button>
+            <button onClick={exportToCSV} className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+              <Download className="w-4 h-4 mr-1.5" /> CSV 다운로드
+            </button>
+            <button onClick={exportToHTML} className="flex items-center px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors border border-blue-200">
+              <FileCode className="w-4 h-4 mr-1.5" /> HTML 보고서
+            </button>
+            <button onClick={() => handleOpenForm()} className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-sm ml-2">
+              <Plus className="w-4 h-4 mr-1.5" /> 새 데이터 추가
             </button>
           </div>
         </header>
+
+        {/* 탭 영역 */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="border-b border-gray-200 px-2 flex overflow-x-auto hide-scrollbar">
+            {visibleBusinessUnits.map(unit => (
+              <button
+                key={unit}
+                onClick={() => {
+                  setActiveTab(unit);
+                  if (unit !== 'PT') setFilterPtBoard('all');
+                }}
+                className={`whitespace-nowrap py-4 px-6 text-sm font-medium border-b-2 transition-colors duration-200 ${
+                  activeTab === unit ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                {unit}
+              </button>
+            ))}
+            {isQM && (
+              <>
+                <button
+                  onClick={() => setActiveTab('보고서')}
+                  className={`whitespace-nowrap py-4 px-6 text-sm font-medium border-b-2 transition-colors duration-200 ${
+                    activeTab === '보고서' ? 'border-gray-800 text-gray-900 bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                  }`}
+                >
+                  보고서
+                </button>
+                <button
+                  onClick={() => setActiveTab('휴지통')}
+                  className={`whitespace-nowrap py-4 px-6 text-sm font-medium border-b-2 transition-colors duration-200 ${
+                    activeTab === '휴지통' ? 'border-gray-800 text-gray-900 bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                  }`}
+                >
+                  휴지통 <span className="text-xs font-normal text-gray-400 ml-1">(3일 보관)</span>
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* '집계' 탭이 아닐 때만 하위 필터 노출 */}
+          {activeTab !== '집계' && activeTab !== '휴지통' && activeTab !== '보고서' && (
+            <>
+              {activeTab === 'PT' && (
+                <div className="bg-indigo-50/50 px-6 py-3 border-b border-indigo-100 flex items-center gap-4">
+                  <span className="text-sm font-semibold text-indigo-800">PT 보드 필터:</span>
+                  <div className="flex bg-white rounded-lg shadow-sm border border-indigo-200 p-1">
+                    {['all', 'ZMDI', 'N'].map(board => (
+                      <button
+                        key={board}
+                        onClick={() => setFilterPtBoard(board)}
+                        className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${
+                          filterPtBoard === board ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        {board === 'all' ? '전체 보기' : board}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="p-4 bg-gray-50/50 flex flex-wrap gap-4 items-center">
+                <div className="flex items-center text-sm font-medium text-gray-700 mr-2">
+                  <Filter className="w-4 h-4 mr-2" /> 상세 필터
+                </div>
+                <div className="flex items-center space-x-2">
+                  <label className="text-sm text-gray-600">대리점:</label>
+                  <select value={filterAgency} onChange={(e) => setFilterAgency(e.target.value)} className="text-sm border border-gray-300 rounded-md shadow-sm py-1.5 px-3 max-w-[150px]">
+                    <option value="all">전체 대리점</option>
+                    {agencies.filter(a => a !== 'all').map(agency => <option key={agency} value={agency}>{agency}</option>)}
+                  </select>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <label className="text-sm text-gray-600">모델명:</label>
+                  <select value={filterModel} onChange={(e) => setFilterModel(e.target.value)} className="text-sm border border-gray-300 rounded-md shadow-sm py-1.5 px-3 max-w-[150px]">
+                    <option value="all">전체 모델</option>
+                    {models.filter(m => m !== 'all').map(model => <option key={model} value={model}>{model}</option>)}
+                  </select>
+                </div>
+
+                <div className="relative ml-auto">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="검색어 입력..."
+                    className="block w-64 pl-10 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <div className="text-sm text-gray-500 bg-white px-3 py-1.5 rounded-md border border-gray-200">
+                  총 <span className="font-bold text-gray-900">{filteredData.length}</span>건
+                </div>
+              </div>
+            </>
+          )}
+        </div>
 
         {/* 상단 단독 대시보드 영역 */}
         {activeTab !== '집계' && activeTab !== '휴지통' && activeTab !== '보고서' && (
@@ -2051,465 +2173,260 @@ export default function App() {
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="border-b border-gray-200 flex justify-between items-center bg-white overflow-x-auto hide-scrollbar">
-            <div className="flex">
-              {visibleBusinessUnits.map(unit => (
-                <button
-                  key={unit}
-                  onClick={() => {
-                    setActiveTab(unit);
-                    if (unit !== 'PT') {
-                      setFilterPtBoard('all');
-                      setFilterExcludeReport('all');
-                    }
-                  }}
-                  className={`whitespace-nowrap py-4 px-6 text-sm font-medium border-b-2 transition-colors duration-200 ${
-                    activeTab === unit 
-                      ? (unit === '미입력' ? 'border-red-500 text-red-600' : 'border-blue-500 text-blue-600') 
-                      : (unit === '미입력' ? 'border-transparent text-red-400 hover:text-red-500 hover:bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50')
-                  }`}
-                >
-                  {unit}
-                </button>
-              ))}
-            </div>
-            
-            {isQM && (
-              <div className="flex shrink-0">
-                <button
-                  onClick={() => setActiveTab('보고서')}
-                  className={`whitespace-nowrap py-4 px-6 text-sm font-medium border-b-2 transition-colors duration-200 ${
-                    activeTab === '보고서' 
-                      ? 'border-gray-800 text-gray-900 bg-gray-50' 
-                      : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  보고서
-                </button>
-                <button
-                  onClick={() => setActiveTab('휴지통')}
-                  className={`whitespace-nowrap py-4 px-6 text-sm font-medium border-b-2 transition-colors duration-200 ${
-                    activeTab === '휴지통' 
-                      ? 'border-gray-800 text-gray-900 bg-gray-50' 
-                      : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  휴지통 <span className="text-xs font-normal text-gray-400 ml-1">(3일 보관)</span>
+        {/* 메인 화면 조건부 렌더링 (집계 대시보드 OR 데이터 테이블) */}
+        {activeTab === '집계' ? (
+          
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {/* 상단: 시각화 차트 대시보드 */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+              {/* 전체 통계 요약 (왼쪽) */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-1 flex flex-col items-center justify-center relative group">
+                <h3 className="text-base font-bold text-gray-900 mb-6 flex items-center gap-2 w-full justify-start">
+                  <PieChart className="w-5 h-5 text-blue-600" /> 전체 A/S 종합 현황
+                </h3>
+                <DonutChart 
+                  normal={aggregatedStats.find(s => s.isTotal)?.normal || 0} 
+                  complaint={aggregatedStats.find(s => s.isTotal)?.complaint || 0} 
+                  size={180} 
+                  strokeWidth={16} 
+                />
+                <div className="w-full mt-8 space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                  <div className="flex justify-between items-center text-sm">
+                    <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500"></span><span className="font-medium text-gray-700">일반 A/S</span></div>
+                    <span className="font-bold text-gray-900">{aggregatedStats.find(s => s.isTotal)?.normal || 0}건 <span className="text-gray-500 font-normal ml-1">({aggregatedStats.find(s => s.isTotal)?.normalRate || 0}%)</span></span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500"></span><span className="font-medium text-gray-700">고객불만</span></div>
+                    <span className="font-bold text-red-600">{aggregatedStats.find(s => s.isTotal)?.complaint || 0}건 <span className="text-red-400 font-normal ml-1">({aggregatedStats.find(s => s.isTotal)?.complaintRate || 0}%)</span></span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 사업부별 통계 차트 (오른쪽) */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-3 relative group" id="sub-chart-container">
+                <h3 className="text-base font-bold text-gray-900 mb-6 flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-gray-600" /> 사업부별 세부 비율 지표
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 relative z-0">
+                  {aggregatedStats.filter(s => !s.isTotal).map(stat => (
+                    <div key={stat.unit} className="border border-gray-100 rounded-xl p-5 bg-white shadow-sm hover:shadow-md transition-shadow flex flex-col items-center relative overflow-hidden group">
+                       <div className="w-full text-center pb-3 mb-4 border-b border-gray-100">
+                         <h4 className="font-bold text-gray-800 text-sm">{stat.unit}</h4>
+                       </div>
+                       
+                       <DonutChart normal={stat.normal} complaint={stat.complaint} size={110} strokeWidth={12} />
+                       
+                       <div className="w-full mt-5 space-y-2 text-xs">
+                         <div className="flex justify-between items-center bg-blue-50/50 px-2 py-1.5 rounded text-blue-900">
+                           <span className="font-medium">일반</span>
+                           <span className="font-bold">{stat.normal}건 <span className="text-blue-600 font-normal">({stat.normalRate}%)</span></span>
+                         </div>
+                         <div className="flex justify-between items-center bg-red-50/50 px-2 py-1.5 rounded text-red-900">
+                           <span className="font-medium">불만</span>
+                           <span className="font-bold text-red-600">{stat.complaint}건 <span className="text-red-500 font-normal">({stat.complaintRate}%)</span></span>
+                         </div>
+                       </div>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={() => handleCopyChart('sub-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                  <Copy className="w-4 h-4" />
                 </button>
               </div>
-            )}
-          </div>
+            </div>
 
-          {activeTab !== '집계' && activeTab !== '휴지통' && activeTab !== '보고서' && (
-            <>
-              <div className="p-4 bg-gray-50/50 flex flex-wrap gap-4 items-center border-b border-gray-200">
-                <div className="flex items-center text-sm font-medium text-gray-700 mr-2">
-                  <Filter className="w-4 h-4 mr-2" /> 상세 필터
+            {/* 사업부별 개별 카드 영역 (모델 집계) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+              {dashboardStats.map(buStat => (
+                <div key={buStat.unit} id={`model-chart-${buStat.unit}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
+                  
+                  <h3 className="text-lg font-bold text-gray-900 mb-6 text-center border-b border-gray-100 pb-4">
+                    {buStat.unit} 모델별 접수 현황
+                  </h3>
+                  
+                  {/* 상단 파이차트 */}
+                  <div className="flex justify-center mb-8 relative z-0">
+                    <MultiDonutChart 
+                      data={buStat.modelsArr.map(m => ({ label: m.label, value: m.total, color: m.color }))} 
+                      size={180} strokeWidth={24} 
+                    />
+                  </div>
+                  
+                  {/* 하단 모델별 집계 리스트 표 */}
+                  <div className="flex-1 w-full mt-2">
+                    <table className="w-full text-sm text-left">
+                      <thead>
+                        <tr className="border-b border-gray-200 text-gray-500">
+                          <th className="pb-2 font-semibold">모델군</th>
+                          <th className="pb-2 font-semibold text-right">접수</th>
+                          <th className="pb-2 font-semibold text-right">일반 / 불만</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {buStat.modelsArr.map(m => (
+                          <tr key={m.label} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
+                            <td className="py-3 font-medium text-gray-800 flex items-center gap-2">
+                              <span className="w-3 shrink-0 h-3 rounded-full" style={{ backgroundColor: m.color }}></span>
+                              {m.label}
+                            </td>
+                            <td className="py-3 text-right">
+                              <span className="font-bold text-gray-900">{m.total}</span>
+                              <span className="text-[10px] text-gray-400 font-normal ml-1">({m.rate}%)</span>
+                            </td>
+                            <td className="py-3 text-right whitespace-nowrap">
+                              <div className="text-[11px]">
+                                <span className="text-blue-600 font-medium">{m.normal}</span> 
+                                <span className="text-gray-300 mx-1">/</span>
+                                <span className="text-red-500 font-medium">{m.complaint}</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                        {buStat.modelsArr.length === 0 && (
+                          <tr><td colSpan="3" className="py-6 text-center text-gray-400">데이터가 없습니다.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <button onClick={() => handleCopyChart(`model-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                    <Copy className="w-4 h-4" />
+                  </button>
                 </div>
-                {activeTab === 'PT' && (
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm font-semibold text-indigo-800 mr-1">PT 보드:</span>
-                    <div className="flex bg-white rounded-lg shadow-sm border border-gray-300 p-1">
-                      {['all', 'ZMDI', 'N'].map(board => (
-                        <button
-                          key={board}
-                          onClick={() => setFilterPtBoard(board)}
-                          className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                            filterPtBoard === board ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-                          }`}
-                        >
-                          {board === 'all' ? '전체' : board}
-                        </button>
+              ))}
+            </div>
+
+            <div className="space-y-6">
+              <div id="grouped-cause-chart" className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
+                <h3 className="text-lg font-bold text-gray-900 mb-6 text-center border-b border-gray-100 pb-4">
+                  전체 원인 분석 요약 (생산 불량 통합)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="flex flex-col items-center">
+                    <h4 className="text-sm font-bold text-gray-700 mb-6 bg-gray-50 px-4 py-2 rounded-md w-full text-center">일반 A/S 원인 분석</h4>
+                    <MultiDonutChart data={groupedCauseStats.normalData} size={200} strokeWidth={28} />
+                    <div className="w-full mt-6 grid grid-cols-2 gap-x-4 gap-y-2 text-xs px-4">
+                      {groupedCauseStats.normalData.map(d => (
+                        <div key={d.label} className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{backgroundColor: d.color}}></span>
+                            <span className="text-gray-600 truncate" title={d.label}>{d.label}</span>
+                          </div>
+                          <span className="font-bold text-gray-900">{d.value}</span>
+                        </div>
                       ))}
                     </div>
                   </div>
-                )}
-                <div className="flex items-center space-x-2">
-                  <label className="text-sm text-gray-600">대리점:</label>
-                  <select value={filterAgency} onChange={(e) => setFilterAgency(e.target.value)} className="text-sm border border-gray-300 rounded-md shadow-sm py-1.5 px-3 max-w-[150px]">
-                    <option value="all">전체 대리점</option>
-                    {agencies.filter(a => a !== 'all').map(agency => <option key={agency} value={agency}>{agency}</option>)}
-                  </select>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <label className="text-sm text-gray-600">모델명:</label>
-                  <select value={filterModel} onChange={(e) => setFilterModel(e.target.value)} className="text-sm border border-gray-300 rounded-md shadow-sm py-1.5 px-3 max-w-[150px]">
-                    <option value="all">전체 모델</option>
-                    {models.filter(m => m !== 'all').map(model => <option key={model} value={model}>{model}</option>)}
-                  </select>
-                </div>
-
-                {activeTab === 'PT' && (
-                  <div className="flex items-center space-x-3 border-l border-gray-300 pl-4 ml-2">
-                    <label className="text-sm text-gray-600 font-medium">성적서발행:</label>
-                    <div className="flex items-center gap-3">
-                      <label className="flex items-center gap-1 cursor-pointer">
-                        <input type="radio" value="all" checked={filterExcludeReport === 'all'} onChange={(e) => setFilterExcludeReport(e.target.value)} className="w-3.5 h-3.5 text-blue-600" />
-                        <span className="text-sm text-gray-700">포함</span>
-                      </label>
-                      <label className="flex items-center gap-1 cursor-pointer">
-                        <input type="radio" value="exclude" checked={filterExcludeReport === 'exclude'} onChange={(e) => setFilterExcludeReport(e.target.value)} className="w-3.5 h-3.5 text-red-500" />
-                        <span className="text-sm text-gray-700">제외</span>
-                      </label>
+                  <div className="flex flex-col items-center">
+                    <h4 className="text-sm font-bold text-red-700 mb-6 bg-red-50 px-4 py-2 rounded-md w-full text-center">고객불만 원인 분석</h4>
+                    <MultiDonutChart data={groupedCauseStats.complaintData} size={200} strokeWidth={28} />
+                    <div className="w-full mt-6 grid grid-cols-2 gap-x-4 gap-y-2 text-xs px-4">
+                      {groupedCauseStats.complaintData.map(d => (
+                        <div key={d.label} className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{backgroundColor: d.color}}></span>
+                            <span className="text-gray-600 truncate" title={d.label}>{d.label}</span>
+                          </div>
+                          <span className="font-bold text-gray-900">{d.value}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                )}
-
-                <div className="relative ml-auto">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Search className="h-4 w-4 text-gray-400" />
-                      </div>
-                  <input
-                    type="text"
-                    placeholder="검색어 입력..."
-                    className="block w-64 pl-10 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
                 </div>
-                <div className="text-sm text-gray-500 bg-white px-3 py-1.5 rounded-md border border-gray-200">
-                  검색결과 <span className="font-bold text-gray-900">{filteredData.length}</span>건
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-
-        <input type="file" accept=".csv" ref={fileInputRef} onChange={importFromCSV} className="hidden" />
-        
-        {activeTab === '보고서' ? (
-          
-          <div className="space-y-8 animate-in fade-in duration-300">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-10">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">데이터 백업 및 내보내기</h2>
-              <p className="text-gray-500 mb-8">현재 필터 조건에 맞는 <span className="font-bold text-blue-600">{filteredData.length}건</span>의 데이터를 원본 양식의 엑셀(.xlsx) 또는 CSV로 백업할 수 있습니다.</p>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-12">
-                <div onClick={() => fileInputRef.current.click()} className="py-8 px-6 border border-gray-200 rounded-2xl hover:border-blue-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center">
-                  <div className="w-14 h-14 bg-blue-50 rounded-full flex items-center justify-center mb-3 group-hover:bg-blue-100 transition-colors">
-                    <Upload className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <h3 className="text-base font-bold text-gray-900">CSV 데이터 업로드</h3>
-                </div>
-                
-                <div onClick={exportToExcel} className="py-8 px-6 border border-gray-200 rounded-2xl hover:border-green-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center">
-                  <div className="w-14 h-14 bg-green-50 rounded-full flex items-center justify-center mb-3 group-hover:bg-green-100 transition-colors">
-                    <FileSpreadsheet className="w-6 h-6 text-green-600" />
-                  </div>
-                  <h3 className="text-base font-bold text-gray-900">xlsx 다운로드</h3>
-                </div>
-                
-                <div onClick={exportToCSV} className="py-8 px-6 border border-gray-200 rounded-2xl hover:border-gray-400 hover:shadow-md transition-all cursor-pointer bg-gray-50 group flex flex-col items-center justify-center">
-                  <div className="w-14 h-14 bg-gray-200 rounded-full flex items-center justify-center mb-3 group-hover:bg-gray-300 transition-colors">
-                    <Download className="w-6 h-6 text-gray-600" />
-                  </div>
-                  <h3 className="text-base font-bold text-gray-700">CSV 다운로드</h3>
-                </div>
-              </div>
-
-              <div className="border-t border-gray-100 pt-10">
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">HTML 보고서 출력</h2>
-                <p className="text-gray-500 mb-8">웹페이지 형태로 깔끔하게 포맷팅된 요약 보고서를 생성하여 인쇄하거나 PDF로 저장합니다.</p>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-                  <div onClick={exportToHTML} className="py-8 px-6 border border-gray-200 rounded-2xl hover:border-purple-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center">
-                    <div className="w-14 h-14 bg-purple-50 rounded-full flex items-center justify-center mb-3 group-hover:bg-purple-100 transition-colors">
-                      <FileCode className="w-6 h-6 text-purple-600" />
-                    </div>
-                    <h3 className="text-base font-bold text-center text-gray-900">AS 관리대장 HTML 생성</h3>
-                  </div>
-
-                  <div onClick={() => exportToASReportHTML('ko')} className="py-8 px-6 border border-gray-200 rounded-2xl hover:border-indigo-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center">
-                    <div className="w-14 h-14 bg-indigo-50 rounded-full flex items-center justify-center mb-3 group-hover:bg-indigo-100 transition-colors">
-                      <FileText className="w-6 h-6 text-indigo-600" />
-                    </div>
-                    <h3 className="text-base font-bold text-center text-gray-900">AS 보고서 HTML (국문)</h3>
-                  </div>
-
-                  <div onClick={() => exportToASReportHTML('en')} className="py-8 px-6 border border-gray-200 rounded-2xl hover:border-blue-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center">
-                    <div className="w-14 h-14 bg-blue-50 rounded-full flex items-center justify-center mb-3 group-hover:bg-blue-100 transition-colors">
-                      <FileText className="w-6 h-6 text-blue-600" />
-                    </div>
-                    <h3 className="text-base font-bold text-center text-gray-900">AS 보고서 HTML (영문)</h3>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-        ) : activeTab === '집계' ? (
-          
-          <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="flex border-b border-gray-200 bg-white rounded-t-xl px-4 pt-4 overflow-x-auto hide-scrollbar">
-              {['종합 지표', '모델별 현황', '유형별 분석', '년도별 현황'].map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setDashboardTab(tab)}
-                  className={`px-6 py-3 font-bold text-sm transition-colors border-b-2 -mb-[2px] whitespace-nowrap ${
-                    dashboardTab === tab 
-                      ? 'text-blue-600 border-blue-600' 
-                      : 'text-gray-500 border-transparent hover:text-gray-700'
-                  }`}
-                >
-                  {tab}
+                <button onClick={() => handleCopyChart('grouped-cause-chart')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                  <Copy className="w-4 h-4" />
                 </button>
-              ))}
-            </div>
-
-            {dashboardTab === '종합 지표' && (
-              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                <div id="total-chart-container" className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-1 flex flex-col relative group">
-                  <div className="flex justify-between items-start w-full mb-6">
-                    <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                      <PieChart className="w-5 h-5 text-blue-600" /> 전체 A/S 종합 현황
-                    </h3>
-                    <div className="flex bg-gray-100 p-0.5 rounded-md relative z-10">
-                      <button onClick={() => setTotalChartType('donut')} className={`p-1.5 rounded ${totalChartType === 'donut' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="도넛 차트 보기">
-                        <PieChart className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => setTotalChartType('trend')} className={`p-1.5 rounded ${totalChartType === 'trend' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="연도별 트렌드 보기">
-                        <TrendingUp className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex-1 flex flex-col items-center justify-center w-full relative z-0">
-                    {totalChartType === 'donut' ? (
-                      <DonutChart 
-                        normal={aggregatedStats.find(s => s.isTotal)?.normal || 0} 
-                        complaint={aggregatedStats.find(s => s.isTotal)?.complaint || 0} 
-                        size={180} 
-                        strokeWidth={16} 
-                      />
-                    ) : (
-                      <YearlyTrendChart data={yearlyStats} type="mixed" />
-                    )}
-                  </div>
-
-                  {totalChartType === 'donut' && (
-                    <div className="w-full mt-8 space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
-                      <div className="flex justify-between items-center text-sm">
-                        <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500"></span><span className="font-medium text-gray-700">일반 A/S</span></div>
-                        <span className="font-bold text-gray-900">{aggregatedStats.find(s => s.isTotal)?.normal || 0}건 <span className="text-gray-500 font-normal ml-1">({aggregatedStats.find(s => s.isTotal)?.normalRate || 0}%)</span></span>
-                      </div>
-                      <div className="flex justify-between items-center text-sm">
-                        <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500"></span><span className="font-medium text-gray-700">고객불만</span></div>
-                        <span className="font-bold text-red-600">{aggregatedStats.find(s => s.isTotal)?.complaint || 0}건 <span className="text-red-400 font-normal ml-1">({aggregatedStats.find(s => s.isTotal)?.complaintRate || 0}%)</span></span>
-                      </div>
-                    </div>
-                  )}
-                  
-                  <button onClick={() => handleCopyChart('total-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
-                    <Copy className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-3 flex flex-col relative group" id="sub-chart-container">
-                  <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                      <BarChart3 className="w-5 h-5 text-gray-600" /> 사업부별 세부 비율 지표
-                    </h3>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 relative z-0">
-                    {aggregatedStats.filter(s => !s.isTotal).map(stat => (
-                      <div key={stat.unit} className="border border-gray-100 rounded-xl p-5 bg-white shadow-sm hover:shadow-md transition-shadow flex flex-col items-center relative overflow-hidden group">
-                         <div className="w-full text-center pb-3 mb-4 border-b border-gray-100">
-                           <h4 className="font-bold text-gray-800 text-sm">{stat.unit}</h4>
-                         </div>
-                         
-                         <DonutChart normal={stat.normal} complaint={stat.complaint} size={110} strokeWidth={12} />
-                         
-                         <div className="w-full mt-5 space-y-2 text-xs">
-                           <div className="flex justify-between items-center bg-blue-50/50 px-2 py-1.5 rounded text-blue-900">
-                             <span className="font-medium">일반</span>
-                             <span className="font-bold">{stat.normal}건 <span className="text-blue-600 font-normal">({stat.normalRate}%)</span></span>
-                           </div>
-                           <div className="flex justify-between items-center bg-red-50/50 px-2 py-1.5 rounded text-red-900">
-                             <span className="font-medium">불만</span>
-                             <span className="font-bold text-red-600">{stat.complaint}건 <span className="text-red-500 font-normal">({stat.complaintRate}%)</span></span>
-                           </div>
-                         </div>
-                      </div>
-                    ))}
-                  </div>
-                  <button onClick={() => handleCopyChart('sub-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="전체 사업부 차트 복사">
-                    <Copy className="w-4 h-4" />
-                  </button>
-                </div>
               </div>
-            )}
 
-            {/* 사업부별 개별 카드 영역 (모델 집계) */}
-            {dashboardTab === '모델별 현황' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-                {dashboardStats.map(buStat => (
-                  <div key={buStat.unit} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col">
-                    
-                    <h3 className="text-lg font-bold text-gray-900 mb-6 text-center border-b border-gray-100 pb-4">
-                      {buStat.unit} 모델별 접수 현황
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {causeAndProcessStats.map(buStat => (
+                  <div key={buStat.unit} id={`cause-chart-${buStat.unit}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
+                    <h3 className="text-lg font-bold text-gray-900 mb-4 text-center border-b border-gray-100 pb-4">
+                      {buStat.unit} 상세 집계
                     </h3>
                     
-                    {/* 상단 파이차트 */}
-                    <div className="flex justify-center mb-8">
-                      <MultiDonutChart 
-                        data={buStat.modelsArr.map(m => ({ label: m.label, value: m.total, color: m.color }))} 
-                        size={180} strokeWidth={24} 
-                      />
+                    <div className="space-y-6 flex-1 relative z-0">
+                      <div>
+                        <div className="text-sm font-bold text-gray-700 bg-gray-50 px-3 py-2 rounded-md mb-3">원인 분석 (상위 항목)</div>
+                        <HorizontalBarChart data={buStat.causesArr} color="bg-indigo-500" />
+                      </div>
+                      
+                      <div className="pt-4 border-t border-gray-100">
+                        <div className="text-sm font-bold text-gray-700 bg-gray-50 px-3 py-2 rounded-md mb-3">처리 내역</div>
+                        <HorizontalBarChart data={buStat.processesArr} color="bg-teal-500" />
+                      </div>
                     </div>
-                    
-                    {/* 하단 모델별 집계 리스트 표 */}
-                    <div className="flex-1 w-full mt-2">
-                      <table className="w-full text-sm text-left">
-                        <thead>
-                          <tr className="border-b border-gray-200 text-gray-500">
-                            <th className="pb-2 font-semibold">모델군</th>
-                            <th className="pb-2 font-semibold text-right">접수</th>
-                            <th className="pb-2 font-semibold text-right">일반 / 불만</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {buStat.modelsArr.map(m => (
-                            <tr key={m.label} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
-                              <td className="py-3 font-medium text-gray-800 flex items-center gap-2">
-                                <span className="w-3 shrink-0 h-3 rounded-full" style={{ backgroundColor: m.color }}></span>
-                                {m.label}
-                              </td>
-                              <td className="py-3 text-right">
-                                <span className="font-bold text-gray-900">{m.total}</span>
-                                <span className="text-[10px] text-gray-400 font-normal ml-1">({m.rate}%)</span>
-                              </td>
-                              <td className="py-3 text-right whitespace-nowrap">
-                                <div className="text-[11px]">
-                                  <span className="text-blue-600 font-medium">{m.normal}</span> 
-                                  <span className="text-gray-300 mx-1">/</span>
-                                  <span className="text-red-500 font-medium">{m.complaint}</span>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                          {buStat.modelsArr.length === 0 && (
-                            <tr><td colSpan="3" className="py-6 text-center text-gray-400">데이터가 없습니다.</td></tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                    <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                      <Copy className="w-4 h-4" />
+                    </button>
                   </div>
                 ))}
-              </div>
-            )}
-
-            {dashboardTab === '유형별 분석' && (
-              <div className="space-y-6">
-                
-                <div id="grouped-cause-chart" className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
-                  <h3 className="text-lg font-bold text-gray-900 mb-6 text-center border-b border-gray-100 pb-4">
-                    전체 원인 분석 요약 (생산 불량 통합)
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="flex flex-col items-center">
-                      <h4 className="text-sm font-bold text-gray-700 mb-6 bg-gray-50 px-4 py-2 rounded-md w-full text-center">일반 A/S 원인 분석</h4>
-                      <MultiDonutChart data={groupedCauseStats.normalData} size={200} strokeWidth={28} />
-                      <div className="w-full mt-6 grid grid-cols-2 gap-x-4 gap-y-2 text-xs px-4">
-                        {groupedCauseStats.normalData.map(d => (
-                          <div key={d.label} className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 truncate">
-                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{backgroundColor: d.color}}></span>
-                              <span className="text-gray-600 truncate" title={d.label}>{d.label}</span>
-                            </div>
-                            <span className="font-bold text-gray-900">{d.value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-center">
-                      <h4 className="text-sm font-bold text-red-700 mb-6 bg-red-50 px-4 py-2 rounded-md w-full text-center">고객불만 원인 분석</h4>
-                      <MultiDonutChart data={groupedCauseStats.complaintData} size={200} strokeWidth={28} />
-                      <div className="w-full mt-6 grid grid-cols-2 gap-x-4 gap-y-2 text-xs px-4">
-                        {groupedCauseStats.complaintData.map(d => (
-                          <div key={d.label} className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 truncate">
-                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{backgroundColor: d.color}}></span>
-                              <span className="text-gray-600 truncate" title={d.label}>{d.label}</span>
-                            </div>
-                            <span className="font-bold text-gray-900">{d.value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                {causeAndProcessStats.length === 0 && (
+                  <div className="col-span-full py-12 text-center text-gray-500 bg-white rounded-xl border border-gray-200">
+                    분석할 데이터가 없습니다. 원인 분석 및 처리 내역을 입력해주세요.
                   </div>
-                  <button onClick={() => handleCopyChart('grouped-cause-chart')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
-                    <Copy className="w-4 h-4" />
-                  </button>
-                </div>
+                )}
+              </div>
+            </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                  {causeAndProcessStats.map(buStat => (
-                    <div key={buStat.unit} id={`cause-chart-${buStat.unit}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
-                      <h3 className="text-lg font-bold text-gray-900 mb-4 text-center border-b border-gray-100 pb-4">
-                        {buStat.unit} 상세 집계
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {allowedTrendUnits.map(bu => {
+                const unitData = buYearlyStats[bu] || [];
+                return (
+                  <div key={bu} id={`yearly-chart-${bu}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
+                    <div className="flex justify-between items-center w-full mb-6 border-b border-gray-100 pb-4">
+                      <h3 className="text-lg font-bold text-gray-900">
+                        {bu} 사업부
                       </h3>
-                      
-                      <div className="space-y-6 flex-1 relative z-0">
-                        <div>
-                          <div className="text-sm font-bold text-gray-700 bg-gray-50 px-3 py-2 rounded-md mb-3">원인 분석 (상위 항목)</div>
-                          <HorizontalBarChart data={buStat.causesArr} color="bg-indigo-500" />
-                        </div>
-                        
-                        <div className="pt-4 border-t border-gray-100">
-                          <div className="text-sm font-bold text-gray-700 bg-gray-50 px-3 py-2 rounded-md mb-3">처리 내역</div>
-                          <HorizontalBarChart data={buStat.processesArr} color="bg-teal-500" />
-                        </div>
-                      </div>
-                      <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
-                        <Copy className="w-4 h-4" />
-                      </button>
                     </div>
-                  ))}
-                  {causeAndProcessStats.length === 0 && (
-                    <div className="col-span-full py-12 text-center text-gray-500 bg-white rounded-xl border border-gray-200">
-                      분석할 데이터가 없습니다. 원인 분석 및 처리 내역을 입력해주세요.
+                    
+                    <div className="flex-1 flex flex-col items-center justify-center w-full relative z-0">
+                      <YearlyTrendChart data={unitData} type="mixed" />
                     </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {dashboardTab === '년도별 현황' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {TREND_UNITS.map(bu => {
-                  const unitData = buYearlyStats[bu] || [];
-                  return (
-                    <div key={bu} id={`yearly-chart-${bu}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
-                      <div className="flex justify-between items-center w-full mb-6 border-b border-gray-100 pb-4">
-                        <h3 className="text-lg font-bold text-gray-900">
-                          {bu} 사업부
-                        </h3>
-                        <div className="flex bg-gray-100 p-0.5 rounded-md relative z-10">
-                          <button onClick={() => setYearlyTabChartType(prev => ({...prev, [bu]: 'line'}))} className={`p-1 rounded ${yearlyTabChartType[bu] !== 'mixed' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="다중 꺾은선 차트 보기">
-                            <LineChart className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={() => setYearlyTabChartType(prev => ({...prev, [bu]: 'mixed'}))} className={`p-1 rounded ${yearlyTabChartType[bu] === 'mixed' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="막대-꺾은선 혼합 차트 보기">
-                            <TrendingUp className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                      
-                      <div className="flex-1 flex flex-col items-center justify-center w-full relative z-0">
-                        <YearlyTrendChart data={unitData} type={yearlyTabChartType[bu] === 'mixed' ? 'mixed' : 'line'} />
-                      </div>
-                      
-                      <button onClick={() => handleCopyChart(`yearly-chart-${bu}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
-                        <Copy className="w-4 h-4" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    
+                    <button onClick={() => handleCopyChart(`yearly-chart-${bu}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                      <Copy className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
 
           </div>
 
+        ) : activeTab === '휴지통' ? (
+           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-4 py-2 text-left text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">사업부</th>
+                    <th scope="col" className="px-4 py-2 text-left text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">접수번호</th>
+                    <th scope="col" className="px-4 py-2 text-left text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">삭제일자</th>
+                    <th scope="col" className="px-4 py-2 text-center text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">복구/완전삭제</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {paginatedData.length > 0 ? (
+                    paginatedData.map((row) => (
+                      <tr key={row.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{row.businessUnit}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-500 line-through">{row.asNumber}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-red-500">{new Date(row.deletedAt).toLocaleString()}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-center align-middle">
+                          <div className="flex items-center justify-center gap-2">
+                            <button onClick={(e) => handleRestore(row.id, e)} className="px-3 py-1 bg-green-50 text-green-600 rounded-md hover:bg-green-100 text-xs font-bold transition-colors">복구</button>
+                            <button onClick={(e) => handlePermanentDeletePrepare(row.id, e)} className="px-3 py-1 bg-red-50 text-red-600 rounded-md hover:bg-red-100 text-xs font-bold transition-colors">영구 삭제</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr><td colSpan="4" className="px-6 py-12 text-center text-gray-500">휴지통이 비어있습니다.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         ) : (
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
