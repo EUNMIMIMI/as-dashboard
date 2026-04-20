@@ -286,9 +286,10 @@ const getUniqueCount = (dataList, statusFilter) => {
   }
   const uniqueRecords = new Set();
   filtered.forEach(d => {
+    const claim = d.claimType === '고객불만' ? '고객불만' : '일반 A/S';
     const status = d.currentStatus || '접수 대기';
     if (d.asNumber) {
-      uniqueRecords.add(`${d.asNumber.trim().toUpperCase()}_${status}`);
+      uniqueRecords.add(`${d.asNumber.trim().toUpperCase()}_${claim}_${status}`);
     } else {
       uniqueRecords.add(`doc_${d.id}`);
     }
@@ -550,7 +551,6 @@ const HorizontalBarChart = ({ data, color }) => {
   );
 };
 
-// 가로 막대 차트 (모델별 현황 전용)
 const ModelHorizontalBarChart = ({ data }) => {
   if (!data || data.length === 0) return <div className="text-sm text-gray-400 flex items-center justify-center h-full w-full">데이터가 없습니다.</div>;
 
@@ -619,9 +619,6 @@ export default function App() {
   const [yearlyTabChartType, setYearlyTabChartType] = useState({}); 
   const [selectedDashboardStatus, setSelectedDashboardStatus] = useState('all');
   
-  const [user, setUser] = useState(null);
-  const [isSeeded, setIsSeeded] = useState(false);
-  
   const [filterAgency, setFilterAgency] = useState('all');
   const [filterModel, setFilterModel] = useState('all');
   const [filterPtBoard, setFilterPtBoard] = useState('all');
@@ -645,15 +642,11 @@ export default function App() {
   const fileInputRef = useRef(null);
 
   const customAlert = (message) => setAlertMessage(message);
-
   const isQM = currentUserRole?.name === '품질경영팀';
 
   const todayStr = useMemo(() => {
     const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const dd = String(now.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   }, []);
 
   const handleLogin = (e) => {
@@ -662,7 +655,7 @@ export default function App() {
     if (role) {
       setCurrentUserRole(role);
       setLoginError('');
-      setActiveTab(role.tabs === 'ALL' ? '전체' : role.tabs[0]);
+      setActiveTab('전체');
     } else {
       setLoginError('비밀번호가 올바르지 않습니다.');
     }
@@ -670,7 +663,6 @@ export default function App() {
 
   const handleLogout = () => {
     setCurrentUserRole(null);
-    localStorage.removeItem('as_dashboard_role');
     setLoginPassword('');
     setIsCapsLockOn(false);
   };
@@ -678,7 +670,7 @@ export default function App() {
   useEffect(() => {
     if (currentUserRole) {
       if (!isQM && (activeTab === '휴지통' || activeTab === '보고서' || activeTab === '미입력')) {
-        // 권한 없는 탭 강제 이동 방어
+        // 비품질팀 권한으로 접근 불가능한 탭 방어. '전체' 및 '집계'는 허용.
         setActiveTab(currentUserRole.tabs[0]);
       } else if (currentUserRole.tabs !== 'ALL' && !currentUserRole.tabs.includes(activeTab) && activeTab !== '전체' && activeTab !== '집계') {
         setActiveTab(currentUserRole.tabs[0]);
@@ -690,6 +682,7 @@ export default function App() {
     setSelectedDashboardStatus('all');
   }, [activeTab]);
 
+  // Auth & Data Fetching
   useEffect(() => {
     const initAuth = async () => {
       if (isCanvasEnv && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -721,19 +714,15 @@ export default function App() {
         }
       });
       
-      if (snapshot.empty && !isSeeded) {
-        setIsSeeded(true);
-      } else {
-        records.sort((a, b) => {
-          const numA = a.asNumber || '';
-          const numB = b.asNumber || '';
-          return numB.localeCompare(numA); 
-        });
-        setData(records);
-      }
+      records.sort((a, b) => {
+        const numA = a.asNumber || '';
+        const numB = b.asNumber || '';
+        return numB.localeCompare(numA); 
+      });
+      setData(records);
     }, (error) => console.error("Firestore Error:", error));
     return () => unsubscribe();
-  }, [user, isSeeded]);
+  }, [user]);
 
   const activeRecords = useMemo(() => data.filter(d => !d.deletedAt), [data]);
   const deletedRecords = useMemo(() => data.filter(d => d.deletedAt), [data]);
@@ -931,7 +920,7 @@ export default function App() {
     allowedFixedUnits.forEach(bu => stats[bu] = { unit: bu, total: 0, models: {} });
 
     allowedProcessedData.forEach(item => {
-      const bu = allowedFixedUnits.includes(item.businessUnit) ? item.businessUnit : '기타사업부';
+      const bu = FIXED_UNITS_ORDER.includes(item.businessUnit) ? item.businessUnit : '기타사업부';
       if (!allowedFixedUnits.includes(bu)) return;
 
       const groupLabel = getModelGroup(item.businessUnit, item.model, item.ptBoardType);
@@ -1045,24 +1034,20 @@ export default function App() {
   // -------------------------------------------------------------
   // [메인 테이블 조회용 데이터 탭 처리]
   // -------------------------------------------------------------
-  const dynamicUnits = Array.from(new Set(processedData.map(d => d.businessUnit).filter(Boolean)));
-  const otherUnits = dynamicUnits.filter(unit => !FIXED_UNITS_ORDER.includes(unit));
-
-  const allBusinessUnits = ['전체', ...FIXED_UNITS_ORDER, ...otherUnits, '미입력', '집계'];
-  
   const visibleBusinessUnits = useMemo(() => {
     if (!currentUserRole) return [];
-    if (currentUserRole.tabs === 'ALL') return allBusinessUnits;
-    return ['전체', ...currentUserRole.tabs, '집계']; // 비품질팀은 미입력 탭 미노출
-  }, [currentUserRole, FIXED_UNITS_ORDER, otherUnits, allBusinessUnits]);
+    const fixed = ['전체', ...FIXED_UNITS_ORDER, '집계'];
+    if (currentUserRole.tabs === 'ALL') return [...fixed, '미입력'];
+    return ['전체', ...currentUserRole.tabs, '집계'];
+  }, [currentUserRole]);
   
   const tabFilteredData = useMemo(() => {
     if (activeTab === '휴지통') return processedDeletedData;
 
     let baseData = processedData; 
-    // 권한이 없으면 자신이 포함된 사업부 탭 데이터만 열람 가능 (전체/집계 탭 포함)
-    if (!isQM && currentUserRole) {
-      baseData = processedData.filter(item => currentUserRole.tabs.includes(item.businessUnit));
+    // 권한이 없으면 자신이 포함된 사업부 탭 데이터만 열람 가능
+    if (!isQM) {
+      baseData = processedData.filter(item => currentUserRole?.tabs.includes(item.businessUnit));
     }
 
     if (activeTab === '전체' || activeTab === '집계' || activeTab === '보고서') return baseData;
@@ -1093,7 +1078,7 @@ export default function App() {
       if (filterAgency !== 'all' && item.agencyName !== filterAgency) return false;
       if (filterModel !== 'all' && item.model !== filterModel) return false;
       
-      if (activeTab === 'PT' && filterExcludeReport === 'exclude') {
+      if (filterExcludeReport === 'exclude') {
         const content = item.defectContent || '';
         if (content.includes('성적서 발행') || content.includes('성적서발행')) return false;
       }
@@ -1125,7 +1110,7 @@ export default function App() {
       }
       return true;
     });
-  }, [tabFilteredData, activeTab, filterAgency, filterModel, filterPtBoard, filterExcludeReport, searchQuery, selectedDashboardStatus]);
+  }, [tabFilteredData, activeTab, filterAgency, filterModel, filterExcludeReport, searchQuery, selectedDashboardStatus]);
 
   const renderStatusBadge = (row) => {
     const status = row.currentStatus || '접수 대기';
@@ -1228,7 +1213,7 @@ export default function App() {
     });
   };
 
-  const handleFormSubmit = async (e) => {
+  const handleFormSubmitInternal = async (e) => {
     e.preventDefault();
     if (!user) {
       customAlert('데이터베이스에 연결 중입니다. 잠시 후 다시 시도해주세요.');
@@ -1248,7 +1233,7 @@ export default function App() {
   };
 
   const executeDelete = async () => {
-    if (!user || !itemToDelete) return;
+    if (!user || !itemToDelete || !isQM) return;
     await updateDoc(doc(db, getCollectionPath(), String(itemToDelete)), { deletedAt: Date.now() });
     setItemToDelete(null);
     setSelectedRow(null);
@@ -1260,7 +1245,7 @@ export default function App() {
   };
 
   const executePermanentDelete = async () => {
-    if (!user || !itemToPermanentDelete) return;
+    if (!user || !itemToPermanentDelete || !isQM) return;
     await deleteDoc(doc(db, getCollectionPath(), String(itemToPermanentDelete)));
     setItemToPermanentDelete(null);
     setSelectedRow(null);
@@ -1268,7 +1253,7 @@ export default function App() {
 
   const handleRestore = async (id, e) => {
     if (e) e.stopPropagation();
-    if (!user) return;
+    if (!user || !isQM) return;
     await updateDoc(doc(db, getCollectionPath(), String(id)), { deletedAt: null });
     setSelectedRow(null);
     customAlert('데이터가 성공적으로 복구되었습니다.');
@@ -1503,16 +1488,12 @@ export default function App() {
     document.body.removeChild(textArea);
   };
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab, filterAgency, filterModel, filterPtBoard, filterExcludeReport, searchQuery, selectedDashboardStatus]);
-
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage) || 1;
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     return filteredData.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredData, currentPage]);
 
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage) || 1;
   const maxVisiblePages = 5;
   const currentBlock = Math.ceil(currentPage / maxVisiblePages) || 1;
   const startPage = (currentBlock - 1) * maxVisiblePages + 1;
@@ -1956,40 +1937,12 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8 text-center border border-gray-100">
-          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Lock className="w-8 h-8 text-blue-600" />
-          </div>
+          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6"><Lock className="w-8 h-8 text-blue-600" /></div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">A/S 관리대장 로그인</h1>
-          <p className="text-gray-500 mb-8">부여받은 시스템 접근 비밀번호를 입력해주세요.</p>
-          
           <form onSubmit={handleLogin} className="space-y-4">
-            <div className="relative">
-              <input
-                type="password"
-                value={loginPassword}
-                onChange={(e) => {
-                  setLoginPassword(e.target.value);
-                  if (/[A-Z]/.test(e.target.value)) setIsCapsLockOn(true);
-                }}
-                onKeyDown={handleCapsLockCheck}
-                onKeyUp={handleCapsLockCheck}
-                placeholder="비밀번호 입력"
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-center text-lg tracking-widest"
-                required
-              />
-              {isCapsLockOn && (
-                <p className="text-orange-500 text-sm font-bold mt-2 animate-pulse">
-                  캡스락(Caps Lock)을 풀어주세요.
-                </p>
-              )}
-            </div>
-            {loginError && <p className="text-red-500 text-sm font-medium">{loginError}</p>}
-            <button
-              type="submit"
-              className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-colors shadow-sm mt-4"
-            >
-              시스템 접속
-            </button>
+            <input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} placeholder="비밀번호 입력" className="w-full px-4 py-3 border rounded-xl text-center text-lg tracking-widest focus:ring-2 focus:ring-blue-500" required />
+            {loginError && <p className="text-red-500 text-sm">{loginError}</p>}
+            <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-colors shadow-sm">시스템 접속</button>
           </form>
         </div>
       </div>
@@ -1997,1125 +1950,489 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8 font-sans">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8 font-sans text-gray-900">
       <div className="max-w-[1400px] mx-auto space-y-6">
         
-        {/* 헤더 & 기능 버튼 */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <FileText className="text-blue-600" />
-              A/S 처리 관리대장
-            </h1>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+        {/* 헤더 */}
+        <header className="flex items-center justify-between bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+          <h1 className="text-2xl font-bold flex items-center gap-2"><FileText className="text-blue-600" /> A/S 처리 관리대장</h1>
+          <div className="flex gap-2">
             <input type="file" accept=".csv" ref={fileInputRef} onChange={importFromCSV} className="hidden" />
-            <button onClick={() => fileInputRef.current.click()} className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-              <Upload className="w-4 h-4 mr-1.5" /> CSV 업로드
-            </button>
-            <button onClick={exportToCSV} className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-              <Download className="w-4 h-4 mr-1.5" /> CSV 다운로드
-            </button>
-            <button onClick={exportToHTML} className="flex items-center px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors border border-blue-200">
-              <FileCode className="w-4 h-4 mr-1.5" /> HTML 보고서
-            </button>
-            <button onClick={() => handleOpenForm()} className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-sm ml-2">
-              <Plus className="w-4 h-4 mr-1.5" /> 새 데이터 추가
-            </button>
+            <button onClick={handleLogout} className="px-4 py-2 bg-red-50 text-red-600 rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-red-100"><LogOut className="w-4 h-4" /> 로그아웃</button>
           </div>
         </header>
 
-        {/* 탭 영역 */}
+        {/* 탭 & 대시보드 */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="border-b border-gray-200 px-2 flex overflow-x-auto hide-scrollbar">
+          <div className="flex border-b border-gray-200 overflow-x-auto hide-scrollbar px-2">
             {visibleBusinessUnits.map(unit => (
-              <button
-                key={unit}
-                onClick={() => {
-                  setActiveTab(unit);
-                  if (unit !== 'PT') setFilterPtBoard('all');
-                }}
-                className={`whitespace-nowrap py-4 px-6 text-sm font-medium border-b-2 transition-colors duration-200 ${
-                  activeTab === unit ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                {unit}
-              </button>
+              <button key={unit} onClick={() => { setActiveTab(unit); setCurrentPage(1); }} className={`px-6 py-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === unit ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>{unit}</button>
             ))}
             {isQM && (
               <>
-                <button
-                  onClick={() => setActiveTab('보고서')}
-                  className={`whitespace-nowrap py-4 px-6 text-sm font-medium border-b-2 transition-colors duration-200 ${
-                    activeTab === '보고서' ? 'border-gray-800 text-gray-900 bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  보고서
-                </button>
-                <button
-                  onClick={() => setActiveTab('휴지통')}
-                  className={`whitespace-nowrap py-4 px-6 text-sm font-medium border-b-2 transition-colors duration-200 ${
-                    activeTab === '휴지통' ? 'border-gray-800 text-gray-900 bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  휴지통 <span className="text-xs font-normal text-gray-400 ml-1">(3일 보관)</span>
-                </button>
+                <button onClick={() => setActiveTab('보고서')} className={`px-6 py-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === '보고서' ? 'border-gray-800 text-gray-900 bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>보고서</button>
+                <button onClick={() => setActiveTab('휴지통')} className={`px-6 py-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === '휴지통' ? 'border-gray-800 text-gray-900 bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>휴지통 (3일)</button>
               </>
             )}
           </div>
 
-          {/* '집계' 탭이 아닐 때만 하위 필터 노출 */}
           {activeTab !== '집계' && activeTab !== '휴지통' && activeTab !== '보고서' && (
-            <>
-              {activeTab === 'PT' && (
-                <div className="bg-indigo-50/50 px-6 py-3 border-b border-indigo-100 flex items-center gap-4">
-                  <span className="text-sm font-semibold text-indigo-800">PT 보드 필터:</span>
-                  <div className="flex bg-white rounded-lg shadow-sm border border-indigo-200 p-1">
-                    {['all', 'ZMDI', 'N'].map(board => (
-                      <button
-                        key={board}
-                        onClick={() => setFilterPtBoard(board)}
-                        className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${
-                          filterPtBoard === board ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-                        }`}
-                      >
-                        {board === 'all' ? '전체 보기' : board}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+            <div className="p-4 bg-gray-50/50 border-b border-gray-200 space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+                {DASHBOARD_CONFIG.map(config => {
+                  const count = getUniqueCount(tabFilteredData, config.status);
+                  const isSelected = selectedDashboardStatus === (config.status === '전체' ? 'all' : config.status);
+                  return (
+                    <div key={config.status} onClick={() => setSelectedDashboardStatus(config.status === '전체' ? 'all' : config.status)} className="p-3 bg-white rounded-xl border-2 cursor-pointer transition-all" style={{ borderColor: config.hex, boxShadow: isSelected ? `0 0 10px ${config.hex}50` : 'none', transform: isSelected ? 'scale(1.03)' : 'none' }}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <config.icon className="w-4 h-4" style={{ color: config.hex }} />
+                        <span className="text-[11px] font-bold text-gray-500">{config.label}</span>
+                      </div>
+                      <div className="text-xl font-black">{count}<span className="text-xs ml-0.5 text-gray-400">건</span></div>
+                    </div>
+                  );
+                })}
+              </div>
 
-              <div className="p-4 bg-gray-50/50 flex flex-wrap gap-4 items-center">
-                <div className="flex items-center text-sm font-medium text-gray-700 mr-2">
-                  <Filter className="w-4 h-4 mr-2" /> 상세 필터
+              {/* 상세 필터 */}
+              <div className="flex flex-wrap items-center gap-5 text-sm pt-2">
+                <div className="flex items-center gap-2"><Search className="w-4 h-4 text-gray-400" /> <input type="text" placeholder="접수번호, 대리점, 모델 검색..." className="border rounded-md px-3 py-1.5 w-60 focus:ring-2 focus:ring-blue-500" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} /></div>
+                <div className="flex items-center gap-2"><span>대리점:</span> <select value={filterAgency} onChange={e => setFilterAgency(e.target.value)} className="border rounded-md px-2 py-1.5 min-w-[120px]">{agencies.map(a => <option key={a} value={a}>{a === 'all' ? '전체' : a}</option>)}</select></div>
+                <div className="flex items-center gap-2"><span>모델명:</span> <select value={filterModel} onChange={e => setFilterModel(e.target.value)} className="border rounded-md px-2 py-1.5 min-w-[120px]">{models.map(m => <option key={m} value={m}>{m === 'all' ? '전체' : m}</option>)}</select></div>
+                <div className="flex items-center gap-3 border-l pl-4 border-gray-300">
+                  <span className="font-bold text-gray-600">성적서 건:</span>
+                  <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="rpt" checked={filterExcludeReport === 'all'} onChange={() => setFilterExcludeReport('all')} /> 포함</label>
+                  <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="rpt" checked={filterExcludeReport === 'exclude'} onChange={() => setFilterExcludeReport('exclude')} /> 제외</label>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <label className="text-sm text-gray-600">대리점:</label>
-                  <select value={filterAgency} onChange={(e) => setFilterAgency(e.target.value)} className="text-sm border border-gray-300 rounded-md shadow-sm py-1.5 px-3 max-w-[150px]">
-                    <option value="all">전체 대리점</option>
-                    {agencies.filter(a => a !== 'all').map(agency => <option key={agency} value={agency}>{agency}</option>)}
-                  </select>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <label className="text-sm text-gray-600">모델명:</label>
-                  <select value={filterModel} onChange={(e) => setFilterModel(e.target.value)} className="text-sm border border-gray-300 rounded-md shadow-sm py-1.5 px-3 max-w-[150px]">
-                    <option value="all">전체 모델</option>
-                    {models.filter(m => m !== 'all').map(model => <option key={model} value={model}>{model}</option>)}
-                  </select>
-                </div>
-
-                <div className="relative ml-auto">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Search className="h-4 w-4 text-gray-400" />
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="검색어 입력..."
-                    className="block w-64 pl-10 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-                <div className="text-sm text-gray-500 bg-white px-3 py-1.5 rounded-md border border-gray-200">
-                  총 <span className="font-bold text-gray-900">{filteredData.length}</span>건
+                
+                <div className="ml-auto">
+                   <button onClick={() => handleOpenForm()} className="px-4 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-blue-700 transition-colors shadow-sm"><Plus className="w-4 h-4" /> 새 데이터 추가</button>
                 </div>
               </div>
-            </>
+            </div>
           )}
         </div>
 
-        {/* 상단 단독 대시보드 영역 */}
-        {activeTab !== '집계' && activeTab !== '휴지통' && activeTab !== '보고서' && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 md:p-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 md:gap-4">
-              {DASHBOARD_CONFIG.map(config => {
-                const isTotal = config.status === '전체';
-                const count = getUniqueCount(tabFilteredData, config.status);
-                const isSelected = isTotal ? (selectedDashboardStatus === 'all' || selectedDashboardStatus === null) : selectedDashboardStatus === config.status;
-                const hexColor = config.hex;
-                
-                return (
-                  <div 
-                    key={config.status}
-                    onClick={() => setSelectedDashboardStatus(isTotal ? 'all' : config.status)}
-                    className="relative p-3 md:p-4 rounded-xl flex items-center gap-3 transition-all duration-200 bg-white cursor-pointer"
-                    style={{
-                      borderWidth: '2px',
-                      borderStyle: 'solid',
-                      borderColor: hexColor,
-                      boxShadow: isSelected ? `0 4px 12px ${hexColor}40` : '0 1px 2px rgba(0,0,0,0.05)',
-                      transform: isSelected ? 'scale(1.02)' : 'scale(1)'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isSelected) e.currentTarget.style.boxShadow = `0 4px 12px ${hexColor}20`;
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isSelected) e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
-                    }}
-                  >
-                    <div 
-                      className="w-10 h-10 md:w-12 md:h-12 rounded-lg flex items-center justify-center shrink-0 relative overflow-hidden"
-                    >
-                       <div className="absolute inset-0 opacity-20" style={{ backgroundColor: hexColor }}></div>
-                       <config.icon className="w-5 h-5 md:w-6 md:h-6 relative z-10" style={{ color: hexColor }} />
-                    </div>
-                    <div className="flex flex-col">
-                       <span className="text-[11px] md:text-xs text-gray-500 font-medium mb-0.5">{config.label}</span>
-                       <span className="text-lg md:text-2xl font-black text-gray-900 leading-none tracking-tight">
-                         {count}<span className="text-xs md:text-sm font-bold text-gray-500 ml-0.5">건</span>
-                       </span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* 메인 화면 조건부 렌더링 (집계 대시보드 OR 데이터 테이블) */}
+        {/* 메인 내용: 집계 화면 또는 데이터 테이블 */}
         {activeTab === '집계' ? (
-          
-          <div className="space-y-6 animate-in fade-in duration-300">
-            {/* 상단: 시각화 차트 대시보드 */}
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-              {/* 전체 통계 요약 (왼쪽) */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-1 flex flex-col items-center justify-center relative group">
-                <h3 className="text-base font-bold text-gray-900 mb-6 flex items-center gap-2 w-full justify-start">
-                  <PieChart className="w-5 h-5 text-blue-600" /> 전체 A/S 종합 현황
-                </h3>
-                <DonutChart 
-                  normal={aggregatedStats.find(s => s.isTotal)?.normal || 0} 
-                  complaint={aggregatedStats.find(s => s.isTotal)?.complaint || 0} 
-                  size={180} 
-                  strokeWidth={16} 
-                />
-                <div className="w-full mt-8 space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
-                  <div className="flex justify-between items-center text-sm">
-                    <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500"></span><span className="font-medium text-gray-700">일반 A/S</span></div>
-                    <span className="font-bold text-gray-900">{aggregatedStats.find(s => s.isTotal)?.normal || 0}건 <span className="text-gray-500 font-normal ml-1">({aggregatedStats.find(s => s.isTotal)?.normalRate || 0}%)</span></span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500"></span><span className="font-medium text-gray-700">고객불만</span></div>
-                    <span className="font-bold text-red-600">{aggregatedStats.find(s => s.isTotal)?.complaint || 0}건 <span className="text-red-400 font-normal ml-1">({aggregatedStats.find(s => s.isTotal)?.complaintRate || 0}%)</span></span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 사업부별 통계 차트 (오른쪽) */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-3 relative group" id="sub-chart-container">
-                <h3 className="text-base font-bold text-gray-900 mb-6 flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-gray-600" /> 사업부별 세부 비율 지표
-                </h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 relative z-0">
-                  {aggregatedStats.filter(s => !s.isTotal).map(stat => (
-                    <div key={stat.unit} className="border border-gray-100 rounded-xl p-5 bg-white shadow-sm hover:shadow-md transition-shadow flex flex-col items-center relative overflow-hidden group">
-                       <div className="w-full text-center pb-3 mb-4 border-b border-gray-100">
-                         <h4 className="font-bold text-gray-800 text-sm">{stat.unit}</h4>
-                       </div>
-                       
-                       <DonutChart normal={stat.normal} complaint={stat.complaint} size={110} strokeWidth={12} />
-                       
-                       <div className="w-full mt-5 space-y-2 text-xs">
-                         <div className="flex justify-between items-center bg-blue-50/50 px-2 py-1.5 rounded text-blue-900">
-                           <span className="font-medium">일반</span>
-                           <span className="font-bold">{stat.normal}건 <span className="text-blue-600 font-normal">({stat.normalRate}%)</span></span>
-                         </div>
-                         <div className="flex justify-between items-center bg-red-50/50 px-2 py-1.5 rounded text-red-900">
-                           <span className="font-medium">불만</span>
-                           <span className="font-bold text-red-600">{stat.complaint}건 <span className="text-red-500 font-normal">({stat.complaintRate}%)</span></span>
-                         </div>
-                       </div>
-                    </div>
-                  ))}
-                </div>
-                <button onClick={() => handleCopyChart('sub-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
-                  <Copy className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* 사업부별 개별 카드 영역 (모델 집계) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-              {dashboardStats.map(buStat => (
-                <div key={buStat.unit} id={`model-chart-${buStat.unit}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
-                  
-                  <h3 className="text-lg font-bold text-gray-900 mb-6 text-center border-b border-gray-100 pb-4">
-                    {buStat.unit} 모델별 접수 현황
-                  </h3>
-                  
-                  {/* 상단 파이차트 */}
-                  <div className="flex justify-center mb-8 relative z-0">
-                    <MultiDonutChart 
-                      data={buStat.modelsArr.map(m => ({ label: m.label, value: m.total, color: m.color }))} 
-                      size={180} strokeWidth={24} 
-                    />
-                  </div>
-                  
-                  {/* 하단 모델별 집계 리스트 표 */}
-                  <div className="flex-1 w-full mt-2">
-                    <table className="w-full text-sm text-left">
-                      <thead>
-                        <tr className="border-b border-gray-200 text-gray-500">
-                          <th className="pb-2 font-semibold">모델군</th>
-                          <th className="pb-2 font-semibold text-right">접수</th>
-                          <th className="pb-2 font-semibold text-right">일반 / 불만</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {buStat.modelsArr.map(m => (
-                          <tr key={m.label} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
-                            <td className="py-3 font-medium text-gray-800 flex items-center gap-2">
-                              <span className="w-3 shrink-0 h-3 rounded-full" style={{ backgroundColor: m.color }}></span>
-                              {m.label}
-                            </td>
-                            <td className="py-3 text-right">
-                              <span className="font-bold text-gray-900">{m.total}</span>
-                              <span className="text-[10px] text-gray-400 font-normal ml-1">({m.rate}%)</span>
-                            </td>
-                            <td className="py-3 text-right whitespace-nowrap">
-                              <div className="text-[11px]">
-                                <span className="text-blue-600 font-medium">{m.normal}</span> 
-                                <span className="text-gray-300 mx-1">/</span>
-                                <span className="text-red-500 font-medium">{m.complaint}</span>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                        {buStat.modelsArr.length === 0 && (
-                          <tr><td colSpan="3" className="py-6 text-center text-gray-400">데이터가 없습니다.</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                  <button onClick={() => handleCopyChart(`model-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
-                    <Copy className="w-4 h-4" />
-                  </button>
-                </div>
+          <div className="space-y-6 animate-in fade-in duration-500">
+            {/* 집계 서브 탭 */}
+            <div className="flex gap-2 mb-4 border-b border-gray-200">
+              {['종합 지표', '모델별 현황', '원인별 집계'].map(tab => (
+                 <button key={tab} onClick={() => setDashboardTab(tab)} className={`px-4 py-2 font-bold text-sm border-b-2 transition-colors ${dashboardTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>{tab}</button>
               ))}
             </div>
 
-            <div className="space-y-6">
-              <div id="grouped-cause-chart" className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
-                <h3 className="text-lg font-bold text-gray-900 mb-6 text-center border-b border-gray-100 pb-4">
-                  전체 원인 분석 요약 (생산 불량 통합)
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="flex flex-col items-center">
-                    <h4 className="text-sm font-bold text-gray-700 mb-6 bg-gray-50 px-4 py-2 rounded-md w-full text-center">일반 A/S 원인 분석</h4>
-                    <MultiDonutChart data={groupedCauseStats.normalData} size={200} strokeWidth={28} />
-                    <div className="w-full mt-6 grid grid-cols-2 gap-x-4 gap-y-2 text-xs px-4">
-                      {groupedCauseStats.normalData.map(d => (
-                        <div key={d.label} className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{backgroundColor: d.color}}></span>
-                            <span className="text-gray-600 truncate" title={d.label}>{d.label}</span>
-                          </div>
-                          <span className="font-bold text-gray-900">{d.value}</span>
-                        </div>
-                      ))}
+            {dashboardTab === '종합 지표' && (
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                 <div className="bg-white p-6 rounded-xl border border-gray-200 flex flex-col items-center shadow-sm">
+                    <h3 className="w-full text-left font-bold mb-6 flex items-center gap-2 text-blue-600"><PieChart className="w-5 h-5" /> 종합 현황</h3>
+                    <DonutChart normal={aggregatedStats.reduce((a,c) => a+c.normal, 0)} complaint={aggregatedStats.reduce((a,c) => a+c.complaint, 0)} size={180} strokeWidth={16} />
+                    <div className="w-full mt-8 space-y-2">
+                       <div className="flex justify-between text-sm bg-blue-50 p-2.5 rounded border border-blue-100 text-blue-800"><span>일반 A/S 건수</span> <strong>{aggregatedStats.reduce((a,c) => a+c.normal, 0)}건</strong></div>
+                       <div className="flex justify-between text-sm bg-red-50 p-2.5 rounded border border-red-100 text-red-800"><span>고객 불만 건수</span> <strong>{aggregatedStats.reduce((a,c) => a+c.complaint, 0)}건</strong></div>
                     </div>
-                  </div>
-                  <div className="flex flex-col items-center">
-                    <h4 className="text-sm font-bold text-red-700 mb-6 bg-red-50 px-4 py-2 rounded-md w-full text-center">고객불만 원인 분석</h4>
-                    <MultiDonutChart data={groupedCauseStats.complaintData} size={200} strokeWidth={28} />
-                    <div className="w-full mt-6 grid grid-cols-2 gap-x-4 gap-y-2 text-xs px-4">
-                      {groupedCauseStats.complaintData.map(d => (
-                        <div key={d.label} className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{backgroundColor: d.color}}></span>
-                            <span className="text-gray-600 truncate" title={d.label}>{d.label}</span>
-                          </div>
-                          <span className="font-bold text-gray-900">{d.value}</span>
-                        </div>
-                      ))}
+                 </div>
+                 <div className="lg:col-span-3 bg-white p-6 rounded-xl border border-gray-200 shadow-sm" id="sub-chart-container">
+                    <h3 className="font-bold mb-8 flex items-center gap-2 text-gray-600"><BarChart3 className="w-5 h-5" /> 사업부별 상세 비율</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                       {aggregatedStats.map(s => (
+                         <div key={s.unit} className="flex flex-col items-center p-4 border rounded-xl hover:shadow-lg transition-all bg-gray-50/30">
+                            <span className="text-xs font-black text-gray-700 mb-4">{s.unit}</span>
+                            <DonutChart normal={s.normal} complaint={s.complaint} size={100} strokeWidth={10} />
+                            <div className="mt-4 text-[11px] font-bold text-gray-500">{s.totalClaims}건 (불만율 {s.complaintRate}%)</div>
+                         </div>
+                       ))}
                     </div>
-                  </div>
-                </div>
-                <button onClick={() => handleCopyChart('grouped-cause-chart')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
-                  <Copy className="w-4 h-4" />
-                </button>
+                    <button onClick={() => handleCopyChart('sub-chart-container')} className="mt-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md"><Copy className="w-4 h-4" /></button>
+                 </div>
               </div>
+            )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {causeAndProcessStats.map(buStat => (
-                  <div key={buStat.unit} id={`cause-chart-${buStat.unit}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
-                    <h3 className="text-lg font-bold text-gray-900 mb-4 text-center border-b border-gray-100 pb-4">
-                      {buStat.unit} 상세 집계
-                    </h3>
-                    
-                    <div className="space-y-6 flex-1 relative z-0">
-                      <div>
-                        <div className="text-sm font-bold text-gray-700 bg-gray-50 px-3 py-2 rounded-md mb-3">원인 분석 (상위 항목)</div>
-                        <HorizontalBarChart data={buStat.causesArr} color="bg-indigo-500" />
-                      </div>
-                      
-                      <div className="pt-4 border-t border-gray-100">
-                        <div className="text-sm font-bold text-gray-700 bg-gray-50 px-3 py-2 rounded-md mb-3">처리 내역</div>
-                        <HorizontalBarChart data={buStat.processesArr} color="bg-teal-500" />
-                      </div>
+            {dashboardTab === '모델별 현황' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                {dashboardStats.map(buStat => (
+                  <div key={buStat.unit} id={`model-chart-${buStat.unit}`} className="bg-white rounded-xl border p-6 flex flex-col items-center shadow-sm">
+                    <h3 className="text-sm font-bold text-gray-800 mb-6 border-b pb-2 w-full text-center">{buStat.unit} 모델군 집계</h3>
+                    <MultiDonutChart data={buStat.modelsArr.map(m => ({ label: m.label, value: m.total, color: m.color }))} size={160} strokeWidth={22} />
+                    <div className="w-full mt-6 space-y-1.5 overflow-y-auto max-h-40 hide-scrollbar">
+                      {buStat.modelsArr.map(m => (
+                        <div key={m.label} className="flex justify-between text-[11px] px-2 py-1 bg-gray-50 rounded">
+                          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{backgroundColor: m.color}}></span>{m.label}</span>
+                          <span className="font-bold">{m.total}건</span>
+                        </div>
+                      ))}
                     </div>
-                    <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
-                      <Copy className="w-4 h-4" />
-                    </button>
+                    <button onClick={() => handleCopyChart(`model-chart-${buStat.unit}`)} className="mt-4 text-gray-400 hover:text-gray-700 self-end"><Copy className="w-4 h-4" /></button>
                   </div>
                 ))}
-                {causeAndProcessStats.length === 0 && (
-                  <div className="col-span-full py-12 text-center text-gray-500 bg-white rounded-xl border border-gray-200">
-                    분석할 데이터가 없습니다. 원인 분석 및 처리 내역을 입력해주세요.
-                  </div>
-                )}
               </div>
-            </div>
+            )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {allowedTrendUnits.map(bu => {
-                const unitData = buYearlyStats[bu] || [];
-                return (
-                  <div key={bu} id={`yearly-chart-${bu}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
-                    <div className="flex justify-between items-center w-full mb-6 border-b border-gray-100 pb-4">
-                      <h3 className="text-lg font-bold text-gray-900">
-                        {bu} 사업부
-                      </h3>
+            {dashboardTab === '원인별 집계' && (
+              <div className="space-y-6">
+                <div id="grouped-cause-chart" className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col">
+                  <h3 className="text-lg font-bold text-gray-900 mb-6 text-center border-b border-gray-100 pb-4">전체 원인 분석 요약</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="flex flex-col items-center">
+                      <h4 className="text-sm font-bold text-gray-700 mb-6 bg-gray-50 px-4 py-2 rounded-md w-full text-center">일반 A/S 원인 분석</h4>
+                      <MultiDonutChart data={groupedCauseStats.normalData} size={200} strokeWidth={28} />
+                      <div className="w-full mt-6 grid grid-cols-2 gap-x-4 gap-y-2 text-xs px-4">
+                        {groupedCauseStats.normalData.map(d => (
+                          <div key={d.label} className="flex items-center justify-between"><div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{backgroundColor: d.color}}></span><span className="text-gray-600 truncate">{d.label}</span></div><span className="font-bold text-gray-900">{d.value}</span></div>
+                        ))}
+                      </div>
                     </div>
-                    
-                    <div className="flex-1 flex flex-col items-center justify-center w-full relative z-0">
-                      <YearlyTrendChart data={unitData} type="mixed" />
+                    <div className="flex flex-col items-center">
+                      <h4 className="text-sm font-bold text-red-700 mb-6 bg-red-50 px-4 py-2 rounded-md w-full text-center">고객불만 원인 분석</h4>
+                      <MultiDonutChart data={groupedCauseStats.complaintData} size={200} strokeWidth={28} />
+                      <div className="w-full mt-6 grid grid-cols-2 gap-x-4 gap-y-2 text-xs px-4">
+                        {groupedCauseStats.complaintData.map(d => (
+                          <div key={d.label} className="flex items-center justify-between"><div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{backgroundColor: d.color}}></span><span className="text-gray-600 truncate">{d.label}</span></div><span className="font-bold text-gray-900">{d.value}</span></div>
+                        ))}
+                      </div>
                     </div>
-                    
-                    <button onClick={() => handleCopyChart(`yearly-chart-${bu}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
-                      <Copy className="w-4 h-4" />
-                    </button>
                   </div>
-                );
-              })}
-            </div>
-
-          </div>
-
-        ) : activeTab === '휴지통' ? (
-           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th scope="col" className="px-4 py-2 text-left text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">사업부</th>
-                    <th scope="col" className="px-4 py-2 text-left text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">접수번호</th>
-                    <th scope="col" className="px-4 py-2 text-left text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">삭제일자</th>
-                    <th scope="col" className="px-4 py-2 text-center text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">복구/완전삭제</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {paginatedData.length > 0 ? (
-                    paginatedData.map((row) => (
-                      <tr key={row.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{row.businessUnit}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-500 line-through">{row.asNumber}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-red-500">{new Date(row.deletedAt).toLocaleString()}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-center align-middle">
-                          <div className="flex items-center justify-center gap-2">
-                            <button onClick={(e) => handleRestore(row.id, e)} className="px-3 py-1 bg-green-50 text-green-600 rounded-md hover:bg-green-100 text-xs font-bold transition-colors">복구</button>
-                            <button onClick={(e) => handlePermanentDeletePrepare(row.id, e)} className="px-3 py-1 bg-red-50 text-red-600 rounded-md hover:bg-red-100 text-xs font-bold transition-colors">영구 삭제</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr><td colSpan="4" className="px-6 py-12 text-center text-gray-500">휴지통이 비어있습니다.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ) : (
-
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            {/* 데이터 테이블 렌더링 영역 */}
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th scope="col" className="px-4 py-2 text-left text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">사업부</th>
-                    <th scope="col" className="px-4 py-2 text-center text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">상태</th>
-                    <th scope="col" className="px-4 py-2 text-left text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">접수번호</th>
-                    <th scope="col" className="px-4 py-2 text-left text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">수주번호</th>
-                    <th scope="col" className="px-2 py-2 text-left text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">대리점</th>
-                    <th scope="col" className="px-2 py-2 text-left text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">업체명</th>
-                    <th scope="col" className="px-4 py-2 text-left text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">모델명</th>
-                    <th scope="col" className="px-4 py-2 text-right text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">수량</th>
-                    <th scope="col" className="px-4 py-2 text-left text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">하자내용</th>
-                    <th scope="col" className="px-2 py-2 text-left text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">기존주문</th>
-                    <th scope="col" className="px-2 py-2 text-left text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">처리방식</th>
-                    <th scope="col" className="px-2 py-2 text-right text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">처리방법</th>
-                    <th scope="col" className="px-4 py-2 text-left text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">일정</th>
-                    <th scope="col" className="px-4 py-2 text-center text-[11px] font-bold text-gray-500 uppercase whitespace-nowrap">관리</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {paginatedData.length > 0 ? (
-                    paginatedData.map((row) => (
-                      <tr key={row.id} onClick={() => setSelectedRow(row)} className="hover:bg-blue-50 transition-colors cursor-pointer">
-                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {row.businessUnit}
-                          {row.businessUnit === 'PT' && row.ptBoardType && (
-                            <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-800">
-                              {row.ptBoardType}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-center align-middle">
-                          {renderStatusBadge(row)}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-blue-600">{row.asNumber}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{row.orderNumber}</td>
-                        <td className="px-2 py-2 text-xs text-gray-900 max-w-[80px] truncate" title={row.agencyName}>{row.agencyName}</td>
-                        <td className="px-2 py-2 text-xs text-gray-500 max-w-[80px] truncate" title={row.companyName}>{row.companyName}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{row.model}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">{row.qtyDefect}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 max-w-[150px] truncate">
-                          <span className="inline-block px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded mr-1 mb-1">{row.claimType || '일반 A/S'}</span>
-                          <div className="truncate" title={row.defectContent}>{row.defectContent || '-'}</div>
-                        </td>
-                        <td className="px-2 py-2 whitespace-nowrap">
-                          <div className="flex flex-col gap-1 text-[11px]">
-                            <div className="flex items-center"><span className="text-gray-400 w-8">S/N:</span> <span className="text-gray-900 max-w-[80px] truncate" title={row.serialNo}>{row.serialNo || '-'}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-8">출고:</span> <span className="text-gray-900">{row.releaseDate || '-'}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-8">수주:</span> <span className="text-gray-900 max-w-[80px] truncate" title={row.originalOrderNumber}>{row.originalOrderNumber || '-'}</span></div>
-                          </div>
-                        </td>
-                        <td className="px-2 py-2 whitespace-nowrap text-[11px] text-gray-500">{row.processType || '-'}</td>
-                        <td className="px-2 py-2 whitespace-nowrap text-[11px] text-right align-middle">
-                          {row.repairMethod === '유상수리' ? (
-                            <div>
-                              <span className="font-medium text-blue-700">{row.repairMethod}</span>
-                              <span className="block text-gray-500">₩ {row.cost != null && row.cost !== '' ? Number(row.cost).toLocaleString() : '0'}</span>
-                            </div>
-                          ) : (
-                            <span className="font-medium text-gray-700">{row.repairMethod || '-'}</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex flex-col gap-1 text-[11px]">
-                            <div className="flex items-center"><span className="text-gray-400 w-8">접수:</span> <span className="text-gray-900">{row.receiptDate}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-8">요구:</span> <span className="text-red-500">{row.reqDeliveryDate}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-8">납기:</span> <span className="text-gray-900">{row.processDate || '-'}</span></div>
-                            <div className="flex items-center"><span className="text-gray-400 w-8">소요:</span> <span className="text-gray-900">{row.duration}</span></div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-center align-middle">
-                          <div className="flex items-center justify-center gap-1">
-                            <button onClick={(e) => { e.stopPropagation(); handleOpenForm(row); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="수정">
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            {isQM && (
-                              <button onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="삭제">
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan="14" className="px-6 py-12 text-center text-gray-500">
-                        조건에 맞는 데이터가 없습니다. 필터를 변경해보세요.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            
-            {/* 페이지네이션 컨트롤 바 */}
-            {filteredData.length > 0 && (
-              <div className="px-6 py-4 flex items-center justify-between border-t border-gray-200 bg-white">
-                <div className="text-sm text-gray-700">
-                  총 <span className="font-bold text-gray-900">{filteredData.length}</span>건 중 
-                  <span className="font-medium ml-1">{(currentPage - 1) * itemsPerPage + 1}</span> - 
-                  <span className="font-medium mr-1">{Math.min(currentPage * itemsPerPage, filteredData.length)}</span> 표시
+                  <button onClick={() => handleCopyChart('grouped-cause-chart')} className="mt-4 self-end text-gray-400 hover:text-gray-700"><Copy className="w-4 h-4" /></button>
                 </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    이전
-                  </button>
-                  <div className="flex gap-1 overflow-x-auto max-w-[200px] md:max-w-none hide-scrollbar">
-                    {currentBlock > 1 && (
-                      <button
-                        onClick={() => setCurrentPage(startPage - 1)}
-                        className="px-2 py-1.5 text-gray-500 hover:text-gray-700 bg-white font-bold"
-                      >
-                        ...
-                      </button>
-                    )}
-                    {visiblePages.map(page => (
-                      <button
-                        key={page}
-                        onClick={() => setCurrentPage(page)}
-                        className={`px-3 py-1.5 border rounded-md text-sm font-medium ${
-                          currentPage === page
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
-                        }`}
-                      >
-                        {page}
-                      </button>
-                    ))}
-                    {endPage < totalPages && (
-                      <button
-                        onClick={() => setCurrentPage(endPage + 1)}
-                        className="px-2 py-1.5 text-gray-500 hover:text-gray-700 bg-white font-bold"
-                      >
-                        ...
-                      </button>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    다음
-                  </button>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {causeAndProcessStats.map(buStat => (
+                    <div key={buStat.unit} id={`cause-chart-${buStat.unit}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col">
+                      <h3 className="text-lg font-bold text-gray-900 mb-4 text-center border-b border-gray-100 pb-4">{buStat.unit} 상세 집계</h3>
+                      <div className="space-y-6 flex-1">
+                        <div>
+                          <div className="text-sm font-bold text-gray-700 bg-gray-50 px-3 py-2 rounded-md mb-3">원인 분석 (상위 항목)</div>
+                          <HorizontalBarChart data={buStat.causesArr} color="bg-indigo-500" />
+                        </div>
+                        <div className="pt-4 border-t border-gray-100">
+                          <div className="text-sm font-bold text-gray-700 bg-gray-50 px-3 py-2 rounded-md mb-3">처리 내역</div>
+                          <HorizontalBarChart data={buStat.processesArr} color="bg-teal-500" />
+                        </div>
+                      </div>
+                      <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="mt-4 self-end text-gray-400 hover:text-gray-700"><Copy className="w-4 h-4" /></button>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
           </div>
+        ) : activeTab === '보고서' && isQM ? (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-10 animate-in fade-in duration-300">
+             <h2 className="text-2xl font-bold text-gray-900 mb-2">데이터 백업 및 내보내기</h2>
+             <p className="text-gray-500 mb-8">현재 필터 조건에 맞는 <span className="font-bold text-blue-600">{filteredData.length}건</span>의 데이터를 백업할 수 있습니다.</p>
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+                <div onClick={() => fileInputRef.current.click()} className="p-8 border rounded-2xl hover:border-blue-500 hover:shadow-lg cursor-pointer bg-white group flex flex-col items-center">
+                  <div className="w-14 h-14 bg-blue-50 rounded-full flex items-center justify-center mb-3"><Upload className="w-6 h-6 text-blue-600" /></div>
+                  <h3 className="font-bold">CSV 업로드</h3>
+                </div>
+                <div onClick={exportToExcel} className="p-8 border rounded-2xl hover:border-green-500 hover:shadow-lg cursor-pointer bg-white group flex flex-col items-center">
+                  <div className="w-14 h-14 bg-green-50 rounded-full flex items-center justify-center mb-3"><FileSpreadsheet className="w-6 h-6 text-green-600" /></div>
+                  <h3 className="font-bold">Excel 다운로드</h3>
+                </div>
+                <div onClick={exportToCSV} className="p-8 border rounded-2xl hover:border-gray-400 hover:shadow-md cursor-pointer bg-gray-50 group flex flex-col items-center">
+                  <div className="w-14 h-14 bg-gray-200 rounded-full flex items-center justify-center mb-3"><Download className="w-6 h-6 text-gray-600" /></div>
+                  <h3 className="font-bold">CSV 다운로드</h3>
+                </div>
+             </div>
 
+             <div className="border-t border-gray-100 pt-10">
+               <h2 className="text-2xl font-bold text-gray-900 mb-2">HTML 보고서 출력</h2>
+               <p className="text-gray-500 mb-8">웹페이지 형태로 깔끔하게 포맷팅된 요약 보고서를 생성하여 인쇄하거나 PDF로 저장합니다.</p>
+               
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+                 <div onClick={exportToHTML} className="py-8 px-6 border border-gray-200 rounded-2xl hover:border-purple-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center">
+                   <div className="w-14 h-14 bg-purple-50 rounded-full flex items-center justify-center mb-3 group-hover:bg-purple-100 transition-colors">
+                     <FileCode className="w-6 h-6 text-purple-600" />
+                   </div>
+                   <h3 className="text-base font-bold text-center text-gray-900">AS 관리대장 HTML 생성</h3>
+                 </div>
+
+                 <div onClick={() => exportToASReportHTML('ko')} className="py-8 px-6 border border-gray-200 rounded-2xl hover:border-indigo-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center">
+                   <div className="w-14 h-14 bg-indigo-50 rounded-full flex items-center justify-center mb-3 group-hover:bg-indigo-100 transition-colors">
+                     <FileText className="w-6 h-6 text-indigo-600" />
+                   </div>
+                   <h3 className="text-base font-bold text-center text-gray-900">AS 보고서 HTML (국문)</h3>
+                 </div>
+
+                 <div onClick={() => exportToASReportHTML('en')} className="py-8 px-6 border border-gray-200 rounded-2xl hover:border-blue-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center">
+                   <div className="w-14 h-14 bg-blue-50 rounded-full flex items-center justify-center mb-3 group-hover:bg-blue-100 transition-colors">
+                     <FileText className="w-6 h-6 text-blue-600" />
+                   </div>
+                   <h3 className="text-base font-bold text-center text-gray-900">AS 보고서 HTML (영문)</h3>
+                 </div>
+               </div>
+             </div>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+             <div className="overflow-x-auto">
+               <table className="w-full text-left border-collapse">
+                 <thead className="bg-gray-50 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-b">
+                   <tr>
+                     <th className="px-4 py-3">사업부</th><th className="px-4 py-3 text-center">상태</th><th className="px-4 py-3">접수번호</th>
+                     <th className="px-2 py-3">대리점</th><th className="px-2 py-3">업체명</th><th className="px-4 py-3">모델(수량)</th>
+                     <th className="px-4 py-3">하자내용</th><th className="px-2 py-3">주문정보</th><th className="px-2 py-3 text-right">처리방법</th>
+                     <th className="px-4 py-3">일정</th><th className="px-4 py-3 text-center">관리</th>
+                   </tr>
+                 </thead>
+                 <tbody className="divide-y divide-gray-100">
+                   {paginatedData.map(row => (
+                     <tr key={row.id} onClick={() => setSelectedRow(row)} className="hover:bg-blue-50/50 cursor-pointer transition-colors text-sm">
+                       <td className="px-4 py-3 font-medium">{row.businessUnit}</td>
+                       <td className="px-4 py-3 text-center">{renderStatusBadge(row)}</td>
+                       <td className="px-4 py-3 text-blue-600 font-bold">{row.asNumber}</td>
+                       <td className="px-2 py-3 max-w-[80px] truncate text-xs" title={row.agencyName}>{row.agencyName}</td>
+                       <td className="px-2 py-3 max-w-[80px] truncate text-xs" title={row.companyName}>{row.companyName}</td>
+                       <td className="px-4 py-3 font-bold">{row.model} ({row.qtyDefect})</td>
+                       <td className="px-4 py-3 max-w-[150px] truncate text-xs" title={row.defectContent}>{row.defectContent}</td>
+                       <td className="px-2 py-3 text-[10px] leading-tight text-gray-500">
+                         S/N: {row.serialNo?.split('\n')[0]}...<br/>출고: {row.releaseDate}
+                       </td>
+                       <td className="px-2 py-3 text-right text-xs font-bold text-gray-700">{row.repairMethod}</td>
+                       <td className="px-4 py-3 text-[10px] leading-tight">
+                         접수: {row.receiptDate}<br/>요구: <span className="text-red-500">{row.reqDeliveryDate}</span>
+                       </td>
+                       <td className="px-4 py-3 text-center">
+                         <div className="flex justify-center gap-1">
+                            <button onClick={e => { e.stopPropagation(); handleOpenForm(row); }} className="p-1 hover:bg-blue-100 rounded text-blue-600"><Edit className="w-4 h-4" /></button>
+                            {isQM && <button onClick={e => { e.stopPropagation(); handleDelete(row.id); }} className="p-1 hover:bg-red-100 rounded text-red-600"><Trash2 className="w-4 h-4" /></button>}
+                         </div>
+                       </td>
+                     </tr>
+                   ))}
+                 </tbody>
+               </table>
+             </div>
+             <div className="p-4 bg-white border-t flex items-center justify-between text-sm">
+                <span className="text-gray-500">총 <strong>{filteredData.length}</strong>건</span>
+                <div className="flex gap-2">
+                   <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="px-3 py-1 border rounded hover:bg-gray-50 disabled:opacity-30">이전</button>
+                   <span className="px-3 py-1 font-bold bg-blue-50 text-blue-600 rounded-md">{currentPage} / {totalPages}</span>
+                   <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="px-3 py-1 border rounded hover:bg-gray-50 disabled:opacity-30">다음</button>
+                </div>
+             </div>
+          </div>
         )}
+
       </div>
 
-      {/* 1. 상세 정보 모달 */}
-      {selectedRow && !isFormOpen && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
-              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                A/S 상세 정보 <span className="text-sm font-normal text-gray-500 ml-2">{selectedRow.asNumber}</span>
-              </h2>
-              <button onClick={() => setSelectedRow(null)} className="p-2 hover:bg-gray-100 rounded-full"><X className="w-5 h-5 text-gray-500" /></button>
+      {/* 폼 모달 */}
+      {isFormOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
+               <h2 className="text-xl font-bold">A/S 데이터 {data.find(d => d.id === formData.id) ? '수정' : '추가'}</h2>
+               <button onClick={() => setIsFormOpen(false)}><X className="w-6 h-6" /></button>
             </div>
-            
-            <div className="p-6 overflow-y-auto space-y-6 flex-1">
-              {/* 상태 요약 */}
-              <div className="bg-gray-50 p-4 rounded-xl flex items-center justify-between">
-                <div>
-                  <div className="text-sm text-gray-500 mb-1">현재 상태</div>
-                  <div className="flex items-center gap-3">
-                    {renderStatusBadge(selectedRow)}
-                    <span className="text-sm font-medium text-gray-900">{selectedRow.processType || '미처리'}</span>
+            <form onSubmit={handleFormSubmitInternal} className="p-6 overflow-y-auto space-y-6">
+               <div className="space-y-3">
+                  <label className="block text-sm font-bold text-gray-700">진행 상태</label>
+                  <div className="flex flex-wrap gap-2">
+                    {STATUS_STEPS.map(status => {
+                      const isDisabled = !isQM && ['접수 대기', '접수 완료', '종결'].includes(status);
+                      const isSelected = formData.currentStatus === status;
+                      return (
+                        <button key={status} type="button" disabled={isDisabled} onClick={() => setFormData({...formData, currentStatus: status})} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-all ${isSelected ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50'} ${isDisabled ? 'opacity-30 cursor-not-allowed' : ''}`}>{status}</button>
+                      );
+                    })}
                   </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm text-gray-500 mb-1">납기 일정</div>
-                  <div className="text-sm font-medium text-gray-900">요구: <span className="text-red-600">{selectedRow.reqDeliveryDate}</span> / 완료: {selectedRow.processDate || '미정'}</div>
-                </div>
-              </div>
-
-              {/* 기본 정보 */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-3 border-b pb-2">기본 정보</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <DetailItem label="사업부" value={selectedRow.businessUnit === 'PT' ? `${selectedRow.businessUnit} (${selectedRow.ptBoardType || 'N'})` : selectedRow.businessUnit} />
-                  <DetailItem label="대리점명" value={selectedRow.agencyName} />
-                  <DetailItem label="업체명" value={selectedRow.companyName} />
-                  <DetailItem label="접수번호" value={selectedRow.asNumber} />
-                  <DetailItem label="수주번호" value={selectedRow.orderNumber} />
-                  <DetailItem label="접수일" value={selectedRow.receiptDate} />
-                </div>
-              </div>
-
-              {/* 제품 정보 */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-3 border-b pb-2">제품 및 수주 정보</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <DetailItem label="MODEL" value={selectedRow.model} />
-                  <DetailItem label="불량수량" value={`${selectedRow.qtyDefect}개`} />
-                  <DetailItem label="출고일자" value={selectedRow.releaseDate || '-'} />
-                  <DetailItem label="기존수주번호" value={selectedRow.originalOrderNumber || '-'} />
-                  <div className="col-span-2">
-                    <DetailItem label="Serial No." value={selectedRow.serialNo || '-'} isMultiline />
-                  </div>
-                </div>
-              </div>
-
-              {/* 내용 (클레임유형, 수리방법, 금액 통합) */}
-              <div>
-                <div className="flex justify-between items-end mb-3 border-b pb-2">
-                  <h3 className="text-lg font-semibold text-gray-900">하자 및 처리 내용</h3>
-                  <span className={`text-xs font-bold px-2.5 py-1 rounded-md ${selectedRow.claimType === '고객불만' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>
-                    {selectedRow.claimType || '일반 A/S'}
-                  </span>
-                </div>
-                
-                <div className="space-y-4">
-                  <DetailItem label="하자 내용 (고객 접수)" value={selectedRow.defectContent} isMultiline />
-                  <DetailItem label="원인 분석" value={selectedRow.causeAnalysis} isMultiline />
-                  <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100">
-                    <DetailItem label="처리 내역 및 대책" value={selectedRow.processDetails} isMultiline />
-                  </div>
-                  
-                  {/* 처리 결과 및 방법 영역 */}
-                  <div className="mt-4 flex items-center justify-between bg-gray-50 border border-gray-200 p-4 rounded-lg">
-                    <div className="text-sm font-bold text-gray-800">
-                      처리 결과: <span className="text-blue-700 ml-2">{selectedRow.repairMethod || '-'}</span>
-                    </div>
-                    {selectedRow.repairMethod === '유상수리' && (
-                      <div className="text-sm font-bold text-gray-900 bg-white px-3 py-1.5 rounded border border-gray-200 shadow-sm">
-                        청구 금액: ₩ {selectedRow.cost != null && selectedRow.cost !== '' ? Number(selectedRow.cost).toLocaleString() : '0'}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className={`px-6 py-4 border-t border-gray-100 bg-gray-50 flex ${isQM ? 'justify-between' : 'justify-end'} shrink-0 rounded-b-2xl`}>
-              {isQM && (
-                <button onClick={() => handleDeletePrepare(selectedRow.id)} className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center text-sm font-medium">
-                  <Trash2 className="w-4 h-4 mr-2" /> 삭제
-                </button>
-              )}
-              <div className="flex gap-2">
-                <button onClick={() => handleOpenForm(selectedRow)} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm font-medium">
-                  <Edit className="w-4 h-4 mr-2" /> 이 데이터 수정하기
-                </button>
-                <button onClick={() => setSelectedRow(null)} className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium">
-                  닫기
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 2. 추가/수정 폼 모달 */}
-      {isFormOpen && formData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0 bg-gray-50 rounded-t-2xl">
-              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                {data.find(d => d.id === formData.id) ? '데이터 수정' : '새 데이터 추가'}
-              </h2>
-              <button onClick={() => setIsFormOpen(false)} className="p-2 hover:bg-gray-200 rounded-full"><X className="w-5 h-5 text-gray-500" /></button>
-            </div>
-
-            <form onSubmit={handleFormSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
-              
-              {/* 진행 상태 변경 버튼 그룹 */}
-              <div className="mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200">
-                <label className="block text-sm font-bold text-gray-700 mb-3">진행 상태</label>
-                <div className="flex flex-wrap gap-2">
-                  {STATUS_STEPS.map(status => {
-                    const config = DASHBOARD_CONFIG.find(c => c.status === status);
-                    const hexColor = config ? config.hex : '#3b82f6';
-                    const isSelected = formData.currentStatus === status;
-                    const isDisabled = !isQM && ['접수 대기', '접수 완료', '종결'].includes(status);
-                    
-                    return (
-                      <button
-                        type="button"
-                        key={status}
-                        disabled={isDisabled}
-                        onClick={() => {
-                          if (isDisabled) return;
-                          setFormData(prev => {
-                            const newData = { ...prev, currentStatus: status };
-                            if (status === '종결' && !newData.processDate) {
-                              const today = new Date();
-                              const yy = String(today.getFullYear()).slice(-2);
-                              const mm = String(today.getMonth() + 1).padStart(2, '0');
-                              const dd = String(today.getDate()).padStart(2, '0');
-                              newData.processDate = `${yy}.${mm}.${dd}`;
-                            }
-                            return newData;
-                          });
-                        }}
-                        className={`px-4 py-2 text-sm font-bold rounded-lg transition-all border ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        style={{
-                          backgroundColor: isSelected ? hexColor : '#ffffff',
-                          color: isSelected ? '#ffffff' : '#4b5563',
-                          borderColor: isSelected ? hexColor : '#d1d5db',
-                          boxShadow: isSelected ? `0 4px 10px ${hexColor}50` : 'none',
-                          textShadow: isSelected ? '0 1px 2px rgba(0,0,0,0.2)' : 'none'
-                        }}
-                      >
-                        {status}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {formData.businessUnit === 'PT' && (
-                <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex items-center gap-6">
-                  <label className="block text-sm font-bold text-indigo-900">PT 보드 구분 선택</label>
-                  <div className="flex gap-6">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="ptBoardType" value="ZMDI" checked={formData.ptBoardType === 'ZMDI'} onChange={handleFormChange} className="w-4 h-4 text-indigo-600 focus:ring-indigo-500" disabled={!isQM} />
-                      <span className="text-sm font-medium text-gray-900">ZMDI</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="ptBoardType" value="N" checked={formData.ptBoardType === 'N'} onChange={handleFormChange} className="w-4 h-4 text-indigo-600 focus:ring-indigo-500" disabled={!isQM} />
-                      <span className="text-sm font-medium text-gray-900">N</span>
-                    </label>
-                  </div>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <FormGroup label="사업부">
-                  <select name="businessUnit" value={formData.businessUnit} onChange={handleFormChange} className="form-input" required disabled={!isQM}>
-                    <option value="">사업부 선택</option>
-                    <option value="PMD">PMD</option>
-                    <option value="TMD">TMD</option>
-                    <option value="FLD">FLD</option>
-                    <option value="UHP">UHP</option>
-                    <option value="PT">PT</option>
-                    <option value="UPT900">UPT900</option>
-                  </select>
-                </FormGroup>
-                <FormGroup label="접수번호">
-                  <input type="text" name="asNumber" value={formData.asNumber} onChange={handleFormChange} className="form-input" required disabled={!isQM} />
-                </FormGroup>
-                <FormGroup label="수주번호">
-                  <input type="text" name="orderNumber" value={formData.orderNumber} onChange={handleFormChange} className="form-input" disabled={!isQM} />
-                </FormGroup>
-                <FormGroup label="처리방식 (접수단계)">
-                  <select name="processType" value={formData.processType} onChange={handleFormChange} className="form-input" disabled={!isQM}>
-                    <option value="">선택안함</option>
-                    <option value="견적 후 착수">견적 후 착수</option>
-                    <option value="선조치">선조치</option>
-                    <option value="출장">출장</option>
-                  </select>
-                </FormGroup>
-              </div>
-
-              {/* 달력 선택 폼 (접수일, 납기일, 완료일) */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-gray-100 pb-4">
-                <FormGroup label="접수일자 (클릭 시 달력)">
-                  <input type="date" name="receiptDate" value={formatForDateInput(formData.receiptDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} />
-                </FormGroup>
-                <FormGroup label="납기요구일 (자동 5영업일 계산)">
-                  <input type="date" name="reqDeliveryDate" value={formatForDateInput(formData.reqDeliveryDate)} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} />
-                </FormGroup>
-                <FormGroup label="처리완료일">
-                  <input type="date" name="processDate" value={formatForDateInput(formData.processDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" />
-                </FormGroup>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                <FormGroup label="대리점명">
-                  <input type="text" name="agencyName" value={formData.agencyName} onChange={handleFormChange} className="form-input" disabled={!isQM} />
-                </FormGroup>
-                <FormGroup label="업체명">
-                  <input type="text" name="companyName" value={formData.companyName} onChange={handleFormChange} className="form-input" disabled={!isQM} />
-                </FormGroup>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <FormGroup label="MODEL">
-                  <input type="text" name="model" value={formData.model} onChange={handleFormChange} className="form-input" disabled={!isQM} />
-                </FormGroup>
-                <FormGroup label="불량 수량">
-                  <input type="number" name="qtyDefect" value={formData.qtyDefect} onChange={handleFormChange} className="form-input" min="1" />
-                </FormGroup>
-                <FormGroup label="출고일자 (달력 선택)">
-                  <input type="date" name="releaseDate" value={formatForDateInput(formData.releaseDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} />
-                </FormGroup>
-                <FormGroup label="기존수주번호">
-                  <input type="text" name="originalOrderNumber" value={formData.originalOrderNumber} onChange={handleFormChange} className="form-input" disabled={!isQM} />
-                </FormGroup>
-              </div>
-
-              <FormGroup label="Serial No. (여러 개일 경우 줄바꿈 가능)">
-                <textarea name="serialNo" value={formData.serialNo} onChange={handleFormChange} className="form-input h-16" />
-              </FormGroup>
-
-              {/* 하자 및 처리내용 입력 섹션 */}
-              <div className="border-t border-gray-200 pt-6 space-y-4">
-                
-                {/* 1. 클레임 유형 라디오 버튼 */}
-                <div className="flex gap-6 mb-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="claimType" value="일반 A/S" checked={formData.claimType === '일반 A/S'} onChange={handleFormChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" disabled={!isQM} />
-                    <span className="text-sm font-bold text-gray-900">일반 A/S</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="claimType" value="고객불만" checked={formData.claimType === '고객불만'} onChange={handleFormChange} className="w-4 h-4 text-red-600 focus:ring-red-500" disabled={!isQM} />
-                    <span className="text-sm font-bold text-red-600">고객불만</span>
-                  </label>
-                </div>
-
-                <FormGroup label="하자 내용">
-                  <textarea name="defectContent" value={formData.defectContent} onChange={handleFormChange} className="form-input h-20" disabled={!isQM} />
-                </FormGroup>
-
-                <FormGroup label="원인 분석">
-                  <textarea name="causeAnalysis" value={formData.causeAnalysis} onChange={handleFormChange} className="form-input h-20" />
-                  
-                  {isQM && ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (() => {
-                    const config = getCauseTableConfig(formData.businessUnit);
-                    return (
-                      <div className="mt-3 overflow-x-auto">
-                        <table className="w-full text-[10px] text-center border-collapse border border-gray-300 min-w-[700px]">
-                          <thead>
-                            <tr>
-                              <th colSpan={config.totalCols} className="border border-gray-300 bg-[#eef4ea] py-1.5 font-bold text-gray-800">원인 분석 결과 (중복 선택 가능)</th>
-                            </tr>
-                            <tr>
-                              <th colSpan="3" rowSpan="2" className="border border-gray-300 bg-[#eef4ea] font-medium text-gray-800 px-1 py-1">고객<br/>(대리점 또는 사용자)</th>
-                              <th colSpan={config.wiseCols} className="border border-gray-300 bg-[#eef4ea] font-medium text-gray-800 px-1 py-1">WISE</th>
-                              <th colSpan={config.otherGroupCols} className="border border-gray-300 bg-[#eef4ea] font-medium text-gray-800 px-1 py-1">기타</th>
-                            </tr>
-                            <tr>
-                              <th className="border border-gray-300 bg-[#eef4ea] font-medium text-gray-800 px-1 py-0.5">영업</th>
-                              <th className="border border-gray-300 bg-[#eef4ea] font-medium text-gray-800 px-1 py-0.5">설계</th>
-                              <th colSpan={config.prodCols} className="border border-gray-300 bg-[#eef4ea] font-medium text-gray-800 px-1 py-0.5">생산</th>
-                              <th className="border border-gray-300 bg-[#eef4ea] font-medium text-gray-800 px-1 py-0.5">품질</th>
-                              <th className="border border-gray-300 bg-[#eef4ea] font-medium text-gray-800 px-1 py-0.5">공급자</th>
-                              <th colSpan={config.otherCols} className="border border-gray-300 bg-[#eef4ea] font-medium text-gray-800 px-1 py-0.5">기타</th>
-                            </tr>
-                            <tr>
-                              {config.headers.map(h => (
-                                <th key={h.id} className="border border-gray-300 bg-[#eef4ea] font-normal text-gray-800 py-1 px-0.5 whitespace-pre-wrap leading-tight">{h.label}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <tr>
-                              {config.headers.map(h => (
-                                <td key={h.id} className="border border-gray-300 p-1.5 bg-white">
-                                  <input 
-                                    type="checkbox" 
-                                    checked={(formData.causeAnalysisTypes || []).includes(h.id)} 
-                                    onChange={() => handleCauseCheckbox(h.id)} 
-                                    className="w-3.5 h-3.5 text-blue-600 cursor-pointer" 
-                                  />
-                                </td>
-                              ))}
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    );
-                  })()}
-                </FormGroup>
-
-                <FormGroup label="처리 내역 및 대책">
-                  <textarea name="processDetails" value={formData.processDetails} onChange={handleFormChange} className="form-input h-24" />
-                  
-                  {isQM && ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (
-                    <div className="mt-3 overflow-x-auto">
-                      <table className="w-full text-[11px] text-center border-collapse border border-gray-300 max-w-[400px]">
+               </div>
+               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <FormGroup label="사업부">
+                    <select name="businessUnit" value={formData.businessUnit} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" disabled={!isQM}>
+                      {FIXED_UNITS_ORDER.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </FormGroup>
+                  <FormGroup label="접수번호"><input type="text" name="asNumber" value={formData.asNumber} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" disabled={!isQM} /></FormGroup>
+                  <FormGroup label="접수일자"><input type="date" name="receiptDate" value={formatForDateInput(formData.receiptDate)} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" max={todayStr} /></FormGroup>
+                  <FormGroup label="처리완료일"><input type="date" name="processDate" value={formData.processDate === '-' ? '' : formatForDateInput(formData.processDate)} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" max={todayStr} /></FormGroup>
+               </div>
+               <div className="grid grid-cols-2 gap-4">
+                  <FormGroup label="대리점명"><input type="text" name="agencyName" value={formData.agencyName} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" /></FormGroup>
+                  <FormGroup label="업체명"><input type="text" name="companyName" value={formData.companyName} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" /></FormGroup>
+               </div>
+               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <FormGroup label="MODEL"><input type="text" name="model" value={formData.model} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" /></FormGroup>
+                  <FormGroup label="불량수량"><input type="number" name="qtyDefect" value={formData.qtyDefect} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" /></FormGroup>
+                  <FormGroup label="출고일자"><input type="date" name="releaseDate" value={formatForDateInput(formData.releaseDate)} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" max={todayStr} /></FormGroup>
+                  <FormGroup label="기존주문"><input type="text" name="originalOrderNumber" value={formData.originalOrderNumber} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" /></FormGroup>
+               </div>
+               <FormGroup label="하자내용"><textarea name="defectContent" value={formData.defectContent} onChange={handleFormChange} className="border rounded-md p-2 w-full h-20 text-sm" /></FormGroup>
+               <FormGroup label="원인분석"><textarea name="causeAnalysis" value={formData.causeAnalysis} onChange={handleFormChange} className="border rounded-md p-2 w-full h-20 text-sm" /></FormGroup>
+               
+               {isQM && ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (() => {
+                  const config = getCauseTableConfig(formData.businessUnit);
+                  return (
+                    <div className="overflow-x-auto border rounded-md">
+                      <table className="w-full text-[10px] text-center border-collapse">
                         <thead>
+                          <tr><th colSpan={config.totalCols} className="bg-gray-100 py-1.5 font-bold">원인 분석 결과 (중복 선택 가능)</th></tr>
                           <tr>
-                            <th colSpan="5" className="border border-gray-300 bg-[#eef4ea] py-1.5 font-bold text-gray-800">처리 내역</th>
+                            <th colSpan="3" rowSpan="2" className="border bg-gray-50">고객</th>
+                            <th colSpan={config.wiseCols} className="border bg-gray-50">WISE</th>
+                            <th colSpan={config.otherGroupCols} className="border bg-gray-50">기타</th>
                           </tr>
                           <tr>
-                            {PROCESS_HEADERS.map(h => (
-                              <th key={h.id} className="border border-gray-300 bg-[#eef4ea] font-normal text-gray-800 py-1 px-2 whitespace-pre-wrap">{h.label}</th>
-                            ))}
+                            <th className="border bg-gray-50 p-1">영업</th><th className="border bg-gray-50 p-1">설계</th>
+                            <th colSpan={config.prodCols} className="border bg-gray-50 p-1">생산</th>
+                            <th className="border bg-gray-50 p-1">품질</th><th className="border bg-gray-50 p-1">공급자</th>
+                            <th colSpan={config.otherCols} className="border bg-gray-50 p-1">기타</th>
+                          </tr>
+                          <tr>
+                            {config.headers.map(h => <th key={h.id} className="border bg-gray-50 py-1 px-0.5 whitespace-pre-wrap font-normal">{h.label}</th>)}
                           </tr>
                         </thead>
                         <tbody>
                           <tr>
-                            {PROCESS_HEADERS.map(h => (
-                              <td key={h.id} className="border border-gray-300 p-2 bg-white">
-                                <input 
-                                  type="radio" 
-                                  name="processDetailType" 
-                                  value={h.value} 
-                                  checked={formData.processDetailType === h.value} 
-                                  onChange={handleFormChange} 
-                                  className="w-4 h-4 text-blue-600 cursor-pointer" 
-                                />
+                            {config.headers.map(h => (
+                              <td key={h.id} className="border p-1.5">
+                                <input type="checkbox" checked={(formData.causeAnalysisTypes || []).includes(h.id)} onChange={() => {
+                                  setFormData(prev => {
+                                    const types = prev.causeAnalysisTypes || [];
+                                    return { ...prev, causeAnalysisTypes: types.includes(h.id) ? types.filter(t => t !== h.id) : [...types, h.id] };
+                                  });
+                                }} className="w-3 h-3 text-blue-600" />
                               </td>
                             ))}
                           </tr>
                         </tbody>
                       </table>
                     </div>
-                  )}
-                </FormGroup>
-                
-                {/* 2. 처리 결과 및 수리방법 라디오 버튼 */}
-                <div className="pt-4 border-t border-gray-100 bg-gray-50 p-4 rounded-xl mt-4">
-                  <label className="block text-sm font-bold text-gray-700 mb-3">수리 결과 및 방법 선택</label>
-                  <div className="flex flex-wrap items-center gap-6">
-                    {['무상수리', '유상수리', '수리불가', '수리취소'].map(method => (
-                      <label key={method} className="flex items-center gap-2 cursor-pointer">
-                        <input type="radio" name="repairMethod" value={method} checked={formData.repairMethod === method} onChange={handleFormChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" />
-                        <span className="text-sm font-medium text-gray-900">{method}</span>
-                      </label>
+                  );
+                })()}
+
+               <div className="p-5 bg-gray-50 rounded-xl border space-y-5">
+                  <div className="flex gap-8">
+                    <label className="flex items-center gap-2 font-bold cursor-pointer text-sm"><input type="radio" name="claimType" value="일반 A/S" checked={formData.claimType === '일반 A/S'} onChange={handleFormChange} className="w-4 h-4 text-blue-600" disabled={!isQM} /> 일반 A/S</label>
+                    <label className="flex items-center gap-2 font-bold cursor-pointer text-red-600 text-sm"><input type="radio" name="claimType" value="고객불만" checked={formData.claimType === '고객불만'} onChange={handleFormChange} className="w-4 h-4 text-red-600" disabled={!isQM} /> 고객 불만</label>
+                  </div>
+                  <div className="flex flex-wrap gap-4 items-center pt-4 border-t border-gray-200">
+                    <span className="text-sm font-bold text-gray-600">수리방법:</span>
+                    {['무상수리', '유상수리', '수리불가', '수리취소'].map(m => (
+                      <label key={m} className="flex items-center gap-1.5 cursor-pointer text-sm font-medium"><input type="radio" name="repairMethod" value={m} checked={formData.repairMethod === m} onChange={handleFormChange} className="w-4 h-4 text-blue-600" /> {m}</label>
                     ))}
-                    
-                    {/* 3. 유상수리 선택 시에만 나타나는 금액 입력칸 */}
-                    {formData.repairMethod === '유상수리' && (
-                      <div className="ml-auto flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border border-gray-200 shadow-sm transition-all">
-                        <span className="text-sm font-bold text-gray-700">금액 (₩)</span>
-                        <input type="number" name="cost" value={formData.cost === null || formData.cost === undefined ? '' : formData.cost} onChange={handleFormChange} className="form-input w-32 !py-1" min="0" placeholder="0" />
-                      </div>
-                    )}
+                    {formData.repairMethod === '유상수리' && <div className="ml-auto flex items-center gap-2 text-sm"><span className="font-bold text-gray-600">비용:</span><input type="number" name="cost" value={formData.cost || ''} onChange={handleFormChange} placeholder="금액 입력" className="border rounded-md px-3 py-1.5 w-32" /></div>}
+                  </div>
+               </div>
+            </form>
+            <div className="p-6 border-t flex justify-end gap-3 bg-gray-50 rounded-b-2xl">
+               <button onClick={() => setIsFormOpen(false)} className="px-6 py-2 border rounded-lg font-bold bg-white hover:bg-gray-100">취소</button>
+               <button onClick={handleFormSubmitInternal} className="px-8 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md hover:bg-blue-700 transition-all flex items-center gap-2"><Save className="w-4 h-4" /> 저장하기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 상세 정보 모달 */}
+      {selectedRow && !isFormOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50 rounded-t-2xl">
+              <h2 className="text-lg font-bold flex items-center gap-2">A/S 상세 정보 <span className="text-blue-600">{selectedRow.asNumber}</span></h2>
+              <button onClick={() => setSelectedRow(null)} className="p-2 hover:bg-gray-200 rounded-full"><X className="w-5 h-5 text-gray-500" /></button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto space-y-6 flex-1">
+              <div className="bg-gray-50 p-4 rounded-xl flex justify-between items-center border border-gray-100">
+                <div>
+                  <div className="text-xs font-bold text-gray-400 mb-1">현재 상태</div>
+                  <div className="flex items-center gap-3">
+                    {renderStatusBadge(selectedRow)}
+                    <span className="text-sm font-bold">{selectedRow.processType || '미처리'}</span>
                   </div>
                 </div>
-
+                <div className="text-right">
+                  <div className="text-xs font-bold text-gray-400 mb-1">납기 일정</div>
+                  <div className="text-sm font-medium">요구: <span className="text-red-600 font-bold">{selectedRow.reqDeliveryDate}</span> / 완료: {selectedRow.processDate}</div>
+                </div>
               </div>
 
-              <button type="submit" className="hidden">저장</button>
-            </form>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                <DetailItem label="사업부" value={selectedRow.businessUnit === 'PT' ? `${selectedRow.businessUnit} (${selectedRow.ptBoardType || 'N'})` : selectedRow.businessUnit} />
+                <DetailItem label="대리점명" value={selectedRow.agencyName} />
+                <DetailItem label="업체명" value={selectedRow.companyName} />
+                <DetailItem label="MODEL" value={selectedRow.model} />
+                <DetailItem label="불량수량" value={`${selectedRow.qtyDefect}개`} />
+                <DetailItem label="출고일자" value={selectedRow.releaseDate} />
+              </div>
 
-            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end shrink-0 rounded-b-2xl gap-2">
-              <button onClick={() => setIsFormOpen(false)} className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium">
-                취소
-              </button>
-              <button onClick={handleFormSubmit} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm font-medium">
-                <Save className="w-4 h-4 mr-2" /> 저장하기
-              </button>
+              <div className="border-t pt-4">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="font-bold text-gray-900">하자 및 처리 내용</h3>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-md ${selectedRow.claimType === '고객불만' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>{selectedRow.claimType || '일반 A/S'}</span>
+                </div>
+                <div className="space-y-4">
+                  <DetailItem label="하자 내용 (고객 접수)" value={selectedRow.defectContent} isMultiline />
+                  <DetailItem label="원인 분석" value={selectedRow.causeAnalysis} isMultiline />
+                  <div className="bg-blue-50/30 p-4 rounded-lg border border-blue-100">
+                    <DetailItem label="처리 내역 및 대책" value={selectedRow.processDetails} isMultiline />
+                  </div>
+                  <div className="flex items-center justify-between bg-gray-50 border p-4 rounded-lg">
+                    <div className="text-sm font-bold text-gray-800">처리 결과: <span className="text-blue-700 ml-2">{selectedRow.repairMethod || '-'}</span></div>
+                    {selectedRow.repairMethod === '유상수리' && <div className="text-sm font-bold text-gray-900 bg-white px-3 py-1.5 rounded border shadow-sm">청구 금액: ₩ {selectedRow.cost ? Number(selectedRow.cost).toLocaleString() : '0'}</div>}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className={`px-6 py-4 border-t flex ${isQM ? 'justify-between' : 'justify-end'} bg-gray-50 rounded-b-2xl`}>
+              {isQM && <button onClick={() => handleDeletePrepare(selectedRow.id)} className="px-4 py-2 text-red-600 hover:bg-red-100 rounded-lg text-sm font-bold flex items-center"><Trash2 className="w-4 h-4 mr-2" /> 삭제</button>}
+              <div className="flex gap-2">
+                <button onClick={() => handleOpenForm(selectedRow)} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-bold flex items-center"><Edit className="w-4 h-4 mr-2" /> 수정</button>
+                <button onClick={() => setSelectedRow(null)} className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 text-sm font-bold">닫기</button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* 3. 일반 알림 팝업 */}
-      {alertMessage && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center animate-in zoom-in-95 duration-200">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <CheckCircle2 className="w-8 h-8 text-blue-600" />
-            </div>
-            <h3 className="text-lg font-bold text-gray-900 mb-6">{alertMessage}</h3>
-            <button onClick={() => setAlertMessage('')} className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors">
-              확인
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 4. 휴지통 이동(소프트 삭제) 확인 팝업 */}
+      {/* 삭제 확인 모달 */}
       {itemToDelete && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center animate-in zoom-in-95 duration-200">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertCircle className="w-8 h-8 text-red-600" />
-            </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">데이터를 삭제하시겠습니까?</h3>
-            <p className="text-sm text-gray-500 mb-6">삭제된 데이터는 <strong>휴지통에서 3일간 보관</strong>된 후 영구 삭제됩니다.</p>
-            <div className="flex justify-center gap-3">
-              <button onClick={() => setItemToDelete(null)} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors">취소</button>
-              <button onClick={executeDelete} className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors">삭제하기</button>
-            </div>
-          </div>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+           <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center animate-in zoom-in-95 duration-200">
+              <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+              <h3 className="text-xl font-bold mb-2">데이터를 삭제하시겠습니까?</h3>
+              <p className="text-gray-500 text-sm mb-6">삭제된 데이터는 품질팀 관리하에 복구가 가능할 때까지 보관됩니다.</p>
+              <div className="flex gap-3">
+                 <button onClick={() => setItemToDelete(null)} className="flex-1 py-3 border rounded-xl font-bold hover:bg-gray-50">취소</button>
+                 <button onClick={executeDelete} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg hover:bg-red-700">삭제하기</button>
+              </div>
+           </div>
         </div>
       )}
 
-      {/* 5. 영구 삭제 확인 팝업 */}
-      {itemToPermanentDelete && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center animate-in zoom-in-95 duration-200">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertCircle className="w-8 h-8 text-red-600" />
-            </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">영구 삭제하시겠습니까?</h3>
-            <p className="text-sm text-red-500 mb-6 font-medium">이 작업은 되돌릴 수 없습니다.</p>
-            <div className="flex justify-center gap-3">
-              <button onClick={() => setItemToPermanentDelete(null)} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors">취소</button>
-              <button onClick={executePermanentDelete} className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors">영구 삭제</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 6. CSV 업로드 시 PT 보드 타입 개별 선택 팝업 */}
-      {showPtBoardModal && pendingUploadData && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl p-6 animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
-            <h3 className="text-xl font-bold text-gray-900 mb-2">PT 보드 타입 개별 선택</h3>
-            <p className="text-sm text-gray-500 mb-4">업로드 파일에 PT 사업부 데이터가 포함되어 있습니다. 각 건별로 보드 타입을 확인하거나 변경해주세요.</p>
-            
-            <div className="overflow-y-auto flex-1 mb-6 border border-gray-200 rounded-xl hide-scrollbar">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
-                  <tr>
-                    <th className="px-4 py-3 font-semibold text-gray-600">접수번호</th>
-                    <th className="px-4 py-3 font-semibold text-gray-600">모델명</th>
-                    <th className="px-4 py-3 font-semibold text-gray-600">업체명</th>
-                    <th className="px-4 py-3 font-semibold text-gray-600 text-center">보드 타입 선택</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {pendingUploadData.filter(r => r.businessUnit === 'PT').map(record => (
-                    <tr key={record.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 font-medium text-gray-900">{record.asNumber}</td>
-                      <td className="px-4 py-3 text-gray-600">{record.model}</td>
-                      <td className="px-4 py-3 text-gray-600">{record.companyName}</td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="inline-flex bg-gray-100 p-1 rounded-lg">
-                          <button
-                            type="button"
-                            onClick={() => handlePtBoardTypeChange(record.id, 'ZMDI')}
-                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${record.ptBoardType === 'ZMDI' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}
-                          >
-                            ZMDI
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handlePtBoardTypeChange(record.id, 'N')}
-                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${record.ptBoardType === 'N' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}
-                          >
-                            N
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            
-            <div className="flex justify-center gap-3 shrink-0">
-              <button onClick={() => { setShowPtBoardModal(false); setPendingUploadData(null); }} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors">업로드 취소</button>
-              <button onClick={() => { executeUpload(pendingUploadData); setShowPtBoardModal(false); setPendingUploadData(null); }} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors">선택 완료 및 업로드</button>
-            </div>
-          </div>
+      {alertMessage && (
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] bg-gray-900 text-white px-6 py-3 rounded-full shadow-2xl animate-in slide-in-from-bottom-5 duration-300 flex items-center gap-3">
+           <CheckCircle className="text-green-400 w-5 h-5" /> {alertMessage}
+           <button onClick={() => setAlertMessage('')} className="ml-2 hover:text-gray-300"><X className="w-4 h-4" /></button>
         </div>
       )}
 
       <style dangerouslySetInnerHTML={{__html: `
-        .form-input {
-          display: block; width: 100%; padding: 0.5rem 0.75rem; font-size: 0.875rem;
-          line-height: 1.25rem; border: 1px solid #d1d5db; border-radius: 0.375rem; outline: none; transition: border-color .15s;
-        }
-        .form-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6; }
-        .form-input:disabled { background-color: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
-        input[type="radio"]:disabled { opacity: 0.5; cursor: not-allowed; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        table { table-layout: fixed; }
+        td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       `}} />
     </div>
   );
 }
 
 function DetailItem({ label, value, isMultiline = false }) {
-  if (!value && value !== 0) value = '-';
+  if (!value || value === 0 || value === '-') value = '-';
   return (
     <div>
-      <div className="text-xs text-gray-500 mb-1">{label}</div>
-      {isMultiline ? (
-        <div className="text-sm text-gray-900 whitespace-pre-wrap leading-relaxed">{value}</div>
-      ) : (
-        <div className="text-sm font-medium text-gray-900">{value}</div>
-      )}
+      <div className="text-[10px] text-gray-400 font-black uppercase mb-1">{label}</div>
+      <div className={`text-sm text-gray-900 font-bold ${isMultiline ? 'whitespace-pre-wrap leading-relaxed' : ''}`}>{value}</div>
     </div>
   );
 }
 
 function FormGroup({ label, children }) {
   return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+    <div className="space-y-1">
+      <label className="text-xs font-black text-gray-600 ml-1">{label}</label>
       {children}
     </div>
   );
