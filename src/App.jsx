@@ -31,6 +31,7 @@ const firebaseConfig = isCanvasEnv
       appId: import.meta.env.VITE_FIREBASE_APP_ID
     };
 
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
