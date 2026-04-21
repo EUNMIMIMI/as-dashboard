@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+vimport React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Search, Filter, X, FileText, Calendar, CheckCircle2, Clock, AlertCircle, 
   Download, Upload, FileCode, Plus, Edit, Trash2, Save, BarChart3, PieChart, Layers, Lock, LogOut, RotateCcw, FileSpreadsheet, TrendingUp, Copy, LineChart, CheckCircle, Wrench, Archive
@@ -882,7 +882,7 @@ export default function App() {
 
   const buYearlyStats = useMemo(() => {
     const stats = {};
-    allowedTrendUnits.forEach(bu => {
+    TREND_UNITS.forEach(bu => {
       stats[bu] = {};
       targetYears.forEach(y => {
         stats[bu][y] = { 
@@ -896,7 +896,7 @@ export default function App() {
 
     allowedProcessedData.forEach(item => {
       const unit = item.businessUnit || '미분류';
-      if (!allowedTrendUnits.includes(unit)) return;
+      if (!TREND_UNITS.includes(unit)) return;
       const year = getYearFromDate(item.receiptDate);
       if (!year || !targetYears.includes(year)) return;
       if (stats[unit][year].isHistorical) return;
@@ -2277,30 +2277,30 @@ export default function App() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
              <div className="overflow-x-auto">
                <table className="min-w-full divide-y divide-gray-200">
-                 <thead className="bg-gray-50">
+                 <thead className="bg-gray-50 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-b">
                    <tr>
-                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">사업부</th>
-                     <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">상태</th>
-                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">접수번호</th>
-                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">수주번호</th>
-                     <th scope="col" className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">대리점</th>
-                     <th scope="col" className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">업체명</th>
-                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">모델명</th>
-                     <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">수량</th>
-                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">하자내용</th>
-                     <th scope="col" className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">기존 주문정보</th>
-                     <th scope="col" className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">처리방식</th>
-                     <th scope="col" className="px-2 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">처리방법</th>
-                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">일정</th>
-                     <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">관리</th>
+                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">사업부</th>
+                     <th scope="col" className="px-4 py-3 text-center whitespace-nowrap">상태</th>
+                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">접수번호</th>
+                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">수주번호</th>
+                     <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">대리점</th>
+                     <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">업체명</th>
+                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">모델명</th>
+                     <th scope="col" className="px-4 py-3 text-right whitespace-nowrap">수량</th>
+                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">하자내용</th>
+                     <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">기존 주문정보</th>
+                     <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">처리방식</th>
+                     <th scope="col" className="px-2 py-3 text-right whitespace-nowrap">처리방법</th>
+                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">일정</th>
+                     <th scope="col" className="px-4 py-3 text-center whitespace-nowrap">관리</th>
                    </tr>
                  </thead>
                  <tbody className="bg-white divide-y divide-gray-100">
                    {paginatedData.length > 0 ? (
                      paginatedData.map((row) => (
-                       <tr key={row.id} onClick={() => setSelectedRow(row)} className="hover:bg-blue-50 transition-colors cursor-pointer text-sm">
+                       <tr key={row.id} onClick={() => setSelectedRow(row)} className="hover:bg-blue-50/50 transition-colors cursor-pointer text-sm">
                          <td className="px-4 py-3 font-medium text-gray-900">{row.businessUnit}</td>
-                         <td className="px-4 py-3 whitespace-nowrap text-center align-middle">{renderStatusBadge(row)}</td>
+                         <td className="px-4 py-3 text-center">{renderStatusBadge(row)}</td>
                          <td className="px-4 py-3 text-blue-600 font-bold">{row.asNumber}</td>
                          <td className="px-4 py-3 text-gray-500">{row.orderNumber}</td>
                          <td className="px-2 py-3 text-gray-900 max-w-[120px] truncate" title={row.agencyName}>{row.agencyName}</td>
@@ -2477,12 +2477,15 @@ export default function App() {
                       const config = DASHBOARD_CONFIG.find(c => c.status === status);
                       const hexColor = config ? config.hex : '#3b82f6';
                       const isSelected = formData.currentStatus === status;
+                      const isDisabled = !isQM && ['접수 대기', '접수 완료', '종결'].includes(status);
                       
                       return (
                         <button
                           type="button"
                           key={status}
+                          disabled={isDisabled}
                           onClick={() => {
+                            if (isDisabled) return;
                             setFormData(prev => {
                               const newData = { ...prev, currentStatus: status };
                               if (status === '종결' && !newData.processDate) {
@@ -2495,7 +2498,7 @@ export default function App() {
                               return newData;
                             });
                           }}
-                          className={`px-4 py-2 text-sm font-bold rounded-lg transition-all border`}
+                          className={`px-4 py-2 text-sm font-bold rounded-lg transition-all border ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                           style={{
                             backgroundColor: isSelected ? hexColor : '#ffffff',
                             color: isSelected ? '#ffffff' : '#4b5563',
@@ -2516,11 +2519,11 @@ export default function App() {
                     <label className="block text-sm font-bold text-indigo-900">PT 보드 구분 선택</label>
                     <div className="flex gap-6">
                       <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="radio" name="ptBoardType" value="ZMDI" checked={formData.ptBoardType === 'ZMDI'} onChange={handleFormChange} className="w-4 h-4 text-indigo-600 focus:ring-indigo-500" />
+                        <input type="radio" name="ptBoardType" value="ZMDI" checked={formData.ptBoardType === 'ZMDI'} onChange={handleFormChange} className="w-4 h-4 text-indigo-600 focus:ring-indigo-500" disabled={!isQM} />
                         <span className="text-sm font-medium text-gray-900">ZMDI</span>
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="radio" name="ptBoardType" value="N" checked={formData.ptBoardType === 'N'} onChange={handleFormChange} className="w-4 h-4 text-indigo-600 focus:ring-indigo-500" />
+                        <input type="radio" name="ptBoardType" value="N" checked={formData.ptBoardType === 'N'} onChange={handleFormChange} className="w-4 h-4 text-indigo-600 focus:ring-indigo-500" disabled={!isQM} />
                         <span className="text-sm font-medium text-gray-900">N</span>
                       </label>
                     </div>
@@ -2529,14 +2532,14 @@ export default function App() {
 
                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <FormGroup label="사업부">
-                    <select name="businessUnit" value={formData.businessUnit} onChange={handleFormChange} className="form-input" required>
+                    <select name="businessUnit" value={formData.businessUnit} onChange={handleFormChange} className="form-input" required disabled={!isQM}>
                       {FIXED_UNITS_ORDER.map(u => <option key={u} value={u}>{u}</option>)}
                     </select>
                   </FormGroup>
-                  <FormGroup label="접수번호"><input type="text" name="asNumber" value={formData.asNumber} onChange={handleFormChange} className="form-input" required /></FormGroup>
-                  <FormGroup label="수주번호"><input type="text" name="orderNumber" value={formData.orderNumber} onChange={handleFormChange} className="form-input" /></FormGroup>
+                  <FormGroup label="접수번호"><input type="text" name="asNumber" value={formData.asNumber} onChange={handleFormChange} className="form-input" required disabled={!isQM} /></FormGroup>
+                  <FormGroup label="수주번호"><input type="text" name="orderNumber" value={formData.orderNumber} onChange={handleFormChange} className="form-input" disabled={!isQM} /></FormGroup>
                   <FormGroup label="처리방식 (접수단계)">
-                    <select name="processType" value={formData.processType} onChange={handleFormChange} className="form-input">
+                    <select name="processType" value={formData.processType} onChange={handleFormChange} className="form-input" disabled={!isQM}>
                       <option value="">선택안함</option>
                       <option value="견적 후 착수">견적 후 착수</option>
                       <option value="선조치">선조치</option>
@@ -2546,37 +2549,37 @@ export default function App() {
                </div>
 
                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-gray-100 pb-4">
-                  <FormGroup label="접수일자 (클릭 시 달력)"><input type="date" name="receiptDate" value={formatForDateInput(formData.receiptDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" /></FormGroup>
-                  <FormGroup label="납기요구일 (자동 5영업일 계산)"><input type="date" name="reqDeliveryDate" value={formatForDateInput(formData.reqDeliveryDate)} onChange={handleFormChange} className="form-input cursor-pointer" /></FormGroup>
-                  <FormGroup label="처리완료일"><input type="date" name="processDate" value={formData.processDate === '-' ? '' : formatForDateInput(formData.processDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" /></FormGroup>
+                  <FormGroup label="접수일자 (클릭 시 달력)"><input type="date" name="receiptDate" value={formatForDateInput(formData.receiptDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} /></FormGroup>
+                  <FormGroup label="납기요구일 (자동 5영업일 계산)"><input type="date" name="reqDeliveryDate" value={formatForDateInput(formData.reqDeliveryDate)} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} /></FormGroup>
+                  <FormGroup label="처리완료일"><input type="date" name="processDate" value={formData.processDate === '-' ? '' : formatForDateInput(formData.processDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} /></FormGroup>
                </div>
 
                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                  <FormGroup label="대리점명"><input type="text" name="agencyName" value={formData.agencyName} onChange={handleFormChange} className="form-input" /></FormGroup>
-                  <FormGroup label="업체명"><input type="text" name="companyName" value={formData.companyName} onChange={handleFormChange} className="form-input" /></FormGroup>
+                  <FormGroup label="대리점명"><input type="text" name="agencyName" value={formData.agencyName} onChange={handleFormChange} className="form-input" disabled={!isQM} /></FormGroup>
+                  <FormGroup label="업체명"><input type="text" name="companyName" value={formData.companyName} onChange={handleFormChange} className="form-input" disabled={!isQM} /></FormGroup>
                </div>
 
                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <FormGroup label="MODEL"><input type="text" name="model" value={formData.model} onChange={handleFormChange} className="form-input" /></FormGroup>
+                  <FormGroup label="MODEL"><input type="text" name="model" value={formData.model} onChange={handleFormChange} className="form-input" disabled={!isQM} /></FormGroup>
                   <FormGroup label="불량 수량"><input type="number" name="qtyDefect" value={formData.qtyDefect} onChange={handleFormChange} className="form-input" min="1" /></FormGroup>
-                  <FormGroup label="출고일자 (달력 선택)"><input type="date" name="releaseDate" value={formatForDateInput(formData.releaseDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" /></FormGroup>
-                  <FormGroup label="기존수주번호"><input type="text" name="originalOrderNumber" value={formData.originalOrderNumber} onChange={handleFormChange} className="form-input" /></FormGroup>
+                  <FormGroup label="출고일자 (달력 선택)"><input type="date" name="releaseDate" value={formatForDateInput(formData.releaseDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} /></FormGroup>
+                  <FormGroup label="기존수주번호"><input type="text" name="originalOrderNumber" value={formData.originalOrderNumber} onChange={handleFormChange} className="form-input" disabled={!isQM} /></FormGroup>
                </div>
                
                <FormGroup label="Serial No. (여러 개일 경우 줄바꿈 가능)"><textarea name="serialNo" value={formData.serialNo} onChange={handleFormChange} className="form-input h-16" /></FormGroup>
 
                <div className="border-t border-gray-200 pt-6 space-y-4">
                  <div className="flex gap-6 mb-2">
-                    <label className="flex items-center gap-2 font-bold cursor-pointer text-sm"><input type="radio" name="claimType" value="일반 A/S" checked={formData.claimType === '일반 A/S'} onChange={handleFormChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" /> 일반 A/S</label>
-                    <label className="flex items-center gap-2 font-bold cursor-pointer text-red-600 text-sm"><input type="radio" name="claimType" value="고객불만" checked={formData.claimType === '고객불만'} onChange={handleFormChange} className="w-4 h-4 text-red-600 focus:ring-red-500" /> 고객 불만</label>
+                    <label className="flex items-center gap-2 font-bold cursor-pointer text-sm"><input type="radio" name="claimType" value="일반 A/S" checked={formData.claimType === '일반 A/S'} onChange={handleFormChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" disabled={!isQM} /> 일반 A/S</label>
+                    <label className="flex items-center gap-2 font-bold cursor-pointer text-red-600 text-sm"><input type="radio" name="claimType" value="고객불만" checked={formData.claimType === '고객불만'} onChange={handleFormChange} className="w-4 h-4 text-red-600 focus:ring-red-500" disabled={!isQM} /> 고객 불만</label>
                  </div>
-                 <FormGroup label="하자 내용"><textarea name="defectContent" value={formData.defectContent} onChange={handleFormChange} className="form-input h-20" /></FormGroup>
-                 <FormGroup label="원인 분석"><textarea name="causeAnalysis" value={formData.causeAnalysis} onChange={handleFormChange} className="form-input h-20" /></FormGroup>
+                 <FormGroup label="하자 내용"><textarea name="defectContent" value={formData.defectContent} onChange={handleFormChange} className="form-input h-20 text-sm" disabled={!isQM} /></FormGroup>
+                 <FormGroup label="원인 분석"><textarea name="causeAnalysis" value={formData.causeAnalysis} onChange={handleFormChange} className="form-input h-20 text-sm" /></FormGroup>
                  
-                 {['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (() => {
+                 {isQM && ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (() => {
                     const config = getCauseTableConfig(formData.businessUnit);
                     return (
-                      <div className="overflow-x-auto border rounded-md">
+                      <div className="overflow-x-auto border rounded-md mt-3">
                         <table className="w-full text-[10px] text-center border-collapse">
                           <thead>
                             <tr><th colSpan={config.totalCols} className="bg-[#eef4ea] py-1.5 font-bold border">원인 분석 결과 (중복 선택 가능)</th></tr>
@@ -2611,8 +2614,8 @@ export default function App() {
 
                  <FormGroup label="처리 내역 및 대책"><textarea name="processDetails" value={formData.processDetails} onChange={handleFormChange} className="form-input h-24" /></FormGroup>
                  
-                 {['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (
-                    <div className="overflow-x-auto border rounded-md">
+                 {isQM && ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (
+                    <div className="overflow-x-auto border rounded-md mt-3">
                       <table className="w-full text-[11px] text-center border-collapse">
                         <thead>
                           <tr><th colSpan="5" className="bg-[#eef4ea] py-1.5 font-bold border">처리 내역</th></tr>
@@ -2635,9 +2638,9 @@ export default function App() {
                     <label className="block text-sm font-bold text-gray-700 mb-3">수리 결과 및 방법 선택</label>
                     <div className="flex flex-wrap items-center gap-6">
                       {['무상수리', '유상수리', '수리불가', '수리취소'].map(m => (
-                        <label key={m} className="flex items-center gap-2 cursor-pointer text-sm font-medium"><input type="radio" name="repairMethod" value={m} checked={formData.repairMethod === m} onChange={handleFormChange} className="w-4 h-4 text-blue-600" /> {m}</label>
+                        <label key={m} className="flex items-center gap-2 cursor-pointer text-sm font-medium"><input type="radio" name="repairMethod" value={m} checked={formData.repairMethod === m} onChange={handleFormChange} className="w-4 h-4 text-blue-600" disabled={!isQM} /> {m}</label>
                       ))}
-                      {formData.repairMethod === '유상수리' && <div className="ml-auto flex items-center gap-2 text-sm bg-white px-3 py-1.5 rounded-md border shadow-sm"><span className="font-bold text-gray-700">금액 (₩)</span><input type="number" name="cost" value={formData.cost === null || formData.cost === undefined ? '' : formData.cost} onChange={handleFormChange} placeholder="0" className="form-input w-32 py-1" min="0" /></div>}
+                      {formData.repairMethod === '유상수리' && <div className="ml-auto flex items-center gap-2 text-sm bg-white px-3 py-1.5 rounded-md border shadow-sm"><span className="font-bold text-gray-700">금액 (₩)</span><input type="number" name="cost" value={formData.cost === null || formData.cost === undefined ? '' : formData.cost} onChange={handleFormChange} placeholder="0" className="form-input w-32 py-1" min="0" disabled={!isQM} /></div>}
                     </div>
                  </div>
                </div>
@@ -2680,6 +2683,8 @@ export default function App() {
           line-height: 1.25rem; border: 1px solid #d1d5db; border-radius: 0.375rem; outline: none; transition: border-color .15s;
         }
         .form-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6; }
+        .form-input:disabled { background-color: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
+        input[type="radio"]:disabled { opacity: 0.5; cursor: not-allowed; }
       `}} />
     </div>
   );
