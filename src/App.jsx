@@ -18,24 +18,35 @@ const ACCESS_ROLES = {
 
 // --- Firebase 초기화 ---
 const isCanvasEnv = typeof __firebase_config !== 'undefined';
-const firebaseConfig = isCanvasEnv
-  ? JSON.parse(__firebase_config)
-  : {
-      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-      appId: import.meta.env.VITE_FIREBASE_APP_ID
-    };
-    
+
+let localConfig = { apiKey: "", authDomain: "", projectId: "", storageBucket: "", messagingSenderId: "", appId: "" };
+try {
+  localConfig = {
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+    appId: import.meta.env.VITE_FIREBASE_APP_ID || ""
+  };
+} catch (e) {
+  // 환경변수가 없는 환경(캔버스 등)에서 발생하는 에러 무시
+}
+
+const firebaseConfig = isCanvasEnv 
+  ? JSON.parse(__firebase_config) 
+  : localConfig;
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
 const getCollectionPath = () => {
-  const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-  return `artifacts/${appId}/public/data/as_records`;
+  if (isCanvasEnv) {
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    return `artifacts/${appId}/public/data/as_records`;
+  }
+  return 'as_records';
 };
 
 // --- 하드코딩 데이터 ---
@@ -223,6 +234,18 @@ const generateNextAsNumber = (currentData) => {
     }
   });
   return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
+};
+
+const isIncomplete = (item) => {
+  const coreFields = [
+    'asNumber', 'businessUnit', 'agencyName', 'model', 
+    'defectContent', 'causeAnalysis', 'processDetails', 
+    'processType', 'repairMethod', 'receiptDate', 'processDate'
+  ];
+  return coreFields.some(field => {
+    const val = item[field];
+    return val === null || val === undefined || String(val).trim() === '';
+  });
 };
 
 const getUniqueCount = (dataList, statusFilter) => {
@@ -591,13 +614,10 @@ export default function App() {
   const [data, setData] = useState([]); 
   const [activeTab, setActiveTab] = useState('전체'); 
   const [dashboardTab, setDashboardTab] = useState('종합 지표');
-  
-  // 차트 토글 상태값 복구
   const [totalChartType, setTotalChartType] = useState('donut');
   const [modelChartType, setModelChartType] = useState({}); 
   const [buChartType, setBuChartType] = useState({}); 
   const [yearlyTabChartType, setYearlyTabChartType] = useState({}); 
-  
   const [selectedDashboardStatus, setSelectedDashboardStatus] = useState('all');
   
   const [user, setUser] = useState(null);
@@ -638,7 +658,6 @@ export default function App() {
     if (role) {
       setCurrentUserRole(role);
       setLoginError('');
-      // 일반 담당자 로그인 시 본인 담당 부서가 첫 탭으로 선택되도록 (전체탭이 안 보이므로)
       setActiveTab(role.tabs === 'ALL' ? '전체' : role.tabs[0]);
     } else {
       setLoginError('비밀번호가 올바르지 않습니다.');
@@ -654,7 +673,6 @@ export default function App() {
 
   useEffect(() => {
     if (currentUserRole) {
-      // 일반 담당자는 '전체', '휴지통', '보고서', '미입력' 탭 접근 불가
       if (!isQM && (activeTab === '전체' || activeTab === '휴지통' || activeTab === '보고서' || activeTab === '미입력')) {
         setActiveTab(currentUserRole.tabs[0]);
       } else if (currentUserRole.tabs !== 'ALL' && !currentUserRole.tabs.includes(activeTab) && activeTab !== '집계') {
@@ -742,6 +760,7 @@ export default function App() {
     const map = new Map();
     processedData.forEach(item => {
       const claim = item.claimType === '고객불만' ? '고객불만' : '일반 A/S';
+      // 접수번호가 아예 없거나 공란인 경우 서로 덮어쓰지 않도록 고유 id를 사용
       const key = item.asNumber ? `${item.asNumber.trim().toUpperCase()}_${claim}` : `doc_${item.id}_${claim}`;
       
       if (!map.has(key)) {
@@ -764,17 +783,24 @@ export default function App() {
     }));
   }, [processedData]);
 
-  // 집계 시에는 권한과 무관하게 전체 데이터 사용 (전체회사 흐름)
+  // 현재 사용자 권한 필터링 (집계용 데이터 세팅)
   const allowedProcessedData = useMemo(() => {
-    if (activeTab === '집계') return uniqueClaimsData;
     if (!currentUserRole || currentUserRole.tabs === 'ALL') return uniqueClaimsData;
     return uniqueClaimsData.filter(item => currentUserRole.tabs.includes(item.businessUnit));
-  }, [uniqueClaimsData, currentUserRole, activeTab]);
+  }, [uniqueClaimsData, currentUserRole]);
 
   const currentYear = new Date().getFullYear();
   const targetYears = [String(currentYear - 2), String(currentYear - 1), String(currentYear)];
 
-  const allowedAggOrder = ['PMD', 'TMD', 'FLD', 'UHP', 'PT (ZMDI)', 'PT (N)', 'UPT900'];
+  // 집계 시 허용된 사업부 순서 (권한 필터 적용)
+  const allowedAggOrder = useMemo(() => {
+    const order = ['PMD', 'TMD', 'FLD', 'UHP', 'PT (ZMDI)', 'PT (N)', 'UPT900'];
+    if (!currentUserRole || currentUserRole.tabs === 'ALL') return order;
+    return order.filter(bu => {
+      if (bu.startsWith('PT')) return currentUserRole.tabs.includes('PT');
+      return currentUserRole.tabs.includes(bu);
+    });
+  }, [currentUserRole]);
 
   const aggregatedStats = useMemo(() => {
     const stats = {};
@@ -818,6 +844,11 @@ export default function App() {
     return result;
   }, [allowedProcessedData, allowedAggOrder]);
 
+  const allowedTrendUnits = useMemo(() => {
+    if (!currentUserRole || currentUserRole.tabs === 'ALL') return TREND_UNITS;
+    return TREND_UNITS.filter(bu => currentUserRole.tabs.includes(bu));
+  }, [currentUserRole]);
+
   const yearlyStats = useMemo(() => {
     const stats = {};
     targetYears.forEach(y => {
@@ -847,11 +878,11 @@ export default function App() {
     });
 
     return targetYears.map(y => ({ year: y, total: stats[y].total, complaint: stats[y].complaint }));
-  }, [allowedProcessedData, targetYears]);
+  }, [allowedProcessedData, targetYears, allowedTrendUnits]);
 
   const buYearlyStats = useMemo(() => {
     const stats = {};
-    TREND_UNITS.forEach(bu => {
+    allowedTrendUnits.forEach(bu => {
       stats[bu] = {};
       targetYears.forEach(y => {
         stats[bu][y] = { 
@@ -865,7 +896,7 @@ export default function App() {
 
     allowedProcessedData.forEach(item => {
       const unit = item.businessUnit || '미분류';
-      if (!TREND_UNITS.includes(unit)) return;
+      if (!allowedTrendUnits.includes(unit)) return;
       const year = getYearFromDate(item.receiptDate);
       if (!year || !targetYears.includes(year)) return;
       if (stats[unit][year].isHistorical) return;
@@ -879,15 +910,20 @@ export default function App() {
       result[bu] = targetYears.map(y => stats[bu][y]);
     });
     return result;
-  }, [allowedProcessedData, targetYears]);
+  }, [allowedProcessedData, targetYears, allowedTrendUnits]);
+
+  const allowedFixedUnits = useMemo(() => {
+    if (!currentUserRole || currentUserRole.tabs === 'ALL') return FIXED_UNITS_ORDER;
+    return FIXED_UNITS_ORDER.filter(bu => currentUserRole.tabs.includes(bu));
+  }, [currentUserRole]);
 
   const dashboardStats = useMemo(() => {
     const stats = {};
-    FIXED_UNITS_ORDER.forEach(bu => stats[bu] = { unit: bu, total: 0, models: {} });
+    allowedFixedUnits.forEach(bu => stats[bu] = { unit: bu, total: 0, models: {} });
 
     allowedProcessedData.forEach(item => {
       const bu = FIXED_UNITS_ORDER.includes(item.businessUnit) ? item.businessUnit : '기타사업부';
-      if (!FIXED_UNITS_ORDER.includes(bu)) return;
+      if (!allowedFixedUnits.includes(bu)) return;
 
       const groupLabel = getModelGroup(item.businessUnit, item.model, item.ptBoardType);
       
@@ -914,12 +950,12 @@ export default function App() {
       });
       return { ...buStat, modelsArr };
     }).sort((a, b) => {
-      let ia = FIXED_UNITS_ORDER.indexOf(a.unit);
-      let ib = FIXED_UNITS_ORDER.indexOf(b.unit);
+      let ia = allowedFixedUnits.indexOf(a.unit);
+      let ib = allowedFixedUnits.indexOf(b.unit);
       if (ia === -1) ia = 99; if (ib === -1) ib = 99;
       return ia - ib;
     });
-  }, [allowedProcessedData]);
+  }, [allowedProcessedData, allowedFixedUnits]);
 
   const groupedCauseStats = useMemo(() => {
     const normalStats = {};
@@ -960,12 +996,12 @@ export default function App() {
 
   const causeAndProcessStats = useMemo(() => {
     const stats = {};
-    FIXED_UNITS_ORDER.forEach(bu => {
+    allowedFixedUnits.forEach(bu => {
       stats[bu] = { unit: bu, totalCauses: 0, causes: {}, totalProcesses: 0, processes: {} };
     });
 
     allowedProcessedData.forEach(item => {
-       const bu = FIXED_UNITS_ORDER.includes(item.businessUnit) ? item.businessUnit : '기타사업부';
+       const bu = allowedFixedUnits.includes(item.businessUnit) ? item.businessUnit : '기타사업부';
        if (!stats[bu]) return;
 
        if (Array.isArray(item.causeAnalysisTypes)) {
@@ -995,7 +1031,7 @@ export default function App() {
           .sort((a, b) => b.value - a.value);
        return { ...buStat, causesArr, processesArr };
     }).filter(buStat => buStat.totalCauses > 0 || buStat.totalProcesses > 0);
-  }, [allowedProcessedData]);
+  }, [allowedProcessedData, allowedFixedUnits]);
 
   // -------------------------------------------------------------
   // [메인 테이블 조회용 데이터 탭 처리]
@@ -2241,30 +2277,30 @@ export default function App() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
              <div className="overflow-x-auto">
                <table className="min-w-full divide-y divide-gray-200">
-                 <thead className="bg-gray-50 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-b">
+                 <thead className="bg-gray-50">
                    <tr>
-                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">사업부</th>
-                     <th scope="col" className="px-4 py-3 text-center whitespace-nowrap">상태</th>
-                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">접수번호</th>
-                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">수주번호</th>
-                     <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">대리점</th>
-                     <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">업체명</th>
-                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">모델명</th>
-                     <th scope="col" className="px-4 py-3 text-right whitespace-nowrap">수량</th>
-                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">하자내용</th>
-                     <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">기존 주문정보</th>
-                     <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">처리방식</th>
-                     <th scope="col" className="px-2 py-3 text-right whitespace-nowrap">처리방법</th>
-                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">일정</th>
-                     <th scope="col" className="px-4 py-3 text-center whitespace-nowrap">관리</th>
+                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">사업부</th>
+                     <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">상태</th>
+                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">접수번호</th>
+                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">수주번호</th>
+                     <th scope="col" className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">대리점</th>
+                     <th scope="col" className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">업체명</th>
+                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">모델명</th>
+                     <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">수량</th>
+                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">하자내용</th>
+                     <th scope="col" className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">기존 주문정보</th>
+                     <th scope="col" className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">처리방식</th>
+                     <th scope="col" className="px-2 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">처리방법</th>
+                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">일정</th>
+                     <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">관리</th>
                    </tr>
                  </thead>
                  <tbody className="bg-white divide-y divide-gray-100">
                    {paginatedData.length > 0 ? (
                      paginatedData.map((row) => (
-                       <tr key={row.id} onClick={() => setSelectedRow(row)} className="hover:bg-blue-50/50 transition-colors cursor-pointer text-sm">
+                       <tr key={row.id} onClick={() => setSelectedRow(row)} className="hover:bg-blue-50 transition-colors cursor-pointer text-sm">
                          <td className="px-4 py-3 font-medium text-gray-900">{row.businessUnit}</td>
-                         <td className="px-4 py-3 text-center">{renderStatusBadge(row)}</td>
+                         <td className="px-4 py-3 whitespace-nowrap text-center align-middle">{renderStatusBadge(row)}</td>
                          <td className="px-4 py-3 text-blue-600 font-bold">{row.asNumber}</td>
                          <td className="px-4 py-3 text-gray-500">{row.orderNumber}</td>
                          <td className="px-2 py-3 text-gray-900 max-w-[120px] truncate" title={row.agencyName}>{row.agencyName}</td>
