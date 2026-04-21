@@ -2339,8 +2339,8 @@ export default function App() {
                          </td>
                          <td className="px-4 py-3 text-center align-middle whitespace-nowrap">
                            <div className="flex items-center justify-center gap-1">
-                              <button onClick={e => { e.stopPropagation(); handleOpenForm(row); }} className="p-1.5 hover:bg-blue-100 rounded-md text-blue-600 transition-colors" title="수정"><Edit className="w-4 h-4" /></button>
-                              {isQM && <button onClick={e => { e.stopPropagation(); handleDeletePrepare(row.id); }} className="p-1.5 hover:bg-red-100 rounded-md text-red-600 transition-colors" title="삭제"><Trash2 className="w-4 h-4" /></button>}
+                              <button onClick={e => { e.stopPropagation(); handleOpenForm(row); }} className="p-1.5 hover:bg-blue-100 rounded-md text-blue-600 transition-colors"><Edit className="w-4 h-4" /></button>
+                              {isQM && <button onClick={e => { e.stopPropagation(); handleDeletePrepare(row.id); }} className="p-1.5 hover:bg-red-100 rounded-md text-red-600 transition-colors"><Trash2 className="w-4 h-4" /></button>}
                            </div>
                          </td>
                        </tr>
@@ -2566,7 +2566,9 @@ export default function App() {
                   <FormGroup label="기존수주번호"><input type="text" name="originalOrderNumber" value={formData.originalOrderNumber} onChange={handleFormChange} className="form-input" disabled={!isQM} /></FormGroup>
                </div>
                
-               <FormGroup label="Serial No. (여러 개일 경우 줄바꿈 가능)"><textarea name="serialNo" value={formData.serialNo} onChange={handleFormChange} className="form-input h-16" /></FormGroup>
+               <FormGroup label="Serial No. (여러 개일 경우 줄바꿈 가능)">
+                 <textarea name="serialNo" value={formData.serialNo} onChange={handleFormChange} className="form-input h-16" />
+               </FormGroup>
 
                <div className="border-t border-gray-200 pt-6 space-y-4">
                  <div className="flex gap-6 mb-2">
@@ -2612,7 +2614,9 @@ export default function App() {
                     );
                   })()}
 
-                 <FormGroup label="처리 내역 및 대책"><textarea name="processDetails" value={formData.processDetails} onChange={handleFormChange} className="form-input h-24" /></FormGroup>
+                 <FormGroup label="처리 내역 및 대책">
+                   <textarea name="processDetails" value={formData.processDetails} onChange={handleFormChange} className="form-input h-24 text-sm" />
+                 </FormGroup>
                  
                  {isQM && ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (
                     <div className="overflow-x-auto border rounded-md mt-3">
