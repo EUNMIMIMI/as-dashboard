@@ -18,34 +18,24 @@ const ACCESS_ROLES = {
 
 // --- Firebase 초기화 ---
 const isCanvasEnv = typeof __firebase_config !== 'undefined';
-
-const firebaseConfig = isCanvasEnv
-  ? JSON.parse(__firebase_config)
-  : {
-      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-      appId: import.meta.env.VITE_FIREBASE_APP_ID
+const firebaseConfig = isCanvasEnv 
+  ? JSON.parse(__firebase_config) 
+  : { 
+      apiKey: "YOUR_API_KEY", 
+      authDomain: "YOUR_AUTH_DOMAIN", 
+      projectId: "YOUR_PROJECT_ID", 
+      storageBucket: "YOUR_STORAGE_BUCKET", 
+      messagingSenderId: "YOUR_SENDER_ID", 
+      appId: "YOUR_APP_ID" 
     };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-const COLLECTION_NAME = 'as_records';
 
-const getColRef = () => {
-  return isCanvasEnv 
-    ? collection(db, 'artifacts', appId, 'public', 'data', COLLECTION_NAME)
-    : collection(db, COLLECTION_NAME);
-};
-
-const getDocRef = (id) => {
-  return isCanvasEnv 
-    ? doc(db, 'artifacts', appId, 'public', 'data', COLLECTION_NAME, String(id))
-    : doc(db, COLLECTION_NAME, String(id));
+const getCollectionPath = () => {
+  const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+  return `artifacts/${appId}/public/data/as_records`;
 };
 
 // --- 하드코딩 데이터 ---
@@ -233,18 +223,6 @@ const generateNextAsNumber = (currentData) => {
     }
   });
   return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
-};
-
-const isIncomplete = (item) => {
-  const coreFields = [
-    'asNumber', 'businessUnit', 'agencyName', 'model', 
-    'defectContent', 'causeAnalysis', 'processDetails', 
-    'processType', 'repairMethod', 'receiptDate', 'processDate'
-  ];
-  return coreFields.some(field => {
-    const val = item[field];
-    return val === null || val === undefined || String(val).trim() === '';
-  });
 };
 
 const getUniqueCount = (dataList, statusFilter) => {
@@ -551,6 +529,33 @@ const HorizontalBarChart = ({ data, color }) => {
   );
 };
 
+const ModelHorizontalBarChart = ({ data }) => {
+  if (!data || data.length === 0) return <div className="text-sm text-gray-400 flex items-center justify-center h-full w-full">데이터가 없습니다.</div>;
+
+  const maxVal = Math.max(...data.map(d => d.total));
+
+  return (
+    <div className="space-y-3 w-full px-2 h-full overflow-y-auto hide-scrollbar">
+      {data.map((item, i) => (
+        <div key={i} className="flex items-center text-xs">
+          <div className="w-16 text-right pr-2 font-bold text-gray-700 truncate" title={item.label}>{item.label}</div>
+          <div className="flex-1 flex items-center gap-1">
+            <div 
+              className="h-4 rounded-sm flex" 
+              style={{ 
+                width: `${maxVal > 0 ? (item.total / maxVal) * 100 : 0}%`, 
+                minWidth: item.total > 0 ? '4px' : '0',
+                backgroundColor: item.color 
+              }}
+            ></div>
+            <span className="text-gray-900 font-bold w-8 text-left pl-1">{item.total}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const getModelGroup = (bu, modelName, ptBoardType) => {
   if (bu === 'PT') return ptBoardType === 'ZMDI' ? 'ZMDI' : 'N';
   if (!modelName) return bu === 'PMD' ? 'ACC' : '기타';
@@ -586,11 +591,17 @@ export default function App() {
   const [data, setData] = useState([]); 
   const [activeTab, setActiveTab] = useState('전체'); 
   const [dashboardTab, setDashboardTab] = useState('종합 지표');
+  
+  // 차트 토글 상태값 복구
+  const [totalChartType, setTotalChartType] = useState('donut');
+  const [modelChartType, setModelChartType] = useState({}); 
+  const [buChartType, setBuChartType] = useState({}); 
+  const [yearlyTabChartType, setYearlyTabChartType] = useState({}); 
+  
   const [selectedDashboardStatus, setSelectedDashboardStatus] = useState('all');
   
   const [user, setUser] = useState(null);
   
-  const [filterCompliance, setFilterCompliance] = useState('all');
   const [filterAgency, setFilterAgency] = useState('all');
   const [filterModel, setFilterModel] = useState('all');
   const [filterPtBoard, setFilterPtBoard] = useState('all');
@@ -627,7 +638,8 @@ export default function App() {
     if (role) {
       setCurrentUserRole(role);
       setLoginError('');
-      setActiveTab('전체');
+      // 일반 담당자 로그인 시 본인 담당 부서가 첫 탭으로 선택되도록 (전체탭이 안 보이므로)
+      setActiveTab(role.tabs === 'ALL' ? '전체' : role.tabs[0]);
     } else {
       setLoginError('비밀번호가 올바르지 않습니다.');
     }
@@ -642,9 +654,10 @@ export default function App() {
 
   useEffect(() => {
     if (currentUserRole) {
-      if (!isQM && (activeTab === '휴지통' || activeTab === '보고서' || activeTab === '미입력')) {
+      // 일반 담당자는 '전체', '휴지통', '보고서', '미입력' 탭 접근 불가
+      if (!isQM && (activeTab === '전체' || activeTab === '휴지통' || activeTab === '보고서' || activeTab === '미입력')) {
         setActiveTab(currentUserRole.tabs[0]);
-      } else if (currentUserRole.tabs !== 'ALL' && !currentUserRole.tabs.includes(activeTab) && activeTab !== '전체' && activeTab !== '집계') {
+      } else if (currentUserRole.tabs !== 'ALL' && !currentUserRole.tabs.includes(activeTab) && activeTab !== '집계') {
         setActiveTab(currentUserRole.tabs[0]);
       }
     }
@@ -669,7 +682,7 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    const colRef = getColRef();
+    const colRef = collection(db, getCollectionPath());
     
     const unsubscribe = onSnapshot(colRef, (snapshot) => {
       const records = [];
@@ -679,7 +692,7 @@ export default function App() {
       snapshot.forEach(docSnap => {
         const d = docSnap.data();
         if (d.deletedAt && (now - d.deletedAt > THREE_DAYS_MS)) {
-          deleteDoc(getDocRef(docSnap.id)).catch(console.error);
+          deleteDoc(doc(db, getCollectionPath(), docSnap.id)).catch(console.error);
         } else {
           records.push({ id: docSnap.id, ...d });
         }
@@ -722,6 +735,9 @@ export default function App() {
     }));
   }, [deletedRecords]);
 
+  // -------------------------------------------------------------
+  // [집계 데이터 구성 로직] : 접수번호 1개 + 일반/고객불만별 1건 중복 방지 처리
+  // -------------------------------------------------------------
   const uniqueClaimsData = useMemo(() => {
     const map = new Map();
     processedData.forEach(item => {
@@ -748,22 +764,17 @@ export default function App() {
     }));
   }, [processedData]);
 
+  // 집계 시에는 권한과 무관하게 전체 데이터 사용 (전체회사 흐름)
   const allowedProcessedData = useMemo(() => {
+    if (activeTab === '집계') return uniqueClaimsData;
     if (!currentUserRole || currentUserRole.tabs === 'ALL') return uniqueClaimsData;
     return uniqueClaimsData.filter(item => currentUserRole.tabs.includes(item.businessUnit));
-  }, [uniqueClaimsData, currentUserRole]);
+  }, [uniqueClaimsData, currentUserRole, activeTab]);
 
   const currentYear = new Date().getFullYear();
   const targetYears = [String(currentYear - 2), String(currentYear - 1), String(currentYear)];
 
-  const allowedAggOrder = useMemo(() => {
-    const order = ['PMD', 'TMD', 'FLD', 'UHP', 'PT (ZMDI)', 'PT (N)', 'UPT900'];
-    if (!currentUserRole || currentUserRole.tabs === 'ALL') return order;
-    return order.filter(bu => {
-      if (bu.startsWith('PT')) return currentUserRole.tabs.includes('PT');
-      return currentUserRole.tabs.includes(bu);
-    });
-  }, [currentUserRole]);
+  const allowedAggOrder = ['PMD', 'TMD', 'FLD', 'UHP', 'PT (ZMDI)', 'PT (N)', 'UPT900'];
 
   const aggregatedStats = useMemo(() => {
     const stats = {};
@@ -807,11 +818,6 @@ export default function App() {
     return result;
   }, [allowedProcessedData, allowedAggOrder]);
 
-  const allowedTrendUnits = useMemo(() => {
-    if (!currentUserRole || currentUserRole.tabs === 'ALL') return TREND_UNITS;
-    return TREND_UNITS.filter(bu => currentUserRole.tabs.includes(bu));
-  }, [currentUserRole]);
-
   const yearlyStats = useMemo(() => {
     const stats = {};
     targetYears.forEach(y => {
@@ -819,7 +825,7 @@ export default function App() {
        let histComp = 0;
        let isHistorical = false;
        
-       allowedTrendUnits.forEach(bu => {
+       TREND_UNITS.forEach(bu => {
           if (HISTORICAL_YEARLY[bu]?.[y]) {
              histTotal += HISTORICAL_YEARLY[bu][y].total;
              histComp += HISTORICAL_YEARLY[bu][y].complaint;
@@ -841,11 +847,11 @@ export default function App() {
     });
 
     return targetYears.map(y => ({ year: y, total: stats[y].total, complaint: stats[y].complaint }));
-  }, [allowedProcessedData, targetYears, allowedTrendUnits]);
+  }, [allowedProcessedData, targetYears]);
 
   const buYearlyStats = useMemo(() => {
     const stats = {};
-    allowedTrendUnits.forEach(bu => {
+    TREND_UNITS.forEach(bu => {
       stats[bu] = {};
       targetYears.forEach(y => {
         stats[bu][y] = { 
@@ -859,7 +865,7 @@ export default function App() {
 
     allowedProcessedData.forEach(item => {
       const unit = item.businessUnit || '미분류';
-      if (!allowedTrendUnits.includes(unit)) return;
+      if (!TREND_UNITS.includes(unit)) return;
       const year = getYearFromDate(item.receiptDate);
       if (!year || !targetYears.includes(year)) return;
       if (stats[unit][year].isHistorical) return;
@@ -873,20 +879,15 @@ export default function App() {
       result[bu] = targetYears.map(y => stats[bu][y]);
     });
     return result;
-  }, [allowedProcessedData, targetYears, allowedTrendUnits]);
-
-  const allowedFixedUnits = useMemo(() => {
-    if (!currentUserRole || currentUserRole.tabs === 'ALL') return FIXED_UNITS_ORDER;
-    return FIXED_UNITS_ORDER.filter(bu => currentUserRole.tabs.includes(bu));
-  }, [currentUserRole]);
+  }, [allowedProcessedData, targetYears]);
 
   const dashboardStats = useMemo(() => {
     const stats = {};
-    allowedFixedUnits.forEach(bu => stats[bu] = { unit: bu, total: 0, models: {} });
+    FIXED_UNITS_ORDER.forEach(bu => stats[bu] = { unit: bu, total: 0, models: {} });
 
     allowedProcessedData.forEach(item => {
       const bu = FIXED_UNITS_ORDER.includes(item.businessUnit) ? item.businessUnit : '기타사업부';
-      if (!allowedFixedUnits.includes(bu)) return;
+      if (!FIXED_UNITS_ORDER.includes(bu)) return;
 
       const groupLabel = getModelGroup(item.businessUnit, item.model, item.ptBoardType);
       
@@ -913,12 +914,12 @@ export default function App() {
       });
       return { ...buStat, modelsArr };
     }).sort((a, b) => {
-      let ia = allowedFixedUnits.indexOf(a.unit);
-      let ib = allowedFixedUnits.indexOf(b.unit);
+      let ia = FIXED_UNITS_ORDER.indexOf(a.unit);
+      let ib = FIXED_UNITS_ORDER.indexOf(b.unit);
       if (ia === -1) ia = 99; if (ib === -1) ib = 99;
       return ia - ib;
     });
-  }, [allowedProcessedData, allowedFixedUnits]);
+  }, [allowedProcessedData]);
 
   const groupedCauseStats = useMemo(() => {
     const normalStats = {};
@@ -959,12 +960,12 @@ export default function App() {
 
   const causeAndProcessStats = useMemo(() => {
     const stats = {};
-    allowedFixedUnits.forEach(bu => {
+    FIXED_UNITS_ORDER.forEach(bu => {
       stats[bu] = { unit: bu, totalCauses: 0, causes: {}, totalProcesses: 0, processes: {} };
     });
 
     allowedProcessedData.forEach(item => {
-       const bu = allowedFixedUnits.includes(item.businessUnit) ? item.businessUnit : '기타사업부';
+       const bu = FIXED_UNITS_ORDER.includes(item.businessUnit) ? item.businessUnit : '기타사업부';
        if (!stats[bu]) return;
 
        if (Array.isArray(item.causeAnalysisTypes)) {
@@ -994,17 +995,17 @@ export default function App() {
           .sort((a, b) => b.value - a.value);
        return { ...buStat, causesArr, processesArr };
     }).filter(buStat => buStat.totalCauses > 0 || buStat.totalProcesses > 0);
-  }, [allowedProcessedData, allowedFixedUnits]);
+  }, [allowedProcessedData]);
 
   // -------------------------------------------------------------
   // [메인 테이블 조회용 데이터 탭 처리]
   // -------------------------------------------------------------
   const visibleBusinessUnits = useMemo(() => {
     if (!currentUserRole) return [];
-    const fixed = ['전체', ...FIXED_UNITS_ORDER, '집계'];
-    if (currentUserRole.tabs === 'ALL') return [...fixed, '미입력'];
-    return ['전체', ...currentUserRole.tabs, '집계'];
-  }, [currentUserRole]);
+    if (isQM) return ['전체', ...FIXED_UNITS_ORDER, '미입력', '집계'];
+    // 일반 담당자는 '전체' 탭 안 보이고 소속 탭과 '집계' 탭만 보임
+    return [...currentUserRole.tabs, '집계'];
+  }, [currentUserRole, isQM]);
   
   const tabFilteredData = useMemo(() => {
     if (activeTab === '휴지통') return processedDeletedData;
@@ -1185,7 +1186,7 @@ export default function App() {
     }
 
     const docId = String(formData.id || Date.now());
-    await setDoc(getDocRef(docId), { ...formData, id: docId });
+    await setDoc(doc(db, getCollectionPath(), docId), { ...formData, id: docId });
     setIsFormOpen(false);
   };
 
@@ -1196,7 +1197,7 @@ export default function App() {
 
   const executeDelete = async () => {
     if (!user || !itemToDelete || !isQM) return;
-    await updateDoc(getDocRef(itemToDelete), { deletedAt: Date.now() });
+    await updateDoc(doc(db, getCollectionPath(), String(itemToDelete)), { deletedAt: Date.now() });
     setItemToDelete(null);
     setSelectedRow(null);
   };
@@ -1208,7 +1209,7 @@ export default function App() {
 
   const executePermanentDelete = async () => {
     if (!user || !itemToPermanentDelete || !isQM) return;
-    await deleteDoc(getDocRef(itemToPermanentDelete));
+    await deleteDoc(doc(db, getCollectionPath(), String(itemToPermanentDelete)));
     setItemToPermanentDelete(null);
     setSelectedRow(null);
   };
@@ -1216,7 +1217,7 @@ export default function App() {
   const handleRestore = async (id, e) => {
     if (e) e.stopPropagation();
     if (!user || !isQM) return;
-    await updateDoc(getDocRef(id), { deletedAt: null });
+    await updateDoc(doc(db, getCollectionPath(), String(id)), { deletedAt: null });
     setSelectedRow(null);
     customAlert('데이터가 성공적으로 복구되었습니다.');
   };
@@ -1233,7 +1234,7 @@ export default function App() {
       return;
     }
     records.forEach(async (record) => {
-      await setDoc(getDocRef(record.id), record);
+      await setDoc(doc(db, getCollectionPath(), String(record.id)), record);
     });
     customAlert(`${records.length}건의 데이터를 성공적으로 업로드 중입니다.`);
   };
@@ -1428,7 +1429,7 @@ export default function App() {
           'text/plain': textBlob
         });
         navigator.clipboard.write([item]).then(() => {
-          customAlert('그래프가 클립보드에 복사되었습니다. (문서 등에 Ctrl+V로 붙여넣어 보세요)');
+          customAlert('그래프가 클립보드에 복사되었습니다.');
         }).catch(() => fallbackCopy(text));
       } catch (e) {
         fallbackCopy(text);
@@ -1445,7 +1446,7 @@ export default function App() {
     textArea.select();
     try {
       document.execCommand('copy');
-      customAlert('그래프 데이터가 클립보드에 텍스트로 복사되었습니다.');
+      customAlert('그래프가 클립보드에 텍스트로 복사되었습니다.');
     } catch (err) {}
     document.body.removeChild(textArea);
   };
@@ -1902,7 +1903,26 @@ export default function App() {
           <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6"><Lock className="w-8 h-8 text-blue-600" /></div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">A/S 관리대장 로그인</h1>
           <form onSubmit={handleLogin} className="space-y-4">
-            <input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} placeholder="비밀번호 입력" className="w-full px-4 py-3 border rounded-xl text-center text-lg tracking-widest focus:ring-2 focus:ring-blue-500" required />
+            <div className="relative">
+              <input
+                type="password"
+                value={loginPassword}
+                onChange={(e) => {
+                  setLoginPassword(e.target.value);
+                  if (/[A-Z]/.test(e.target.value)) setIsCapsLockOn(true);
+                }}
+                onKeyDown={handleCapsLockCheck}
+                onKeyUp={handleCapsLockCheck}
+                placeholder="비밀번호 입력"
+                className="w-full px-4 py-3 border rounded-xl text-center text-lg tracking-widest focus:ring-2 focus:ring-blue-500"
+                required
+              />
+              {isCapsLockOn && (
+                <p className="text-orange-500 text-sm font-bold mt-2 animate-pulse">
+                  캡스락(Caps Lock)을 풀어주세요.
+                </p>
+              )}
+            </div>
             {loginError && <p className="text-red-500 text-sm">{loginError}</p>}
             <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-colors shadow-sm">시스템 접속</button>
           </form>
@@ -1959,8 +1979,8 @@ export default function App() {
               {/* 상세 필터 */}
               <div className="flex flex-wrap items-center gap-5 text-sm pt-2">
                 <div className="flex items-center gap-2"><Search className="w-4 h-4 text-gray-400" /> <input type="text" placeholder="접수번호, 대리점, 모델 검색..." className="border rounded-md px-3 py-1.5 w-60 focus:ring-2 focus:ring-blue-500" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} /></div>
-                <div className="flex items-center gap-2"><span>대리점:</span> <select value={filterAgency} onChange={e => setFilterAgency(e.target.value)} className="border rounded-md px-2 py-1.5 min-w-[120px]">{agencies.map(a => <option key={a} value={a}>{a === 'all' ? '전체' : a}</option>)}</select></div>
-                <div className="flex items-center gap-2"><span>모델명:</span> <select value={filterModel} onChange={e => setFilterModel(e.target.value)} className="border rounded-md px-2 py-1.5 min-w-[120px]">{models.map(m => <option key={m} value={m}>{m === 'all' ? '전체' : m}</option>)}</select></div>
+                <div className="flex items-center gap-2"><span>대리점:</span> <select value={filterAgency} onChange={e => setFilterAgency(e.target.value)} className="border rounded-md px-2 py-1.5 w-40">{agencies.map(a => <option key={a} value={a}>{a === 'all' ? '전체 대리점' : a}</option>)}</select></div>
+                <div className="flex items-center gap-2"><span>모델명:</span> <select value={filterModel} onChange={e => setFilterModel(e.target.value)} className="border rounded-md px-2 py-1.5 w-40">{models.map(m => <option key={m} value={m}>{m === 'all' ? '전체 모델' : m}</option>)}</select></div>
                 <div className="flex items-center gap-3 border-l pl-4 border-gray-300">
                   <span className="font-bold text-gray-600">성적서 건:</span>
                   <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="rpt" checked={filterExcludeReport === 'all'} onChange={() => setFilterExcludeReport('all')} /> 포함</label>
@@ -1980,33 +2000,83 @@ export default function App() {
           <div className="space-y-6 animate-in fade-in duration-500">
             {/* 집계 서브 탭 */}
             <div className="flex gap-2 mb-4 border-b border-gray-200">
-              {['종합 지표', '모델별 현황', '원인별 집계'].map(tab => (
+              {['종합 지표', '모델별 현황', '원인별 분석', '년도별 현황'].map(tab => (
                  <button key={tab} onClick={() => setDashboardTab(tab)} className={`px-4 py-2 font-bold text-sm border-b-2 transition-colors ${dashboardTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>{tab}</button>
               ))}
             </div>
 
             {dashboardTab === '종합 지표' && (
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                 <div className="bg-white p-6 rounded-xl border border-gray-200 flex flex-col items-center shadow-sm">
-                    <h3 className="w-full text-left font-bold mb-6 flex items-center gap-2 text-blue-600"><PieChart className="w-5 h-5" /> 종합 현황</h3>
-                    <DonutChart normal={aggregatedStats.reduce((a,c) => a+c.normal, 0)} complaint={aggregatedStats.reduce((a,c) => a+c.complaint, 0)} size={180} strokeWidth={16} />
-                    <div className="w-full mt-8 space-y-2">
-                       <div className="flex justify-between text-sm bg-blue-50 p-2.5 rounded border border-blue-100 text-blue-800"><span>일반 A/S 건수</span> <strong>{aggregatedStats.reduce((a,c) => a+c.normal, 0)}건</strong></div>
-                       <div className="flex justify-between text-sm bg-red-50 p-2.5 rounded border border-red-100 text-red-800"><span>고객 불만 건수</span> <strong>{aggregatedStats.reduce((a,c) => a+c.complaint, 0)}건</strong></div>
+                 <div className="bg-white p-6 rounded-xl border border-gray-200 flex flex-col items-center shadow-sm relative group">
+                    <div className="flex justify-between items-start w-full mb-6">
+                      <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                        <PieChart className="w-5 h-5 text-blue-600" /> 전체 A/S 종합 현황
+                      </h3>
+                      <div className="flex bg-gray-100 p-0.5 rounded-md relative z-10 shrink-0">
+                        <button onClick={() => setTotalChartType('donut')} className={`p-1.5 rounded ${totalChartType === 'donut' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="도넛 차트 보기"><PieChart className="w-4 h-4" /></button>
+                        <button onClick={() => setTotalChartType('trend')} className={`p-1.5 rounded ${totalChartType === 'trend' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="연도별 트렌드 보기"><TrendingUp className="w-4 h-4" /></button>
+                      </div>
                     </div>
+                    
+                    <div className="flex-1 flex flex-col items-center justify-center w-full relative z-0">
+                      {totalChartType === 'donut' ? (
+                        <DonutChart normal={aggregatedStats.reduce((a,c) => a+c.normal, 0)} complaint={aggregatedStats.reduce((a,c) => a+c.complaint, 0)} size={180} strokeWidth={16} />
+                      ) : (
+                        <YearlyTrendChart data={yearlyStats} type="mixed" />
+                      )}
+                    </div>
+
+                    {totalChartType === 'donut' && (
+                      <div className="w-full mt-8 space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                        <div className="flex justify-between items-center text-sm">
+                          <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500"></span><span className="font-medium text-gray-700">일반 A/S</span></div>
+                          <span className="font-bold text-gray-900">{aggregatedStats.reduce((a,c) => a+c.normal, 0)}건</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500"></span><span className="font-medium text-gray-700">고객불만</span></div>
+                          <span className="font-bold text-red-600">{aggregatedStats.reduce((a,c) => a+c.complaint, 0)}건</span>
+                        </div>
+                      </div>
+                    )}
                  </div>
-                 <div className="lg:col-span-3 bg-white p-6 rounded-xl border border-gray-200 shadow-sm" id="sub-chart-container">
+                 
+                 <div className="lg:col-span-3 bg-white p-6 rounded-xl border border-gray-200 shadow-sm relative group" id="sub-chart-container">
                     <h3 className="font-bold mb-8 flex items-center gap-2 text-gray-600"><BarChart3 className="w-5 h-5" /> 사업부별 상세 비율</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                       {aggregatedStats.map(s => (
-                         <div key={s.unit} className="flex flex-col items-center p-4 border rounded-xl hover:shadow-lg transition-all bg-gray-50/30">
-                            <span className="text-xs font-black text-gray-700 mb-4">{s.unit}</span>
-                            <DonutChart normal={s.normal} complaint={s.complaint} size={100} strokeWidth={10} />
-                            <div className="mt-4 text-[11px] font-bold text-gray-500">{s.totalClaims}건 (불만율 {s.complaintRate}%)</div>
+                       {aggregatedStats.filter(s => !s.isTotal).map(stat => (
+                         <div key={stat.unit} className="flex flex-col items-center p-4 border rounded-xl hover:shadow-lg transition-all bg-gray-50/30">
+                            <div className="w-full flex justify-between items-center pb-3 mb-4 border-b border-gray-100">
+                              <h4 className="font-bold text-gray-800 text-sm">{stat.unit}</h4>
+                              <div className="flex bg-gray-50 p-0.5 rounded-md relative z-10 shrink-0">
+                                <button onClick={() => setBuChartType(prev => ({...prev, [stat.unit]: 'donut'}))} className={`p-1 rounded ${buChartType[stat.unit] !== 'trend' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="도넛 차트 보기"><PieChart className="w-3 h-3" /></button>
+                                <button onClick={() => setBuChartType(prev => ({...prev, [stat.unit]: 'trend'}))} className={`p-1 rounded ${buChartType[stat.unit] === 'trend' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="연도별 트렌드 보기"><TrendingUp className="w-3 h-3" /></button>
+                              </div>
+                            </div>
+
+                            <div className="flex-1 flex w-full items-center justify-center min-h-[120px] relative z-0">
+                              {buChartType[stat.unit] === 'trend' ? (
+                                <YearlyTrendChart data={buYearlyStats[stat.unit] || []} heightClass="h-[120px]" type="mixed" />
+                              ) : (
+                                <DonutChart normal={stat.normal} complaint={stat.complaint} size={110} strokeWidth={12} />
+                              )}
+                            </div>
+
+                            {buChartType[stat.unit] !== 'trend' && (
+                              <div className="w-full mt-4 space-y-2 text-xs">
+                                <div className="flex justify-between items-center bg-blue-50/50 px-2 py-1.5 rounded text-blue-900">
+                                  <span className="font-medium">일반</span>
+                                  <span className="font-bold">{stat.normal}건 <span className="text-blue-600 font-normal">({stat.normalRate}%)</span></span>
+                                </div>
+                                <div className="flex justify-between items-center bg-red-50/50 px-2 py-1.5 rounded text-red-900">
+                                  <span className="font-medium">불만</span>
+                                  <span className="font-bold text-red-600">{stat.complaint}건 <span className="text-red-500 font-normal">({stat.complaintRate}%)</span></span>
+                                </div>
+                              </div>
+                            )}
                          </div>
                        ))}
                     </div>
-                    <button onClick={() => handleCopyChart('sub-chart-container')} className="mt-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md"><Copy className="w-4 h-4" /></button>
+                    <button onClick={() => handleCopyChart('sub-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"><Copy className="w-4 h-4" /></button>
                  </div>
               </div>
             )}
@@ -2014,26 +2084,40 @@ export default function App() {
             {dashboardTab === '모델별 현황' && (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                 {dashboardStats.map(buStat => (
-                  <div key={buStat.unit} id={`model-chart-${buStat.unit}`} className="bg-white rounded-xl border p-6 flex flex-col items-center shadow-sm">
-                    <h3 className="text-sm font-bold text-gray-800 mb-6 border-b pb-2 w-full text-center">{buStat.unit} 모델군 집계</h3>
-                    <MultiDonutChart data={buStat.modelsArr.map(m => ({ label: m.label, value: m.total, color: m.color }))} size={160} strokeWidth={22} />
-                    <div className="w-full mt-6 space-y-1.5 overflow-y-auto max-h-40 hide-scrollbar">
+                  <div key={buStat.unit} id={`model-chart-${buStat.unit}`} className="bg-white rounded-xl border p-6 flex flex-col items-center shadow-sm relative group">
+                    <div className="flex justify-between items-center w-full mb-6 border-b border-gray-100 pb-4">
+                      <h3 className="text-sm font-bold text-gray-800 text-center">{buStat.unit} 모델군 집계</h3>
+                      <div className="flex bg-gray-100 p-0.5 rounded-md relative z-10 shrink-0">
+                        <button onClick={() => setModelChartType(prev => ({...prev, [buStat.unit]: 'donut'}))} className={`p-1 rounded ${modelChartType[buStat.unit] !== 'bar' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="도넛 차트 보기"><PieChart className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => setModelChartType(prev => ({...prev, [buStat.unit]: 'bar'}))} className={`p-1 rounded ${modelChartType[buStat.unit] === 'bar' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="가로 막대 차트 보기"><BarChart3 className="w-3.5 h-3.5" /></button>
+                      </div>
+                    </div>
+                    
+                    <div className="flex justify-center mb-8 w-full h-[180px] items-center relative z-0">
+                      {modelChartType[buStat.unit] === 'bar' ? (
+                        <ModelHorizontalBarChart data={buStat.modelsArr} />
+                      ) : (
+                        <MultiDonutChart data={buStat.modelsArr.map(m => ({ label: m.label, value: m.total, color: m.color }))} size={160} strokeWidth={22} />
+                      )}
+                    </div>
+                    
+                    <div className="w-full mt-2 space-y-1.5 overflow-y-auto max-h-40 hide-scrollbar">
                       {buStat.modelsArr.map(m => (
-                        <div key={m.label} className="flex justify-between text-[11px] px-2 py-1 bg-gray-50 rounded">
+                        <div key={m.label} className="flex justify-between text-[11px] px-2 py-1.5 bg-gray-50 rounded">
                           <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{backgroundColor: m.color}}></span>{m.label}</span>
                           <span className="font-bold">{m.total}건</span>
                         </div>
                       ))}
                     </div>
-                    <button onClick={() => handleCopyChart(`model-chart-${buStat.unit}`)} className="mt-4 text-gray-400 hover:text-gray-700 self-end"><Copy className="w-4 h-4" /></button>
+                    <button onClick={() => handleCopyChart(`model-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"><Copy className="w-4 h-4" /></button>
                   </div>
                 ))}
               </div>
             )}
 
-            {dashboardTab === '원인별 집계' && (
+            {dashboardTab === '원인별 분석' && (
               <div className="space-y-6">
-                <div id="grouped-cause-chart" className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col">
+                <div id="grouped-cause-chart" className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
                   <h3 className="text-lg font-bold text-gray-900 mb-6 text-center border-b border-gray-100 pb-4">전체 원인 분석 요약</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="flex flex-col items-center">
@@ -2055,12 +2139,12 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                  <button onClick={() => handleCopyChart('grouped-cause-chart')} className="mt-4 self-end text-gray-400 hover:text-gray-700"><Copy className="w-4 h-4" /></button>
+                  <button onClick={() => handleCopyChart('grouped-cause-chart')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"><Copy className="w-4 h-4" /></button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                   {causeAndProcessStats.map(buStat => (
-                    <div key={buStat.unit} id={`cause-chart-${buStat.unit}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col">
+                    <div key={buStat.unit} id={`cause-chart-${buStat.unit}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
                       <h3 className="text-lg font-bold text-gray-900 mb-4 text-center border-b border-gray-100 pb-4">{buStat.unit} 상세 집계</h3>
                       <div className="space-y-6 flex-1">
                         <div>
@@ -2072,10 +2156,37 @@ export default function App() {
                           <HorizontalBarChart data={buStat.processesArr} color="bg-teal-500" />
                         </div>
                       </div>
-                      <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="mt-4 self-end text-gray-400 hover:text-gray-700"><Copy className="w-4 h-4" /></button>
+                      <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"><Copy className="w-4 h-4" /></button>
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+            
+            {dashboardTab === '년도별 현황' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {allowedTrendUnits.map(bu => {
+                  const unitData = buYearlyStats[bu] || [];
+                  return (
+                    <div key={bu} id={`yearly-chart-${bu}`} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
+                      <div className="flex justify-between items-center w-full mb-6 border-b border-gray-100 pb-4">
+                        <h3 className="text-lg font-bold text-gray-900">
+                          {bu} 사업부
+                        </h3>
+                        <div className="flex bg-gray-100 p-0.5 rounded-md relative z-10 shrink-0">
+                          <button onClick={() => setYearlyTabChartType(prev => ({...prev, [bu]: 'line'}))} className={`p-1 rounded ${yearlyTabChartType[bu] !== 'mixed' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="다중 꺾은선 차트 보기"><LineChart className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => setYearlyTabChartType(prev => ({...prev, [bu]: 'mixed'}))} className={`p-1 rounded ${yearlyTabChartType[bu] === 'mixed' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="막대-꺾은선 혼합 차트 보기"><TrendingUp className="w-3.5 h-3.5" /></button>
+                        </div>
+                      </div>
+                      
+                      <div className="flex-1 flex flex-col items-center justify-center w-full relative z-0">
+                        <YearlyTrendChart data={unitData} type={yearlyTabChartType[bu] === 'mixed' ? 'mixed' : 'line'} />
+                      </div>
+                      
+                      <button onClick={() => handleCopyChart(`yearly-chart-${bu}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" title="차트 복사"><Copy className="w-4 h-4" /></button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -2129,221 +2240,375 @@ export default function App() {
         ) : (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
              <div className="overflow-x-auto">
-               <table className="w-full text-left border-collapse">
+               <table className="min-w-full divide-y divide-gray-200">
                  <thead className="bg-gray-50 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-b">
                    <tr>
-                     <th className="px-4 py-3">사업부</th><th className="px-4 py-3 text-center">상태</th><th className="px-4 py-3">접수번호</th>
-                     <th className="px-2 py-3">대리점</th><th className="px-2 py-3">업체명</th><th className="px-4 py-3">모델(수량)</th>
-                     <th className="px-4 py-3">하자내용</th><th className="px-2 py-3">주문정보</th><th className="px-2 py-3 text-right">처리방법</th>
-                     <th className="px-4 py-3">일정</th><th className="px-4 py-3 text-center">관리</th>
+                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">사업부</th>
+                     <th scope="col" className="px-4 py-3 text-center whitespace-nowrap">상태</th>
+                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">접수번호</th>
+                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">수주번호</th>
+                     <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">대리점</th>
+                     <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">업체명</th>
+                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">모델명</th>
+                     <th scope="col" className="px-4 py-3 text-right whitespace-nowrap">수량</th>
+                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">하자내용</th>
+                     <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">기존 주문정보</th>
+                     <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">처리방식</th>
+                     <th scope="col" className="px-2 py-3 text-right whitespace-nowrap">처리방법</th>
+                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">일정</th>
+                     <th scope="col" className="px-4 py-3 text-center whitespace-nowrap">관리</th>
                    </tr>
                  </thead>
-                 <tbody className="divide-y divide-gray-100">
-                   {paginatedData.map(row => (
-                     <tr key={row.id} onClick={() => setSelectedRow(row)} className="hover:bg-blue-50/50 cursor-pointer transition-colors text-sm">
-                       <td className="px-4 py-3 font-medium">{row.businessUnit}</td>
-                       <td className="px-4 py-3 text-center">{renderStatusBadge(row)}</td>
-                       <td className="px-4 py-3 text-blue-600 font-bold">{row.asNumber}</td>
-                       <td className="px-2 py-3 max-w-[80px] truncate text-xs" title={row.agencyName}>{row.agencyName}</td>
-                       <td className="px-2 py-3 max-w-[80px] truncate text-xs" title={row.companyName}>{row.companyName}</td>
-                       <td className="px-4 py-3 font-bold">{row.model} ({row.qtyDefect})</td>
-                       <td className="px-4 py-3 max-w-[150px] truncate text-xs" title={row.defectContent}>{row.defectContent}</td>
-                       <td className="px-2 py-3 text-[10px] leading-tight text-gray-500">
-                         S/N: {row.serialNo?.split('\n')[0]}...<br/>출고: {row.releaseDate}
-                       </td>
-                       <td className="px-2 py-3 text-right text-xs font-bold text-gray-700">{row.repairMethod}</td>
-                       <td className="px-4 py-3 text-[10px] leading-tight">
-                         접수: {row.receiptDate}<br/>요구: <span className="text-red-500">{row.reqDeliveryDate}</span>
-                       </td>
-                       <td className="px-4 py-3 text-center">
-                         <div className="flex justify-center gap-1">
-                            <button onClick={e => { e.stopPropagation(); handleOpenForm(row); }} className="p-1 hover:bg-blue-100 rounded text-blue-600"><Edit className="w-4 h-4" /></button>
-                            {isQM && <button onClick={e => { e.stopPropagation(); handleDelete(row.id); }} className="p-1 hover:bg-red-100 rounded text-red-600"><Trash2 className="w-4 h-4" /></button>}
-                         </div>
-                       </td>
+                 <tbody className="bg-white divide-y divide-gray-100">
+                   {paginatedData.length > 0 ? (
+                     paginatedData.map((row) => (
+                       <tr key={row.id} onClick={() => setSelectedRow(row)} className="hover:bg-blue-50/50 transition-colors cursor-pointer text-sm">
+                         <td className="px-4 py-3 font-medium text-gray-900">{row.businessUnit}</td>
+                         <td className="px-4 py-3 text-center">{renderStatusBadge(row)}</td>
+                         <td className="px-4 py-3 text-blue-600 font-bold">{row.asNumber}</td>
+                         <td className="px-4 py-3 text-gray-500">{row.orderNumber}</td>
+                         <td className="px-2 py-3 text-gray-900 max-w-[120px] truncate" title={row.agencyName}>{row.agencyName}</td>
+                         <td className="px-2 py-3 text-gray-500 max-w-[120px] truncate" title={row.companyName}>{row.companyName}</td>
+                         <td className="px-4 py-3 font-bold">{row.model}</td>
+                         <td className="px-4 py-3 text-right">{row.qtyDefect}</td>
+                         <td className="px-4 py-3 text-gray-500 max-w-[150px] truncate">
+                           <span className="inline-block px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded mr-1 mb-1">{row.claimType || '일반 A/S'}</span>
+                           <div className="truncate" title={row.defectContent}>{row.defectContent || '-'}</div>
+                         </td>
+                         <td className="px-2 py-3">
+                           <div className="flex flex-col gap-1 text-xs">
+                             <div className="flex items-center"><span className="text-gray-400 w-8">S/N:</span> <span className="text-gray-900 max-w-[100px] truncate" title={row.serialNo}>{row.serialNo || '-'}</span></div>
+                             <div className="flex items-center"><span className="text-gray-400 w-8">출고:</span> <span className="text-gray-900">{row.releaseDate || '-'}</span></div>
+                             <div className="flex items-center"><span className="text-gray-400 w-8">수주:</span> <span className="text-gray-900 max-w-[100px] truncate" title={row.originalOrderNumber}>{row.originalOrderNumber || '-'}</span></div>
+                           </div>
+                         </td>
+                         <td className="px-2 py-3 text-xs text-gray-500">{row.processType || '-'}</td>
+                         <td className="px-2 py-3 text-xs text-right align-middle">
+                           {row.repairMethod === '유상수리' ? (
+                             <div>
+                               <span className="font-medium text-blue-700">{row.repairMethod}</span>
+                               <span className="block text-gray-500">₩ {row.cost != null && row.cost !== '' ? Number(row.cost).toLocaleString() : '0'}</span>
+                             </div>
+                           ) : (
+                             <span className="font-medium text-gray-700">{row.repairMethod || '-'}</span>
+                           )}
+                         </td>
+                         <td className="px-4 py-3">
+                           <div className="flex flex-col gap-1 text-xs">
+                             <div className="flex items-center"><span className="text-gray-400 w-8">접수:</span> <span className="text-gray-900">{row.receiptDate}</span></div>
+                             <div className="flex items-center"><span className="text-gray-400 w-8">요구:</span> <span className="text-red-500 font-bold">{row.reqDeliveryDate}</span></div>
+                             <div className="flex items-center"><span className="text-gray-400 w-8">납기:</span> <span className="text-gray-900">{row.processDate || '-'}</span></div>
+                             <div className="flex items-center"><span className="text-gray-400 w-8">소요:</span> <span className="text-gray-900">{row.duration}</span></div>
+                           </div>
+                         </td>
+                         <td className="px-4 py-3 text-center align-middle whitespace-nowrap">
+                           <div className="flex items-center justify-center gap-1">
+                              <button onClick={e => { e.stopPropagation(); handleOpenForm(row); }} className="p-1.5 hover:bg-blue-100 rounded-md text-blue-600 transition-colors" title="수정"><Edit className="w-4 h-4" /></button>
+                              {isQM && <button onClick={e => { e.stopPropagation(); handleDeletePrepare(row.id); }} className="p-1.5 hover:bg-red-100 rounded-md text-red-600 transition-colors" title="삭제"><Trash2 className="w-4 h-4" /></button>}
+                           </div>
+                         </td>
+                       </tr>
+                     ))
+                   ) : (
+                     <tr>
+                       <td colSpan="14" className="px-6 py-12 text-center text-gray-500">조건에 맞는 데이터가 없습니다. 필터를 변경해보세요.</td>
                      </tr>
-                   ))}
+                   )}
                  </tbody>
                </table>
              </div>
-             <div className="p-4 bg-white border-t flex items-center justify-between text-sm">
-                <span className="text-gray-500">총 <strong>{filteredData.length}</strong>건</span>
-                <div className="flex gap-2">
-                   <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="px-3 py-1 border rounded hover:bg-gray-50 disabled:opacity-30">이전</button>
-                   <span className="px-3 py-1 font-bold bg-blue-50 text-blue-600 rounded-md">{currentPage} / {totalPages}</span>
-                   <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="px-3 py-1 border rounded hover:bg-gray-50 disabled:opacity-30">다음</button>
-                </div>
-             </div>
+             
+             {/* 페이지네이션 */}
+             {filteredData.length > 0 && (
+               <div className="p-4 bg-white border-t flex items-center justify-between text-sm text-gray-600">
+                  <span>총 <strong>{filteredData.length}</strong>건</span>
+                  <div className="flex gap-2">
+                     <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="px-3 py-1.5 border rounded-lg hover:bg-gray-50 disabled:opacity-30 transition-all font-medium">이전</button>
+                     <div className="flex gap-1 overflow-x-auto max-w-[200px] md:max-w-none hide-scrollbar">
+                        {currentBlock > 1 && <button onClick={() => setCurrentPage(startPage - 1)} className="px-2 py-1.5 text-gray-500 hover:text-gray-700 bg-white font-bold">...</button>}
+                        {visiblePages.map(page => (
+                          <button key={page} onClick={() => setCurrentPage(page)} className={`px-3 py-1.5 border rounded-md text-sm font-medium ${currentPage === page ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'}`}>{page}</button>
+                        ))}
+                        {endPage < totalPages && <button onClick={() => setCurrentPage(endPage + 1)} className="px-2 py-1.5 text-gray-500 hover:text-gray-700 bg-white font-bold">...</button>}
+                     </div>
+                     <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="px-3 py-1.5 border rounded-lg hover:bg-gray-50 disabled:opacity-30 transition-all font-medium">다음</button>
+                  </div>
+               </div>
+             )}
           </div>
         )}
-
       </div>
 
-      {/* 폼 모달 */}
-      {isFormOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-            <div className="p-6 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
-               <h2 className="text-xl font-bold">A/S 데이터 {data.find(d => d.id === formData.id) ? '수정' : '추가'}</h2>
-               <button onClick={() => setIsFormOpen(false)}><X className="w-6 h-6" /></button>
+      {/* 1. 상세 정보 모달 */}
+      {selectedRow && !isFormOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                A/S 상세 정보 <span className="text-sm font-normal text-gray-500 ml-2">{selectedRow.asNumber}</span>
+              </h2>
+              <button onClick={() => setSelectedRow(null)} className="p-2 hover:bg-gray-100 rounded-full"><X className="w-5 h-5 text-gray-500" /></button>
             </div>
-            <form onSubmit={handleFormSubmitInternal} className="p-6 overflow-y-auto space-y-6">
-               <div className="space-y-3">
-                  <label className="block text-sm font-bold text-gray-700">진행 상태</label>
+            
+            <div className="p-6 overflow-y-auto space-y-6 flex-1">
+              <div className="bg-gray-50 p-4 rounded-xl flex items-center justify-between border border-gray-100">
+                <div>
+                  <div className="text-sm text-gray-500 mb-1">현재 상태</div>
+                  <div className="flex items-center gap-3">
+                    {renderStatusBadge(selectedRow)}
+                    <span className="text-sm font-medium text-gray-900">{selectedRow.processType || '미처리'}</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm text-gray-500 mb-1">납기 일정</div>
+                  <div className="text-sm font-medium text-gray-900">요구: <span className="text-red-600">{selectedRow.reqDeliveryDate}</span> / 완료: {selectedRow.processDate || '미정'}</div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3 border-b pb-2">기본 정보</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <DetailItem label="사업부" value={selectedRow.businessUnit === 'PT' ? `${selectedRow.businessUnit} (${selectedRow.ptBoardType || 'N'})` : selectedRow.businessUnit} />
+                  <DetailItem label="대리점명" value={selectedRow.agencyName} />
+                  <DetailItem label="업체명" value={selectedRow.companyName} />
+                  <DetailItem label="접수번호" value={selectedRow.asNumber} />
+                  <DetailItem label="수주번호" value={selectedRow.orderNumber} />
+                  <DetailItem label="접수일" value={selectedRow.receiptDate} />
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3 border-b pb-2">제품 및 수주 정보</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <DetailItem label="MODEL" value={selectedRow.model} />
+                  <DetailItem label="불량수량" value={`${selectedRow.qtyDefect}개`} />
+                  <DetailItem label="출고일자" value={selectedRow.releaseDate || '-'} />
+                  <DetailItem label="기존수주번호" value={selectedRow.originalOrderNumber || '-'} />
+                  <div className="col-span-2">
+                    <DetailItem label="Serial No." value={selectedRow.serialNo || '-'} isMultiline />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-end mb-3 border-b pb-2">
+                  <h3 className="text-lg font-semibold text-gray-900">하자 및 처리 내용</h3>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-md ${selectedRow.claimType === '고객불만' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>
+                    {selectedRow.claimType || '일반 A/S'}
+                  </span>
+                </div>
+                <div className="space-y-4">
+                  <DetailItem label="하자 내용 (고객 접수)" value={selectedRow.defectContent} isMultiline />
+                  <DetailItem label="원인 분석" value={selectedRow.causeAnalysis} isMultiline />
+                  <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100">
+                    <DetailItem label="처리 내역 및 대책" value={selectedRow.processDetails} isMultiline />
+                  </div>
+                  <div className="mt-4 flex items-center justify-between bg-gray-50 border border-gray-200 p-4 rounded-lg">
+                    <div className="text-sm font-bold text-gray-800">처리 결과: <span className="text-blue-700 ml-2">{selectedRow.repairMethod || '-'}</span></div>
+                    {selectedRow.repairMethod === '유상수리' && <div className="text-sm font-bold text-gray-900 bg-white px-3 py-1.5 rounded border border-gray-200 shadow-sm">청구 금액: ₩ {selectedRow.cost != null && selectedRow.cost !== '' ? Number(selectedRow.cost).toLocaleString() : '0'}</div>}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className={`px-6 py-4 border-t border-gray-100 bg-gray-50 flex ${isQM ? 'justify-between' : 'justify-end'} shrink-0 rounded-b-2xl`}>
+              {isQM && <button onClick={() => handleDeletePrepare(selectedRow.id)} className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center text-sm font-medium"><Trash2 className="w-4 h-4 mr-2" /> 삭제</button>}
+              <div className="flex gap-2">
+                <button onClick={() => handleOpenForm(selectedRow)} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm font-medium"><Edit className="w-4 h-4 mr-2" /> 이 데이터 수정하기</button>
+                <button onClick={() => setSelectedRow(null)} className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium">닫기</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. 추가/수정 폼 모달 */}
+      {isFormOpen && formData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0 bg-gray-50 rounded-t-2xl">
+              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                {data.find(d => d.id === formData.id) ? '데이터 수정' : '새 데이터 추가'}
+              </h2>
+              <button onClick={() => setIsFormOpen(false)} className="p-2 hover:bg-gray-200 rounded-full"><X className="w-5 h-5 text-gray-500" /></button>
+            </div>
+
+            <form onSubmit={handleFormSubmitInternal} className="flex-1 overflow-y-auto p-6 space-y-6">
+               <div className="mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                  <label className="block text-sm font-bold text-gray-700 mb-3">진행 상태</label>
                   <div className="flex flex-wrap gap-2">
                     {STATUS_STEPS.map(status => {
-                      const isDisabled = !isQM && ['접수 대기', '접수 완료', '종결'].includes(status);
+                      const config = DASHBOARD_CONFIG.find(c => c.status === status);
+                      const hexColor = config ? config.hex : '#3b82f6';
                       const isSelected = formData.currentStatus === status;
+                      
                       return (
-                        <button key={status} type="button" disabled={isDisabled} onClick={() => setFormData({...formData, currentStatus: status})} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-all ${isSelected ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50'} ${isDisabled ? 'opacity-30 cursor-not-allowed' : ''}`}>{status}</button>
-                      );
+                        <button
+                          type="button"
+                          key={status}
+                          onClick={() => {
+                            setFormData(prev => {
+                              const newData = { ...prev, currentStatus: status };
+                              if (status === '종결' && !newData.processDate) {
+                                const today = new Date();
+                                const yy = String(today.getFullYear()).slice(-2);
+                                const mm = String(today.getMonth() + 1).padStart(2, '0');
+                                const dd = String(today.getDate()).padStart(2, '0');
+                                newData.processDate = `${yy}.${mm}.${dd}`;
+                              }
+                              return newData;
+                            });
+                          }}
+                          className={`px-4 py-2 text-sm font-bold rounded-lg transition-all border`}
+                          style={{
+                            backgroundColor: isSelected ? hexColor : '#ffffff',
+                            color: isSelected ? '#ffffff' : '#4b5563',
+                            borderColor: isSelected ? hexColor : '#d1d5db',
+                            boxShadow: isSelected ? `0 4px 10px ${hexColor}50` : 'none',
+                            textShadow: isSelected ? '0 1px 2px rgba(0,0,0,0.2)' : 'none'
+                          }}
+                        >
+                          {status}
+                        </button>
+                      )
                     })}
                   </div>
                </div>
-               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+
+               {formData.businessUnit === 'PT' && (
+                  <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex items-center gap-6">
+                    <label className="block text-sm font-bold text-indigo-900">PT 보드 구분 선택</label>
+                    <div className="flex gap-6">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="ptBoardType" value="ZMDI" checked={formData.ptBoardType === 'ZMDI'} onChange={handleFormChange} className="w-4 h-4 text-indigo-600 focus:ring-indigo-500" />
+                        <span className="text-sm font-medium text-gray-900">ZMDI</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="ptBoardType" value="N" checked={formData.ptBoardType === 'N'} onChange={handleFormChange} className="w-4 h-4 text-indigo-600 focus:ring-indigo-500" />
+                        <span className="text-sm font-medium text-gray-900">N</span>
+                      </label>
+                    </div>
+                  </div>
+               )}
+
+               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <FormGroup label="사업부">
-                    <select name="businessUnit" value={formData.businessUnit} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" disabled={!isQM}>
+                    <select name="businessUnit" value={formData.businessUnit} onChange={handleFormChange} className="form-input" required>
                       {FIXED_UNITS_ORDER.map(u => <option key={u} value={u}>{u}</option>)}
                     </select>
                   </FormGroup>
-                  <FormGroup label="접수번호"><input type="text" name="asNumber" value={formData.asNumber} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" disabled={!isQM} /></FormGroup>
-                  <FormGroup label="접수일자"><input type="date" name="receiptDate" value={formatForDateInput(formData.receiptDate)} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" max={todayStr} /></FormGroup>
-                  <FormGroup label="처리완료일"><input type="date" name="processDate" value={formData.processDate === '-' ? '' : formatForDateInput(formData.processDate)} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" max={todayStr} /></FormGroup>
+                  <FormGroup label="접수번호"><input type="text" name="asNumber" value={formData.asNumber} onChange={handleFormChange} className="form-input" required /></FormGroup>
+                  <FormGroup label="수주번호"><input type="text" name="orderNumber" value={formData.orderNumber} onChange={handleFormChange} className="form-input" /></FormGroup>
+                  <FormGroup label="처리방식 (접수단계)">
+                    <select name="processType" value={formData.processType} onChange={handleFormChange} className="form-input">
+                      <option value="">선택안함</option>
+                      <option value="견적 후 착수">견적 후 착수</option>
+                      <option value="선조치">선조치</option>
+                      <option value="출장">출장</option>
+                    </select>
+                  </FormGroup>
                </div>
-               <div className="grid grid-cols-2 gap-4">
-                  <FormGroup label="대리점명"><input type="text" name="agencyName" value={formData.agencyName} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" /></FormGroup>
-                  <FormGroup label="업체명"><input type="text" name="companyName" value={formData.companyName} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" /></FormGroup>
+
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-gray-100 pb-4">
+                  <FormGroup label="접수일자 (클릭 시 달력)"><input type="date" name="receiptDate" value={formatForDateInput(formData.receiptDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" /></FormGroup>
+                  <FormGroup label="납기요구일 (자동 5영업일 계산)"><input type="date" name="reqDeliveryDate" value={formatForDateInput(formData.reqDeliveryDate)} onChange={handleFormChange} className="form-input cursor-pointer" /></FormGroup>
+                  <FormGroup label="처리완료일"><input type="date" name="processDate" value={formData.processDate === '-' ? '' : formatForDateInput(formData.processDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" /></FormGroup>
                </div>
-               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <FormGroup label="MODEL"><input type="text" name="model" value={formData.model} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" /></FormGroup>
-                  <FormGroup label="불량수량"><input type="number" name="qtyDefect" value={formData.qtyDefect} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" /></FormGroup>
-                  <FormGroup label="출고일자"><input type="date" name="releaseDate" value={formatForDateInput(formData.releaseDate)} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" max={todayStr} /></FormGroup>
-                  <FormGroup label="기존주문"><input type="text" name="originalOrderNumber" value={formData.originalOrderNumber} onChange={handleFormChange} className="border rounded-md p-2 w-full text-sm" /></FormGroup>
+
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                  <FormGroup label="대리점명"><input type="text" name="agencyName" value={formData.agencyName} onChange={handleFormChange} className="form-input" /></FormGroup>
+                  <FormGroup label="업체명"><input type="text" name="companyName" value={formData.companyName} onChange={handleFormChange} className="form-input" /></FormGroup>
                </div>
-               <FormGroup label="하자내용"><textarea name="defectContent" value={formData.defectContent} onChange={handleFormChange} className="border rounded-md p-2 w-full h-20 text-sm" /></FormGroup>
-               <FormGroup label="원인분석"><textarea name="causeAnalysis" value={formData.causeAnalysis} onChange={handleFormChange} className="border rounded-md p-2 w-full h-20 text-sm" /></FormGroup>
+
+               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <FormGroup label="MODEL"><input type="text" name="model" value={formData.model} onChange={handleFormChange} className="form-input" /></FormGroup>
+                  <FormGroup label="불량 수량"><input type="number" name="qtyDefect" value={formData.qtyDefect} onChange={handleFormChange} className="form-input" min="1" /></FormGroup>
+                  <FormGroup label="출고일자 (달력 선택)"><input type="date" name="releaseDate" value={formatForDateInput(formData.releaseDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" /></FormGroup>
+                  <FormGroup label="기존수주번호"><input type="text" name="originalOrderNumber" value={formData.originalOrderNumber} onChange={handleFormChange} className="form-input" /></FormGroup>
+               </div>
                
-               {isQM && ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (() => {
-                  const config = getCauseTableConfig(formData.businessUnit);
-                  return (
+               <FormGroup label="Serial No. (여러 개일 경우 줄바꿈 가능)"><textarea name="serialNo" value={formData.serialNo} onChange={handleFormChange} className="form-input h-16" /></FormGroup>
+
+               <div className="border-t border-gray-200 pt-6 space-y-4">
+                 <div className="flex gap-6 mb-2">
+                    <label className="flex items-center gap-2 font-bold cursor-pointer text-sm"><input type="radio" name="claimType" value="일반 A/S" checked={formData.claimType === '일반 A/S'} onChange={handleFormChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" /> 일반 A/S</label>
+                    <label className="flex items-center gap-2 font-bold cursor-pointer text-red-600 text-sm"><input type="radio" name="claimType" value="고객불만" checked={formData.claimType === '고객불만'} onChange={handleFormChange} className="w-4 h-4 text-red-600 focus:ring-red-500" /> 고객 불만</label>
+                 </div>
+                 <FormGroup label="하자 내용"><textarea name="defectContent" value={formData.defectContent} onChange={handleFormChange} className="form-input h-20" /></FormGroup>
+                 <FormGroup label="원인 분석"><textarea name="causeAnalysis" value={formData.causeAnalysis} onChange={handleFormChange} className="form-input h-20" /></FormGroup>
+                 
+                 {['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (() => {
+                    const config = getCauseTableConfig(formData.businessUnit);
+                    return (
+                      <div className="overflow-x-auto border rounded-md">
+                        <table className="w-full text-[10px] text-center border-collapse">
+                          <thead>
+                            <tr><th colSpan={config.totalCols} className="bg-[#eef4ea] py-1.5 font-bold border">원인 분석 결과 (중복 선택 가능)</th></tr>
+                            <tr>
+                              <th colSpan="3" rowSpan="2" className="border bg-[#eef4ea]">고객<br/>(대리점 또는 사용자)</th>
+                              <th colSpan={config.wiseCols} className="border bg-[#eef4ea]">WISE</th>
+                              <th colSpan={config.otherGroupCols} className="border bg-[#eef4ea]">기타</th>
+                            </tr>
+                            <tr>
+                              <th className="border bg-[#eef4ea] p-1">영업</th><th className="border bg-[#eef4ea] p-1">설계</th>
+                              <th colSpan={config.prodCols} className="border bg-[#eef4ea] p-1">생산</th>
+                              <th className="border bg-[#eef4ea] p-1">품질</th><th className="border bg-[#eef4ea] p-1">공급자</th>
+                              <th colSpan={config.otherCols} className="border bg-[#eef4ea] p-1">기타</th>
+                            </tr>
+                            <tr>
+                              {config.headers.map(h => <th key={h.id} className="border bg-[#eef4ea] py-1 px-0.5 whitespace-pre-wrap font-normal">{h.label}</th>)}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              {config.headers.map(h => (
+                                <td key={h.id} className="border p-1.5">
+                                  <input type="checkbox" checked={(formData.causeAnalysisTypes || []).includes(h.id)} onChange={() => handleCauseCheckbox(h.id)} className="w-3.5 h-3.5 text-blue-600" />
+                                </td>
+                              ))}
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
+
+                 <FormGroup label="처리 내역 및 대책"><textarea name="processDetails" value={formData.processDetails} onChange={handleFormChange} className="form-input h-24" /></FormGroup>
+                 
+                 {['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (
                     <div className="overflow-x-auto border rounded-md">
-                      <table className="w-full text-[10px] text-center border-collapse">
+                      <table className="w-full text-[11px] text-center border-collapse">
                         <thead>
-                          <tr><th colSpan={config.totalCols} className="bg-gray-100 py-1.5 font-bold">원인 분석 결과 (중복 선택 가능)</th></tr>
-                          <tr>
-                            <th colSpan="3" rowSpan="2" className="border bg-gray-50">고객</th>
-                            <th colSpan={config.wiseCols} className="border bg-gray-50">WISE</th>
-                            <th colSpan={config.otherGroupCols} className="border bg-gray-50">기타</th>
-                          </tr>
-                          <tr>
-                            <th className="border bg-gray-50 p-1">영업</th><th className="border bg-gray-50 p-1">설계</th>
-                            <th colSpan={config.prodCols} className="border bg-gray-50 p-1">생산</th>
-                            <th className="border bg-gray-50 p-1">품질</th><th className="border bg-gray-50 p-1">공급자</th>
-                            <th colSpan={config.otherCols} className="border bg-gray-50 p-1">기타</th>
-                          </tr>
-                          <tr>
-                            {config.headers.map(h => <th key={h.id} className="border bg-gray-50 py-1 px-0.5 whitespace-pre-wrap font-normal">{h.label}</th>)}
-                          </tr>
+                          <tr><th colSpan="5" className="bg-[#eef4ea] py-1.5 font-bold border">처리 내역</th></tr>
+                          <tr>{PROCESS_HEADERS.map(h => <th key={h.id} className="border bg-[#eef4ea] py-1 px-2 whitespace-pre-wrap font-normal">{h.label}</th>)}</tr>
                         </thead>
                         <tbody>
                           <tr>
-                            {config.headers.map(h => (
-                              <td key={h.id} className="border p-1.5">
-                                <input type="checkbox" checked={(formData.causeAnalysisTypes || []).includes(h.id)} onChange={() => {
-                                  setFormData(prev => {
-                                    const types = prev.causeAnalysisTypes || [];
-                                    return { ...prev, causeAnalysisTypes: types.includes(h.id) ? types.filter(t => t !== h.id) : [...types, h.id] };
-                                  });
-                                }} className="w-3 h-3 text-blue-600" />
+                            {PROCESS_HEADERS.map(h => (
+                              <td key={h.id} className="border p-2">
+                                <input type="radio" name="processDetailType" value={h.value} checked={formData.processDetailType === h.value} onChange={handleFormChange} className="w-4 h-4 text-blue-600" />
                               </td>
                             ))}
                           </tr>
                         </tbody>
                       </table>
                     </div>
-                  );
-                })()}
+                  )}
 
-               <div className="p-5 bg-gray-50 rounded-xl border space-y-5">
-                  <div className="flex gap-8">
-                    <label className="flex items-center gap-2 font-bold cursor-pointer text-sm"><input type="radio" name="claimType" value="일반 A/S" checked={formData.claimType === '일반 A/S'} onChange={handleFormChange} className="w-4 h-4 text-blue-600" disabled={!isQM} /> 일반 A/S</label>
-                    <label className="flex items-center gap-2 font-bold cursor-pointer text-red-600 text-sm"><input type="radio" name="claimType" value="고객불만" checked={formData.claimType === '고객불만'} onChange={handleFormChange} className="w-4 h-4 text-red-600" disabled={!isQM} /> 고객 불만</label>
-                  </div>
-                  <div className="flex flex-wrap gap-4 items-center pt-4 border-t border-gray-200">
-                    <span className="text-sm font-bold text-gray-600">수리방법:</span>
-                    {['무상수리', '유상수리', '수리불가', '수리취소'].map(m => (
-                      <label key={m} className="flex items-center gap-1.5 cursor-pointer text-sm font-medium"><input type="radio" name="repairMethod" value={m} checked={formData.repairMethod === m} onChange={handleFormChange} className="w-3.5 h-3.5" /> {m}</label>
-                    ))}
-                    {formData.repairMethod === '유상수리' && <div className="ml-auto flex items-center gap-2 text-sm"><span className="font-bold text-gray-600">비용:</span><input type="number" name="cost" value={formData.cost || ''} onChange={handleFormChange} placeholder="금액 입력" className="border rounded px-3 py-1 w-32" /></div>}
-                  </div>
+                 <div className="pt-4 border-t border-gray-100 bg-gray-50 p-4 rounded-xl mt-4">
+                    <label className="block text-sm font-bold text-gray-700 mb-3">수리 결과 및 방법 선택</label>
+                    <div className="flex flex-wrap items-center gap-6">
+                      {['무상수리', '유상수리', '수리불가', '수리취소'].map(m => (
+                        <label key={m} className="flex items-center gap-2 cursor-pointer text-sm font-medium"><input type="radio" name="repairMethod" value={m} checked={formData.repairMethod === m} onChange={handleFormChange} className="w-4 h-4 text-blue-600" /> {m}</label>
+                      ))}
+                      {formData.repairMethod === '유상수리' && <div className="ml-auto flex items-center gap-2 text-sm bg-white px-3 py-1.5 rounded-md border shadow-sm"><span className="font-bold text-gray-700">금액 (₩)</span><input type="number" name="cost" value={formData.cost === null || formData.cost === undefined ? '' : formData.cost} onChange={handleFormChange} placeholder="0" className="form-input w-32 py-1" min="0" /></div>}
+                    </div>
+                 </div>
                </div>
             </form>
             <div className="p-6 border-t flex justify-end gap-3 bg-gray-50 rounded-b-2xl">
                <button onClick={() => setIsFormOpen(false)} className="px-6 py-2 border rounded-lg font-bold bg-white hover:bg-gray-100">취소</button>
                <button onClick={handleFormSubmitInternal} className="px-8 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md hover:bg-blue-700 transition-all flex items-center gap-2"><Save className="w-4 h-4" /> 저장하기</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 상세 정보 모달 */}
-      {selectedRow && !isFormOpen && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
-            <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50 rounded-t-2xl">
-              <h2 className="text-lg font-bold flex items-center gap-2">A/S 상세 정보 <span className="text-blue-600">{selectedRow.asNumber}</span></h2>
-              <button onClick={() => setSelectedRow(null)} className="p-2 hover:bg-gray-200 rounded-full"><X className="w-5 h-5 text-gray-500" /></button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto space-y-6 flex-1">
-              <div className="bg-gray-50 p-4 rounded-xl flex justify-between items-center border border-gray-100">
-                <div>
-                  <div className="text-xs font-bold text-gray-400 mb-1">현재 상태</div>
-                  <div className="flex items-center gap-3">
-                    {renderStatusBadge(selectedRow)}
-                    <span className="text-sm font-bold">{selectedRow.processType || '미처리'}</span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs font-bold text-gray-400 mb-1">납기 일정</div>
-                  <div className="text-sm font-medium">요구: <span className="text-red-600 font-bold">{selectedRow.reqDeliveryDate}</span> / 완료: {selectedRow.processDate}</div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                <DetailItem label="사업부" value={selectedRow.businessUnit === 'PT' ? `${selectedRow.businessUnit} (${selectedRow.ptBoardType || 'N'})` : selectedRow.businessUnit} />
-                <DetailItem label="대리점명" value={selectedRow.agencyName} />
-                <DetailItem label="업체명" value={selectedRow.companyName} />
-                <DetailItem label="MODEL" value={selectedRow.model} />
-                <DetailItem label="불량수량" value={`${selectedRow.qtyDefect}개`} />
-                <DetailItem label="출고일자" value={selectedRow.releaseDate} />
-              </div>
-
-              <div className="border-t pt-4">
-                <div className="flex justify-between items-center mb-3">
-                  <h3 className="font-bold text-gray-900">하자 및 처리 내용</h3>
-                  <span className={`text-xs font-bold px-2.5 py-1 rounded-md ${selectedRow.claimType === '고객불만' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>{selectedRow.claimType || '일반 A/S'}</span>
-                </div>
-                <div className="space-y-4">
-                  <DetailItem label="하자 내용 (고객 접수)" value={selectedRow.defectContent} isMultiline />
-                  <DetailItem label="원인 분석" value={selectedRow.causeAnalysis} isMultiline />
-                  <div className="bg-blue-50/30 p-4 rounded-lg border border-blue-100">
-                    <DetailItem label="처리 내역 및 대책" value={selectedRow.processDetails} isMultiline />
-                  </div>
-                  <div className="flex items-center justify-between bg-gray-50 border p-4 rounded-lg">
-                    <div className="text-sm font-bold text-gray-800">처리 결과: <span className="text-blue-700 ml-2">{selectedRow.repairMethod || '-'}</span></div>
-                    {selectedRow.repairMethod === '유상수리' && <div className="text-sm font-bold text-gray-900 bg-white px-3 py-1.5 rounded border shadow-sm">청구 금액: ₩ {selectedRow.cost ? Number(selectedRow.cost).toLocaleString() : '0'}</div>}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className={`px-6 py-4 border-t flex ${isQM ? 'justify-between' : 'justify-end'} bg-gray-50 rounded-b-2xl`}>
-              {isQM && <button onClick={() => handleDeletePrepare(selectedRow.id)} className="px-4 py-2 text-red-600 hover:bg-red-100 rounded-lg text-sm font-bold flex items-center"><Trash2 className="w-4 h-4 mr-2" /> 삭제</button>}
-              <div className="flex gap-2">
-                <button onClick={() => handleOpenForm(selectedRow)} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-bold flex items-center"><Edit className="w-4 h-4 mr-2" /> 수정</button>
-                <button onClick={() => setSelectedRow(null)} className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 text-sm font-bold">닫기</button>
-              </div>
             </div>
           </div>
         </div>
@@ -2356,7 +2621,7 @@ export default function App() {
               <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
               <h3 className="text-xl font-bold mb-2">데이터를 삭제하시겠습니까?</h3>
               <p className="text-gray-500 text-sm mb-6">삭제된 데이터는 품질팀 관리하에 복구가 가능할 때까지 보관됩니다.</p>
-              <div className="flex gap-3">
+              <div className="flex gap-3 mt-6">
                  <button onClick={() => setItemToDelete(null)} className="flex-1 py-3 border rounded-xl font-bold hover:bg-gray-50">취소</button>
                  <button onClick={executeDelete} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg hover:bg-red-700">삭제하기</button>
               </div>
@@ -2365,7 +2630,7 @@ export default function App() {
       )}
 
       {alertMessage && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] bg-gray-900 text-white px-6 py-3 rounded-full shadow-2xl animate-in slide-in-from-bottom-5 duration-300 flex items-center gap-3">
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] bg-gray-900/90 text-white px-8 py-3.5 rounded-full shadow-2xl animate-in slide-in-from-bottom-5 duration-300 flex items-center gap-3">
            <CheckCircle className="text-green-400 w-5 h-5" /> {alertMessage}
            <button onClick={() => setAlertMessage('')} className="ml-2 hover:text-gray-300"><X className="w-4 h-4" /></button>
         </div>
@@ -2374,8 +2639,11 @@ export default function App() {
       <style dangerouslySetInnerHTML={{__html: `
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        table { table-layout: fixed; }
-        td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .form-input {
+          display: block; width: 100%; padding: 0.5rem 0.75rem; font-size: 0.875rem;
+          line-height: 1.25rem; border: 1px solid #d1d5db; border-radius: 0.375rem; outline: none; transition: border-color .15s;
+        }
+        .form-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6; }
       `}} />
     </div>
   );
