@@ -209,6 +209,16 @@ const addBusinessDays = (dateStr, days) => {
   return `${yy}.${mm}.${dd}`;
 };
 
+const getRemainingTime = (deletedAt) => {
+  if (!deletedAt) return '-';
+  const remainingMs = (3 * 24 * 60 * 60 * 1000) - (Date.now() - deletedAt);
+  if (remainingMs <= 0) return '삭제 예정';
+  const days = Math.floor(remainingMs / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((remainingMs / (1000 * 60 * 60)) % 24);
+  if (days > 0) return `${days}일 ${hours}시간`;
+  return `${hours}시간`;
+};
+
 const FIXED_UNITS_ORDER = ['PMD', 'TMD', 'FLD', 'SMT', 'PG', 'PT', 'UPT900'];
 const STATUS_STEPS = ['접수 대기', '접수 완료', '견적 승인 대기', '수리 중', '수리 완료', '종결'];
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6', '#84cc16', '#a855f7'];
@@ -769,6 +779,7 @@ export default function App() {
     const map = new Map();
     processedData.forEach(item => {
       const claim = item.claimType === '고객불만' ? '고객불만' : '일반 A/S';
+      // 접수번호가 아예 없거나 공란인 경우 서로 덮어쓰지 않도록 고유 id를 사용
       const key = item.asNumber ? `${item.asNumber.trim().toUpperCase()}_${claim}` : `doc_${item.id}_${claim}`;
       
       if (!map.has(key)) {
@@ -1045,6 +1056,7 @@ export default function App() {
   const visibleBusinessUnits = useMemo(() => {
     if (!currentUserRole) return [];
     if (isQM) return ['전체', ...FIXED_UNITS_ORDER, '미입력', '집계'];
+    // 일반 담당자는 '전체' 탭 안 보이고 소속 탭과 '집계' 탭만 보임
     return [...currentUserRole.tabs, '집계'];
   }, [currentUserRole, isQM]);
   
@@ -1052,6 +1064,7 @@ export default function App() {
     if (activeTab === '휴지통') return processedDeletedData;
 
     let baseData = processedData; 
+    // 권한이 없으면 자신이 포함된 사업부 탭 데이터만 열람 가능
     if (!isQM) {
       baseData = processedData.filter(item => currentUserRole?.tabs.includes(item.businessUnit));
     }
@@ -1491,6 +1504,16 @@ export default function App() {
       customAlert('그래프가 클립보드에 텍스트로 복사되었습니다.');
     } catch (err) {}
     document.body.removeChild(textArea);
+  };
+
+  const getRemainingTime = (deletedAt) => {
+    if (!deletedAt) return '-';
+    const remainingMs = (3 * 24 * 60 * 60 * 1000) - (Date.now() - deletedAt);
+    if (remainingMs <= 0) return '삭제 예정';
+    const days = Math.floor(remainingMs / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((remainingMs / (1000 * 60 * 60)) % 24);
+    if (days > 0) return `${days}일 ${hours}시간`;
+    return `${hours}시간`;
   };
 
   const paginatedData = useMemo(() => {
@@ -1995,7 +2018,7 @@ export default function App() {
             {isQM && (
               <>
                 <button onClick={() => setActiveTab('보고서')} className={`px-6 py-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === '보고서' ? 'border-gray-800 text-gray-900 bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>보고서</button>
-                <button onClick={() => setActiveTab('휴지통')} className={`px-6 py-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === '휴지통' ? 'border-gray-800 text-gray-900 bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>휴지통 (3일)</button>
+                <button onClick={() => setActiveTab('휴지통')} className={`px-6 py-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === '휴지통' ? 'border-gray-800 text-gray-900 bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>휴지통</button>
               </>
             )}
           </div>
@@ -2028,6 +2051,22 @@ export default function App() {
                   <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="rpt" checked={filterExcludeReport === 'all'} onChange={() => setFilterExcludeReport('all')} /> 포함</label>
                   <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="rpt" checked={filterExcludeReport === 'exclude'} onChange={() => setFilterExcludeReport('exclude')} /> 제외</label>
                 </div>
+                {activeTab === 'PT' && (
+                  <div className="flex items-center gap-2 border-l pl-4 border-gray-300">
+                    <span className="font-bold text-gray-600">PT 보드:</span>
+                    <div className="flex gap-1 bg-gray-100 p-0.5 rounded-lg">
+                      {['all', 'ZMDI', 'N'].map(type => (
+                        <button
+                          key={type}
+                          onClick={() => setFilterPtBoard(type)}
+                          className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${filterPtBoard === type ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                          {type === 'all' ? '전체' : type}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 
                 <div className="ml-auto">
                    <button onClick={() => handleOpenForm()} className="px-4 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-blue-700 transition-colors shadow-sm"><Plus className="w-4 h-4" /> 새 데이터 추가</button>
@@ -2281,10 +2320,17 @@ export default function App() {
           </div>
         ) : (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+             {activeTab === '휴지통' && (
+                <div className="p-4 bg-red-50 text-red-600 font-bold border-b border-red-100 flex items-center gap-2 text-sm">
+                  <AlertCircle className="w-5 h-5" />
+                  삭제된 데이터는 3일 후 영구적으로 자동 삭제됩니다.
+                </div>
+             )}
              <div className="overflow-x-auto">
                <table className="min-w-full divide-y divide-gray-200">
                  <thead className="bg-gray-50 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-b">
                    <tr>
+                     {activeTab === '휴지통' && <th scope="col" className="px-4 py-3 text-center whitespace-nowrap text-red-500">남은 기한</th>}
                      <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">사업부</th>
                      <th scope="col" className="px-4 py-3 text-center whitespace-nowrap">상태</th>
                      <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">접수번호</th>
@@ -2305,6 +2351,11 @@ export default function App() {
                    {paginatedData.length > 0 ? (
                      paginatedData.map((row) => (
                        <tr key={row.id} onClick={() => setSelectedRow(row)} className="hover:bg-blue-50/50 transition-colors cursor-pointer text-sm">
+                         {activeTab === '휴지통' && (
+                           <td className="px-4 py-3 text-center whitespace-nowrap font-bold text-red-500 bg-red-50/30">
+                             {getRemainingTime(row.deletedAt)}
+                           </td>
+                         )}
                          <td className="px-4 py-3 font-medium text-gray-900">{row.businessUnit}</td>
                          <td className="px-4 py-3 text-center">{renderStatusBadge(row)}</td>
                          <td className="px-4 py-3 text-blue-600 font-bold">{row.asNumber}</td>
@@ -2345,8 +2396,17 @@ export default function App() {
                          </td>
                          <td className="px-4 py-3 text-center align-middle whitespace-nowrap">
                            <div className="flex items-center justify-center gap-1">
-                              <button onClick={e => { e.stopPropagation(); handleOpenForm(row); }} className="p-1.5 hover:bg-blue-100 rounded-md text-blue-600 transition-colors"><Edit className="w-4 h-4" /></button>
-                              {isQM && <button onClick={e => { e.stopPropagation(); handleDeletePrepare(row.id); }} className="p-1.5 hover:bg-red-100 rounded-md text-red-600 transition-colors"><Trash2 className="w-4 h-4" /></button>}
+                              {activeTab === '휴지통' ? (
+                                <>
+                                  <button onClick={e => { e.stopPropagation(); handleRestore(row.id, e); }} className="p-1.5 hover:bg-green-100 rounded-md text-green-600 transition-colors" title="복원"><RotateCcw className="w-4 h-4" /></button>
+                                  <button onClick={e => { e.stopPropagation(); handlePermanentDeletePrepare(row.id, e); }} className="p-1.5 hover:bg-red-100 rounded-md text-red-600 transition-colors" title="영구 삭제"><Trash2 className="w-4 h-4" /></button>
+                                </>
+                              ) : (
+                                <>
+                                  <button onClick={e => { e.stopPropagation(); handleOpenForm(row); }} className="p-1.5 hover:bg-blue-100 rounded-md text-blue-600 transition-colors" title="수정"><Edit className="w-4 h-4" /></button>
+                                  {isQM && <button onClick={e => { e.stopPropagation(); handleDeletePrepare(row.id); }} className="p-1.5 hover:bg-red-100 rounded-md text-red-600 transition-colors" title="삭제"><Trash2 className="w-4 h-4" /></button>}
+                                </>
+                              )}
                            </div>
                          </td>
                        </tr>
@@ -2453,11 +2513,19 @@ export default function App() {
               </div>
             </div>
 
-            <div className={`px-6 py-4 border-t border-gray-100 bg-gray-50 flex ${isQM ? 'justify-between' : 'justify-end'} shrink-0 rounded-b-2xl`}>
-              {isQM && <button onClick={() => handleDeletePrepare(selectedRow.id)} className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center text-sm font-medium"><Trash2 className="w-4 h-4 mr-2" /> 삭제</button>}
+            <div className={`px-6 py-4 border-t border-gray-100 bg-gray-50 flex ${isQM || activeTab === '휴지통' ? 'justify-between' : 'justify-end'} shrink-0 rounded-b-2xl`}>
+              {activeTab === '휴지통' ? (
+                <button onClick={(e) => handlePermanentDeletePrepare(selectedRow.id, e)} className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center text-sm font-bold"><Trash2 className="w-4 h-4 mr-2" /> 영구 삭제</button>
+              ) : (
+                isQM && <button onClick={() => handleDeletePrepare(selectedRow.id)} className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center text-sm font-bold"><Trash2 className="w-4 h-4 mr-2" /> 삭제</button>
+              )}
               <div className="flex gap-2">
-                <button onClick={() => handleOpenForm(selectedRow)} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm font-medium"><Edit className="w-4 h-4 mr-2" /> 이 데이터 수정하기</button>
-                <button onClick={() => setSelectedRow(null)} className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium">닫기</button>
+                {activeTab === '휴지통' ? (
+                  <button onClick={(e) => handleRestore(selectedRow.id, e)} className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center text-sm font-bold"><RotateCcw className="w-4 h-4 mr-2" /> 복원하기</button>
+                ) : (
+                  <button onClick={() => handleOpenForm(selectedRow)} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm font-bold"><Edit className="w-4 h-4 mr-2" /> 수정</button>
+                )}
+                <button onClick={() => setSelectedRow(null)} className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors text-sm font-bold">닫기</button>
               </div>
             </div>
           </div>
@@ -2572,7 +2640,9 @@ export default function App() {
                   <FormGroup label="기존수주번호"><input type="text" name="originalOrderNumber" value={formData.originalOrderNumber} onChange={handleFormChange} className="form-input" disabled={!isQM} /></FormGroup>
                </div>
                
-               <FormGroup label="Serial No. (여러 개일 경우 줄바꿈 가능)"><textarea name="serialNo" value={formData.serialNo} onChange={handleFormChange} className="form-input h-16" /></FormGroup>
+               <FormGroup label="Serial No. (여러 개일 경우 줄바꿈 가능)">
+                 <textarea name="serialNo" value={formData.serialNo} onChange={handleFormChange} className="form-input h-16" />
+               </FormGroup>
 
                <div className="border-t border-gray-200 pt-6 space-y-4">
                  <div className="flex gap-6 mb-2">
