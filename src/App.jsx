@@ -13,7 +13,7 @@ const ACCESS_ROLES = {
   'pmd123': { name: 'pmd 담당자', tabs: ['PMD'] },
   'tmd123': { name: 'tmd 담당자', tabs: ['TMD'] },
   'fld123': { name: 'fld 담당자', tabs: ['FLD'] },
-  'uhp123': { name: 'uhp 담당자', tabs: ['UHP', 'PT', 'UPT900'] }
+  'uhp123': { name: 'uhp 담당자', tabs: ['SMT', 'PG', 'PT', 'UPT900'] }
 };
 
 // --- Firebase 초기화 ---
@@ -54,9 +54,10 @@ const HISTORICAL_YEARLY = {
   'PMD': { '2023': { total: 287, complaint: 4 }, '2024': { total: 251, complaint: 29 }, '2025': { total: 215, complaint: 15 } },
   'TMD': { '2023': { total: 116, complaint: 5 }, '2024': { total: 112, complaint: 24 }, '2025': { total: 96, complaint: 16 } },
   'FLD': { '2023': { total: 15, complaint: 0 }, '2024': { total: 7, complaint: 1 }, '2025': { total: 14, complaint: 3 } },
-  'UHP': { '2023': { total: 134, complaint: 9 }, '2024': { total: 154, complaint: 140 }, '2025': { total: 127, complaint: 12 } }
+  'SMT': { '2023': { total: 134, complaint: 9 }, '2024': { total: 154, complaint: 140 }, '2025': { total: 127, complaint: 12 } },
+  'PG': { '2023': { total: 0, complaint: 0 }, '2024': { total: 0, complaint: 0 }, '2025': { total: 0, complaint: 0 } }
 };
-const TREND_UNITS = ['PMD', 'TMD', 'FLD', 'UHP']; 
+const TREND_UNITS = ['PMD', 'TMD', 'FLD', 'SMT', 'PG']; 
 
 const CAUSE_HEADERS = [
   { id: 'c1', label: '설치\n조건' }, { id: 'c2', label: '취급\n부주의' }, { id: 'c3', label: '품질\n보증\n기간' },
@@ -208,7 +209,7 @@ const addBusinessDays = (dateStr, days) => {
   return `${yy}.${mm}.${dd}`;
 };
 
-const FIXED_UNITS_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'];
+const FIXED_UNITS_ORDER = ['PMD', 'TMD', 'FLD', 'SMT', 'PG', 'PT', 'UPT900'];
 const STATUS_STEPS = ['접수 대기', '접수 완료', '견적 승인 대기', '수리 중', '수리 완료', '종결'];
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6', '#84cc16', '#a855f7'];
 
@@ -716,12 +717,20 @@ export default function App() {
         }
       });
       
-      records.sort((a, b) => {
+      const mappedRecords = records.map(d => {
+        let bu = d.businessUnit;
+        if (bu === 'UHP') {
+          bu = (d.orderNumber || '').toUpperCase().startsWith('P3') ? 'PG' : 'SMT';
+        }
+        return { ...d, businessUnit: bu };
+      });
+      
+      mappedRecords.sort((a, b) => {
         const numA = a.asNumber || '';
         const numB = b.asNumber || '';
         return numB.localeCompare(numA); 
       });
-      setData(records);
+      setData(mappedRecords);
     }, (error) => console.error("Firestore Error:", error));
     return () => unsubscribe();
   }, [user]);
@@ -760,7 +769,6 @@ export default function App() {
     const map = new Map();
     processedData.forEach(item => {
       const claim = item.claimType === '고객불만' ? '고객불만' : '일반 A/S';
-      // 접수번호가 아예 없거나 공란인 경우 서로 덮어쓰지 않도록 고유 id를 사용
       const key = item.asNumber ? `${item.asNumber.trim().toUpperCase()}_${claim}` : `doc_${item.id}_${claim}`;
       
       if (!map.has(key)) {
@@ -783,7 +791,6 @@ export default function App() {
     }));
   }, [processedData]);
 
-  // 현재 사용자 권한 필터링 (집계용 데이터 세팅)
   const allowedProcessedData = useMemo(() => {
     if (!currentUserRole || currentUserRole.tabs === 'ALL') return uniqueClaimsData;
     return uniqueClaimsData.filter(item => currentUserRole.tabs.includes(item.businessUnit));
@@ -792,9 +799,8 @@ export default function App() {
   const currentYear = new Date().getFullYear();
   const targetYears = [String(currentYear - 2), String(currentYear - 1), String(currentYear)];
 
-  // 집계 시 허용된 사업부 순서 (권한 필터 적용)
   const allowedAggOrder = useMemo(() => {
-    const order = ['PMD', 'TMD', 'FLD', 'UHP', 'PT (ZMDI)', 'PT (N)', 'UPT900'];
+    const order = ['PMD', 'TMD', 'FLD', 'SMT', 'PG', 'PT (ZMDI)', 'PT (N)', 'UPT900'];
     if (!currentUserRole || currentUserRole.tabs === 'ALL') return order;
     return order.filter(bu => {
       if (bu.startsWith('PT')) return currentUserRole.tabs.includes('PT');
@@ -1039,7 +1045,6 @@ export default function App() {
   const visibleBusinessUnits = useMemo(() => {
     if (!currentUserRole) return [];
     if (isQM) return ['전체', ...FIXED_UNITS_ORDER, '미입력', '집계'];
-    // 일반 담당자는 '전체' 탭 안 보이고 소속 탭과 '집계' 탭만 보임
     return [...currentUserRole.tabs, '집계'];
   }, [currentUserRole, isQM]);
   
@@ -1047,7 +1052,6 @@ export default function App() {
     if (activeTab === '휴지통') return processedDeletedData;
 
     let baseData = processedData; 
-    // 권한이 없으면 자신이 포함된 사업부 탭 데이터만 열람 가능
     if (!isQM) {
       baseData = processedData.filter(item => currentUserRole?.tabs.includes(item.businessUnit));
     }
@@ -1174,7 +1178,8 @@ export default function App() {
       if (name === 'orderNumber') {
         const orderNum = finalValue.toUpperCase();
         if (orderNum.startsWith('P1')) newData.businessUnit = 'PMD';
-        else if (orderNum.startsWith('UHP') || orderNum.startsWith('P3')) newData.businessUnit = 'UHP';
+        else if (orderNum.startsWith('UHP')) newData.businessUnit = 'SMT';
+        else if (orderNum.startsWith('P3')) newData.businessUnit = 'PG';
         else if (orderNum.startsWith('P4')) newData.businessUnit = 'PT';
         else if (orderNum.startsWith('T')) newData.businessUnit = 'TMD';
         else if (orderNum.startsWith('F')) newData.businessUnit = 'FLD';
@@ -1365,7 +1370,8 @@ export default function App() {
           if (!bu && orderNumber) {
             const orderNum = orderNumber.toUpperCase();
             if (orderNum.startsWith('P1')) bu = 'PMD';
-            else if (orderNum.startsWith('UHP') || orderNum.startsWith('P3')) bu = 'UHP';
+            else if (orderNum.startsWith('UHP')) bu = 'SMT';
+            else if (orderNum.startsWith('P3')) bu = 'PG';
             else if (orderNum.startsWith('P4')) bu = 'PT';
             else if (orderNum.startsWith('T')) bu = 'TMD';
             else if (orderNum.startsWith('F')) bu = 'FLD'; 
@@ -2566,9 +2572,7 @@ export default function App() {
                   <FormGroup label="기존수주번호"><input type="text" name="originalOrderNumber" value={formData.originalOrderNumber} onChange={handleFormChange} className="form-input" disabled={!isQM} /></FormGroup>
                </div>
                
-               <FormGroup label="Serial No. (여러 개일 경우 줄바꿈 가능)">
-                 <textarea name="serialNo" value={formData.serialNo} onChange={handleFormChange} className="form-input h-16" />
-               </FormGroup>
+               <FormGroup label="Serial No. (여러 개일 경우 줄바꿈 가능)"><textarea name="serialNo" value={formData.serialNo} onChange={handleFormChange} className="form-input h-16" /></FormGroup>
 
                <div className="border-t border-gray-200 pt-6 space-y-4">
                  <div className="flex gap-6 mb-2">
@@ -2578,7 +2582,7 @@ export default function App() {
                  <FormGroup label="하자 내용"><textarea name="defectContent" value={formData.defectContent} onChange={handleFormChange} className="form-input h-20 text-sm" disabled={!isQM} /></FormGroup>
                  <FormGroup label="원인 분석"><textarea name="causeAnalysis" value={formData.causeAnalysis} onChange={handleFormChange} className="form-input h-20 text-sm" /></FormGroup>
                  
-                 {isQM && ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (() => {
+                 {isQM && ['PMD', 'TMD', 'FLD', 'SMT', 'PG', 'PT', 'UPT900'].includes(formData.businessUnit) && (() => {
                     const config = getCauseTableConfig(formData.businessUnit);
                     return (
                       <div className="overflow-x-auto border rounded-md mt-3">
@@ -2618,7 +2622,7 @@ export default function App() {
                    <textarea name="processDetails" value={formData.processDetails} onChange={handleFormChange} className="form-input h-24 text-sm" />
                  </FormGroup>
                  
-                 {isQM && ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (
+                 {isQM && ['PMD', 'TMD', 'FLD', 'SMT', 'PG', 'PT', 'UPT900'].includes(formData.businessUnit) && (
                     <div className="overflow-x-auto border rounded-md mt-3">
                       <table className="w-full text-[11px] text-center border-collapse">
                         <thead>
@@ -2642,9 +2646,9 @@ export default function App() {
                     <label className="block text-sm font-bold text-gray-700 mb-3">수리 결과 및 방법 선택</label>
                     <div className="flex flex-wrap items-center gap-6">
                       {['무상수리', '유상수리', '수리불가', '수리취소'].map(m => (
-                        <label key={m} className="flex items-center gap-2 cursor-pointer text-sm font-medium"><input type="radio" name="repairMethod" value={m} checked={formData.repairMethod === m} onChange={handleFormChange} className="w-4 h-4 text-blue-600" /> {m}</label>
+                        <label key={m} className="flex items-center gap-2 cursor-pointer text-sm font-medium"><input type="radio" name="repairMethod" value={m} checked={formData.repairMethod === m} onChange={handleFormChange} className="w-4 h-4 text-blue-600" disabled={!isQM} /> {m}</label>
                       ))}
-                      {formData.repairMethod === '유상수리' && <div className="ml-auto flex items-center gap-2 text-sm bg-white px-3 py-1.5 rounded-md border shadow-sm"><span className="font-bold text-gray-700">금액 (₩)</span><input type="number" name="cost" value={formData.cost === null || formData.cost === undefined ? '' : formData.cost} onChange={handleFormChange} placeholder="0" className="form-input w-32 py-1" min="0" /></div>}
+                      {formData.repairMethod === '유상수리' && <div className="ml-auto flex items-center gap-2 text-sm bg-white px-3 py-1.5 rounded-md border shadow-sm"><span className="font-bold text-gray-700">금액 (₩)</span><input type="number" name="cost" value={formData.cost === null || formData.cost === undefined ? '' : formData.cost} onChange={handleFormChange} placeholder="0" className="form-input w-32 py-1" min="0" disabled={!isQM} /></div>}
                     </div>
                  </div>
                </div>
