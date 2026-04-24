@@ -802,6 +802,7 @@ export default function App() {
     }));
   }, [processedData]);
 
+  // 현재 사용자 권한 필터링 (집계용 데이터 세팅)
   const allowedProcessedData = useMemo(() => {
     if (!currentUserRole || currentUserRole.tabs === 'ALL') return uniqueClaimsData;
     return uniqueClaimsData.filter(item => currentUserRole.tabs.includes(item.businessUnit));
@@ -810,6 +811,7 @@ export default function App() {
   const currentYear = new Date().getFullYear();
   const targetYears = [String(currentYear - 2), String(currentYear - 1), String(currentYear)];
 
+  // 집계 시 허용된 사업부 순서 (권한 필터 적용)
   const allowedAggOrder = useMemo(() => {
     const order = ['PMD', 'TMD', 'FLD', 'SMT', 'PG', 'PT (ZMDI)', 'PT (N)', 'UPT900'];
     if (!currentUserRole || currentUserRole.tabs === 'ALL') return order;
@@ -1188,6 +1190,33 @@ export default function App() {
 
     setFormData(prev => {
       const newData = { ...prev, [name]: finalValue };
+
+      if (name === 'asNumber') {
+        const existingRecord = data.find(d => d.asNumber === finalValue);
+        if (existingRecord) {
+          newData.orderNumber = existingRecord.orderNumber || '';
+          newData.processType = existingRecord.processType || '';
+          newData.receiptDate = existingRecord.receiptDate || '';
+          newData.agencyName = existingRecord.agencyName || '';
+          newData.companyName = existingRecord.companyName || '';
+          
+          if (existingRecord.orderNumber) {
+            const orderNum = existingRecord.orderNumber.toUpperCase();
+            if (orderNum.startsWith('P1')) newData.businessUnit = 'PMD';
+            else if (orderNum.startsWith('UHP')) newData.businessUnit = 'SMT';
+            else if (orderNum.startsWith('P3')) newData.businessUnit = 'PG';
+            else if (orderNum.startsWith('P4')) newData.businessUnit = 'PT';
+            else if (orderNum.startsWith('T')) newData.businessUnit = 'TMD';
+            else if (orderNum.startsWith('F')) newData.businessUnit = 'FLD';
+          }
+          
+          if (existingRecord.receiptDate) {
+            const autoReqDate = addBusinessDays(existingRecord.receiptDate, 5);
+            if (autoReqDate) newData.reqDeliveryDate = autoReqDate;
+          }
+        }
+      }
+
       if (name === 'orderNumber') {
         const orderNum = finalValue.toUpperCase();
         if (orderNum.startsWith('P1')) newData.businessUnit = 'PMD';
@@ -2275,18 +2304,20 @@ export default function App() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-10 animate-in fade-in duration-300">
              <h2 className="text-2xl font-bold text-gray-900 mb-2">데이터 백업 및 내보내기</h2>
              <p className="text-gray-500 mb-8">현재 필터 조건에 맞는 <span className="font-bold text-blue-600">{filteredData.length}건</span>의 데이터를 백업할 수 있습니다.</p>
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                <div onClick={() => fileInputRef.current.click()} className="p-8 border rounded-2xl hover:border-blue-500 hover:shadow-lg cursor-pointer bg-white group flex flex-col items-center">
-                  <div className="w-14 h-14 bg-blue-50 rounded-full flex items-center justify-center mb-3"><Upload className="w-6 h-6 text-blue-600" /></div>
-                  <h3 className="font-bold">CSV 업로드</h3>
+             
+             {/* 상단 버튼 3개 (CSV 업로드, Excel 다운로드, CSV 다운로드) */}
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12 max-w-5xl mx-auto">
+                <div onClick={() => fileInputRef.current.click()} className="flex flex-col items-center justify-center py-10 px-6 border border-gray-200 rounded-2xl hover:border-blue-500 hover:shadow-lg transition-all cursor-pointer bg-white group w-full h-[180px]">
+                  <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-blue-100 transition-colors"><Upload className="w-7 h-7 text-blue-600" /></div>
+                  <h3 className="text-base font-bold text-center text-gray-900">CSV 업로드</h3>
                 </div>
-                <div onClick={exportToExcel} className="p-8 border rounded-2xl hover:border-green-500 hover:shadow-lg cursor-pointer bg-white group flex flex-col items-center">
-                  <div className="w-14 h-14 bg-green-50 rounded-full flex items-center justify-center mb-3"><FileSpreadsheet className="w-6 h-6 text-green-600" /></div>
-                  <h3 className="font-bold">Excel 다운로드</h3>
+                <div onClick={exportToExcel} className="flex flex-col items-center justify-center py-10 px-6 border border-gray-200 rounded-2xl hover:border-green-500 hover:shadow-lg transition-all cursor-pointer bg-white group w-full h-[180px]">
+                  <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-green-100 transition-colors"><FileSpreadsheet className="w-7 h-7 text-green-600" /></div>
+                  <h3 className="text-base font-bold text-center text-gray-900">Excel 다운로드</h3>
                 </div>
-                <div onClick={exportToCSV} className="p-8 border rounded-2xl hover:border-gray-400 hover:shadow-md cursor-pointer bg-gray-50 group flex flex-col items-center">
-                  <div className="w-14 h-14 bg-gray-200 rounded-full flex items-center justify-center mb-3"><Download className="w-6 h-6 text-gray-600" /></div>
-                  <h3 className="font-bold">CSV 다운로드</h3>
+                <div onClick={exportToCSV} className="flex flex-col items-center justify-center py-10 px-6 border border-gray-200 rounded-2xl hover:border-gray-400 hover:shadow-lg transition-all cursor-pointer bg-gray-50 group w-full h-[180px]">
+                  <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mb-4 group-hover:bg-gray-300 transition-colors"><Download className="w-7 h-7 text-gray-600" /></div>
+                  <h3 className="text-base font-bold text-center text-gray-900">CSV 다운로드</h3>
                 </div>
              </div>
 
@@ -2294,24 +2325,25 @@ export default function App() {
                <h2 className="text-2xl font-bold text-gray-900 mb-2">HTML 보고서 출력</h2>
                <p className="text-gray-500 mb-8">웹페이지 형태로 깔끔하게 포맷팅된 요약 보고서를 생성하여 인쇄하거나 PDF로 저장합니다.</p>
                
+               {/* 하단 버튼 3개 (HTML 생성, 국문, 영문) */}
                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-                 <div onClick={exportToHTML} className="py-8 px-6 border border-gray-200 rounded-2xl hover:border-purple-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center">
-                   <div className="w-14 h-14 bg-purple-50 rounded-full flex items-center justify-center mb-3 group-hover:bg-purple-100 transition-colors">
-                     <FileCode className="w-6 h-6 text-purple-600" />
+                 <div onClick={exportToHTML} className="flex flex-col items-center justify-center py-10 px-6 border border-gray-200 rounded-2xl hover:border-purple-500 hover:shadow-lg transition-all cursor-pointer bg-white group w-full h-[180px]">
+                   <div className="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-purple-100 transition-colors">
+                     <FileCode className="w-7 h-7 text-purple-600" />
                    </div>
                    <h3 className="text-base font-bold text-center text-gray-900">AS 관리대장 HTML 생성</h3>
                  </div>
 
-                 <div onClick={() => exportToASReportHTML('ko')} className="py-8 px-6 border border-gray-200 rounded-2xl hover:border-indigo-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center">
-                   <div className="w-14 h-14 bg-indigo-50 rounded-full flex items-center justify-center mb-3 group-hover:bg-indigo-100 transition-colors">
-                     <FileText className="w-6 h-6 text-indigo-600" />
+                 <div onClick={() => exportToASReportHTML('ko')} className="flex flex-col items-center justify-center py-10 px-6 border border-gray-200 rounded-2xl hover:border-indigo-500 hover:shadow-lg transition-all cursor-pointer bg-white group w-full h-[180px]">
+                   <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-indigo-100 transition-colors">
+                     <FileText className="w-7 h-7 text-indigo-600" />
                    </div>
                    <h3 className="text-base font-bold text-center text-gray-900">AS 보고서 HTML (국문)</h3>
                  </div>
 
-                 <div onClick={() => exportToASReportHTML('en')} className="py-8 px-6 border border-gray-200 rounded-2xl hover:border-blue-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center">
-                   <div className="w-14 h-14 bg-blue-50 rounded-full flex items-center justify-center mb-3 group-hover:bg-blue-100 transition-colors">
-                     <FileText className="w-6 h-6 text-blue-600" />
+                 <div onClick={() => exportToASReportHTML('en')} className="flex flex-col items-center justify-center py-10 px-6 border border-gray-200 rounded-2xl hover:border-blue-500 hover:shadow-lg transition-all cursor-pointer bg-white group w-full h-[180px]">
+                   <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-blue-100 transition-colors">
+                     <FileText className="w-7 h-7 text-blue-600" />
                    </div>
                    <h3 className="text-base font-bold text-center text-gray-900">AS 보고서 HTML (영문)</h3>
                  </div>
@@ -2332,7 +2364,7 @@ export default function App() {
                    <tr>
                      {activeTab === '휴지통' && <th scope="col" className="px-4 py-3 text-center whitespace-nowrap text-red-500">남은 기한</th>}
                      <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">사업부</th>
-                     <th scope="col" className="px-4 py-3 text-center whitespace-nowrap">상태</th>
+                     <th scope="col" className="px-4 py-3 text-center whitespace-nowrap min-w-[110px]">상태</th>
                      <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">접수번호</th>
                      <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">수주번호</th>
                      <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">대리점</th>
@@ -2342,7 +2374,7 @@ export default function App() {
                      <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">하자내용</th>
                      <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">기존 주문정보</th>
                      <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">처리방식</th>
-                     <th scope="col" className="px-2 py-3 text-right whitespace-nowrap">처리방법</th>
+                     <th scope="col" className="px-2 py-3 text-right whitespace-nowrap min-w-[130px]">처리방법</th>
                      <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">일정</th>
                      <th scope="col" className="px-4 py-3 text-center whitespace-nowrap">관리</th>
                    </tr>
@@ -2352,23 +2384,23 @@ export default function App() {
                      paginatedData.map((row) => (
                        <tr key={row.id} onClick={() => setSelectedRow(row)} className="hover:bg-blue-50/50 transition-colors cursor-pointer text-sm">
                          {activeTab === '휴지통' && (
-                           <td className="px-4 py-3 text-center whitespace-nowrap font-bold text-red-500 bg-red-50/30">
+                           <td className="px-4 py-3 text-center whitespace-nowrap font-bold text-red-500 bg-red-50/30 text-xs">
                              {getRemainingTime(row.deletedAt)}
                            </td>
                          )}
-                         <td className="px-4 py-3 font-medium text-gray-900">{row.businessUnit}</td>
-                         <td className="px-4 py-3 text-center">{renderStatusBadge(row)}</td>
-                         <td className="px-4 py-3 text-blue-600 font-bold">{row.asNumber}</td>
-                         <td className="px-4 py-3 text-gray-500">{row.orderNumber}</td>
-                         <td className="px-2 py-3 text-gray-900 max-w-[120px] truncate" title={row.agencyName}>{row.agencyName}</td>
-                         <td className="px-2 py-3 text-gray-500 max-w-[120px] truncate" title={row.companyName}>{row.companyName}</td>
-                         <td className="px-4 py-3 font-bold">{row.model}</td>
-                         <td className="px-4 py-3 text-right">{row.qtyDefect}</td>
-                         <td className="px-4 py-3 text-gray-500 max-w-[150px] truncate">
+                         <td className="px-4 py-3 font-medium text-gray-900 text-xs">{row.businessUnit}</td>
+                         <td className="px-4 py-3 text-center min-w-[110px]">{renderStatusBadge(row)}</td>
+                         <td className="px-4 py-3 text-blue-600 font-bold text-xs">{row.asNumber}</td>
+                         <td className="px-4 py-3 text-gray-500 text-xs">{row.orderNumber}</td>
+                         <td className="px-2 py-3 text-gray-900 max-w-[120px] truncate text-xs" title={row.agencyName}>{row.agencyName}</td>
+                         <td className="px-2 py-3 text-gray-500 max-w-[120px] truncate text-xs" title={row.companyName}>{row.companyName}</td>
+                         <td className="px-4 py-3 font-bold text-xs">{row.model}</td>
+                         <td className="px-4 py-3 text-right text-xs">{row.qtyDefect}</td>
+                         <td className="px-4 py-3 text-gray-500 max-w-[150px] truncate text-xs">
                            <span className="inline-block px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded mr-1 mb-1">{row.claimType || '일반 A/S'}</span>
                            <div className="truncate" title={row.defectContent}>{row.defectContent || '-'}</div>
                          </td>
-                         <td className="px-2 py-3">
+                         <td className="px-2 py-3 text-xs">
                            <div className="flex flex-col gap-1 text-xs">
                              <div className="flex items-center"><span className="text-gray-400 w-8">S/N:</span> <span className="text-gray-900 max-w-[100px] truncate" title={row.serialNo}>{row.serialNo || '-'}</span></div>
                              <div className="flex items-center"><span className="text-gray-400 w-8">출고:</span> <span className="text-gray-900">{row.releaseDate || '-'}</span></div>
@@ -2376,7 +2408,7 @@ export default function App() {
                            </div>
                          </td>
                          <td className="px-2 py-3 text-xs text-gray-500">{row.processType || '-'}</td>
-                         <td className="px-2 py-3 text-xs text-right align-middle">
+                         <td className="px-2 py-3 text-xs text-right align-middle min-w-[130px]">
                            {row.repairMethod === '유상수리' ? (
                              <div>
                                <span className="font-medium text-blue-700">{row.repairMethod}</span>
@@ -2386,7 +2418,7 @@ export default function App() {
                              <span className="font-medium text-gray-700">{row.repairMethod || '-'}</span>
                            )}
                          </td>
-                         <td className="px-4 py-3">
+                         <td className="px-4 py-3 text-xs">
                            <div className="flex flex-col gap-1 text-xs">
                              <div className="flex items-center"><span className="text-gray-400 w-8">접수:</span> <span className="text-gray-900">{row.receiptDate}</span></div>
                              <div className="flex items-center"><span className="text-gray-400 w-8">요구:</span> <span className="text-red-500 font-bold">{row.reqDeliveryDate}</span></div>
@@ -2413,7 +2445,7 @@ export default function App() {
                      ))
                    ) : (
                      <tr>
-                       <td colSpan="14" className="px-6 py-12 text-center text-gray-500">조건에 맞는 데이터가 없습니다. 필터를 변경해보세요.</td>
+                       <td colSpan="15" className="px-6 py-12 text-center text-gray-500">조건에 맞는 데이터가 없습니다. 필터를 변경해보세요.</td>
                      </tr>
                    )}
                  </tbody>
@@ -2569,6 +2601,13 @@ export default function App() {
                                 const dd = String(today.getDate()).padStart(2, '0');
                                 newData.processDate = `${yy}.${mm}.${dd}`;
                               }
+                              if (prev.currentStatus === '견적 승인 대기' && status === '수리 중') {
+                                const today = new Date();
+                                const yy = String(today.getFullYear()).slice(-2);
+                                const mm = String(today.getMonth() + 1).padStart(2, '0');
+                                const dd = String(today.getDate()).padStart(2, '0');
+                                newData.reqDeliveryDate = addBusinessDays(`${yy}.${mm}.${dd}`, 5);
+                              }
                               return newData;
                             });
                           }}
@@ -2716,9 +2755,9 @@ export default function App() {
                     <label className="block text-sm font-bold text-gray-700 mb-3">수리 결과 및 방법 선택</label>
                     <div className="flex flex-wrap items-center gap-6">
                       {['무상수리', '유상수리', '수리불가', '수리취소'].map(m => (
-                        <label key={m} className="flex items-center gap-2 cursor-pointer text-sm font-medium"><input type="radio" name="repairMethod" value={m} checked={formData.repairMethod === m} onChange={handleFormChange} className="w-4 h-4 text-blue-600" disabled={!isQM} /> {m}</label>
+                        <label key={m} className="flex items-center gap-2 cursor-pointer text-sm font-medium"><input type="radio" name="repairMethod" value={m} checked={formData.repairMethod === m} onChange={handleFormChange} className="w-4 h-4 text-blue-600" /> {m}</label>
                       ))}
-                      {formData.repairMethod === '유상수리' && <div className="ml-auto flex items-center gap-2 text-sm bg-white px-3 py-1.5 rounded-md border shadow-sm"><span className="font-bold text-gray-700">금액 (₩)</span><input type="number" name="cost" value={formData.cost === null || formData.cost === undefined ? '' : formData.cost} onChange={handleFormChange} placeholder="0" className="form-input w-32 py-1" min="0" disabled={!isQM} /></div>}
+                      {formData.repairMethod === '유상수리' && <div className="ml-auto flex items-center gap-2 text-sm bg-white px-3 py-1.5 rounded-md border shadow-sm"><span className="font-bold text-gray-700">금액 (₩)</span><input type="number" name="cost" value={formData.cost === null || formData.cost === undefined ? '' : formData.cost} onChange={handleFormChange} placeholder="0" className="form-input w-32 py-1" min="0" /></div>}
                     </div>
                  </div>
                </div>
