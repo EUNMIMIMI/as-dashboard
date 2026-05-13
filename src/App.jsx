@@ -802,7 +802,6 @@ export default function App() {
     }));
   }, [processedData]);
 
-  // 현재 사용자 권한 필터링 (집계용 데이터 세팅)
   const allowedProcessedData = useMemo(() => {
     if (!currentUserRole || currentUserRole.tabs === 'ALL') return uniqueClaimsData;
     return uniqueClaimsData.filter(item => currentUserRole.tabs.includes(item.businessUnit));
@@ -811,7 +810,6 @@ export default function App() {
   const currentYear = new Date().getFullYear();
   const targetYears = [String(currentYear - 2), String(currentYear - 1), String(currentYear)];
 
-  // 집계 시 허용된 사업부 순서 (권한 필터 적용)
   const allowedAggOrder = useMemo(() => {
     const order = ['PMD', 'TMD', 'FLD', 'SMT', 'PG', 'PT (ZMDI)', 'PT (N)', 'UPT900'];
     if (!currentUserRole || currentUserRole.tabs === 'ALL') return order;
