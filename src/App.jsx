@@ -304,7 +304,8 @@ const getUniqueCount = (dataList, statusFilter) => {
   return uniqueRecords.size;
 };
 
-const MultiDonutChart = ({ data, size = 160, strokeWidth = 24 }) => {
+// %와 건수 모두를 보여주는 도넛 차트 컴포넌트
+const MultiDonutChart = ({ data, size = 180, strokeWidth = 16 }) => {
   const total = data.reduce((acc, item) => acc + item.value, 0);
   const radius = 50 - strokeWidth / 2;
   const circumference = 2 * Math.PI * radius;
@@ -357,8 +358,8 @@ const MultiDonutChart = ({ data, size = 160, strokeWidth = 24 }) => {
               dominantBaseline="central"
               style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.8)' }}
             >
-              <tspan x={x} dy="-3" fontSize="4.5" fontWeight="bold">{item.label}</tspan>
-              <tspan x={x} dy="5.5" fontSize="4.5" fontWeight="bold">{percentage}</tspan>
+              <tspan x={x} dy="-0.4em" fontSize="4.5" fontWeight="bold">{item.label}</tspan>
+              <tspan x={x} dy="1.2em" fontSize="3.5" fontWeight="normal">{percentage} ({item.value}건)</tspan>
             </text>
           );
         })}
@@ -371,7 +372,8 @@ const MultiDonutChart = ({ data, size = 160, strokeWidth = 24 }) => {
   );
 };
 
-const DonutChart = ({ normal, complaint, size = 120, strokeWidth = 12 }) => {
+// 일반 A/S와 고객불만을 비교하여 %와 건수 모두를 보여주는 도넛 차트
+const DonutChart = ({ normal, complaint, size = 180, strokeWidth = 16 }) => {
   const total = normal + complaint;
   const radius = 50 - strokeWidth / 2;
   const circumference = 2 * Math.PI * radius;
@@ -414,18 +416,69 @@ const DonutChart = ({ normal, complaint, size = 120, strokeWidth = 12 }) => {
           )}
         </g>
         {normal > 0 && (normal / total >= 0.08) && (
-           <text x={normalPos.x} y={normalPos.y} fill="#ffffff" fontSize="8" fontWeight="bold" textAnchor="middle" dominantBaseline="central" style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}>
-             {((normal / total) * 100).toFixed(1)}%
+           <text x={normalPos.x} y={normalPos.y} fill="#ffffff" fontWeight="bold" textAnchor="middle" dominantBaseline="central" style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.8)' }}>
+             <tspan x={normalPos.x} dy="-0.4em" fontSize="8.5">{((normal / total) * 100).toFixed(1)}%</tspan>
+             <tspan x={normalPos.x} dy="1.2em" fontSize="6.5">{normal}건</tspan>
            </text>
         )}
         {complaint > 0 && (complaint / total >= 0.08) && (
-           <text x={complaintPos.x} y={complaintPos.y} fill="#ffffff" fontSize="8" fontWeight="bold" textAnchor="middle" dominantBaseline="central" style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}>
-             {((complaint / total) * 100).toFixed(1)}%
+           <text x={complaintPos.x} y={complaintPos.y} fill="#ffffff" fontWeight="bold" textAnchor="middle" dominantBaseline="central" style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.8)' }}>
+             <tspan x={complaintPos.x} dy="-0.4em" fontSize="8.5">{((complaint / total) * 100).toFixed(1)}%</tspan>
+             <tspan x={complaintPos.x} dy="1.2em" fontSize="6.5">{complaint}건</tspan>
            </text>
         )}
       </svg>
-      <div className="absolute flex flex-col items-center justify-center text-center bg-white rounded-full" style={{ width: '55%', height: '55%' }}>
+      <div className="absolute flex flex-col items-center justify-center text-center bg-white rounded-full" style={{ width: '48%', height: '48%' }}>
         <span className="text-[10px] text-gray-500 mb-0.5">총 접수</span>
+        <span className="text-sm font-bold text-gray-900 leading-none">{total}건</span>
+      </div>
+    </div>
+  );
+};
+
+// 납기 준수 및 지연을 보여주는 도넛 차트
+const ComplianceDonutChart = ({ onTime, delayed, size = 180, strokeWidth = 16 }) => {
+  const total = onTime + delayed;
+  const radius = 50 - strokeWidth / 2;
+  const circumference = 2 * Math.PI * radius;
+  const onTimeDash = total === 0 ? 0 : (onTime / total) * circumference;
+  const delayedDash = total === 0 ? 0 : (delayed / total) * circumference;
+
+  const onTimeAngle = total === 0 ? 0 : (onTime / total) * 360;
+  const delayedAngle = total === 0 ? 0 : (delayed / total) * 360;
+
+  const getLabelPos = (angle, sliceAngle) => {
+    const midAngle = angle + sliceAngle / 2;
+    const rad = (midAngle * Math.PI) / 180;
+    return { x: 50 + radius * Math.cos(rad), y: 50 + radius * Math.sin(rad) };
+  };
+
+  const onTimePos = getLabelPos(-90, onTimeAngle);
+  const delayedPos = getLabelPos(-90 + onTimeAngle, delayedAngle);
+
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+      <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-sm">
+        <g transform="rotate(-90 50 50)">
+          <circle cx="50" cy="50" r={radius} fill="transparent" stroke="#f3f4f6" strokeWidth={strokeWidth} />
+          {onTime > 0 && <circle cx="50" cy="50" r={radius} fill="transparent" stroke="#10b981" strokeWidth={strokeWidth} strokeDasharray={`${onTimeDash} ${circumference}`} strokeDashoffset="0" className="transition-all duration-1000 ease-out" />}
+          {delayed > 0 && <circle cx="50" cy="50" r={radius} fill="transparent" stroke="#ef4444" strokeWidth={strokeWidth} strokeDasharray={`${delayedDash} ${circumference}`} strokeDashoffset={-onTimeDash} className="transition-all duration-1000 ease-out" />}
+        </g>
+        {onTime > 0 && (onTime / total >= 0.08) && (
+           <text x={onTimePos.x} y={onTimePos.y} fill="#ffffff" fontWeight="bold" textAnchor="middle" dominantBaseline="central" style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}>
+             <tspan x={onTimePos.x} dy="-0.4em" fontSize="8.5">{((onTime / total) * 100).toFixed(1)}%</tspan>
+             <tspan x={onTimePos.x} dy="1.2em" fontSize="6.5">{onTime}건</tspan>
+           </text>
+        )}
+        {delayed > 0 && (delayed / total >= 0.08) && (
+           <text x={delayedPos.x} y={delayedPos.y} fill="#ffffff" fontWeight="bold" textAnchor="middle" dominantBaseline="central" style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}>
+             <tspan x={delayedPos.x} dy="-0.4em" fontSize="8.5">{((delayed / total) * 100).toFixed(1)}%</tspan>
+             <tspan x={delayedPos.x} dy="1.2em" fontSize="6.5">{delayed}건</tspan>
+           </text>
+        )}
+      </svg>
+      <div className="absolute flex flex-col items-center justify-center text-center bg-white rounded-full" style={{ width: '48%', height: '48%' }}>
+        <span className="text-[10px] text-gray-500 mb-0.5">총 종결</span>
         <span className="text-sm font-bold text-gray-900 leading-none">{total}건</span>
       </div>
     </div>
@@ -2111,45 +2164,33 @@ export default function App() {
             </div>
 
             {dashboardTab === '납기 준수율' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {complianceStats.map(stat => (
-                  <div key={stat.unit} id={`compliance-chart-${stat.unit}`} className="bg-white p-6 rounded-xl border shadow-sm space-y-4 relative group">
-                    <div className="flex justify-between items-center border-b pb-2">
-                      <h3 className="font-black text-gray-700">{stat.unit} 사업부</h3>
-                      <span className="text-xs text-gray-400">종결: {stat.total}건</span>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="relative w-24 h-24 flex items-center justify-center">
-                        <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-sm">
-                          <g transform="rotate(-90 50 50)">
-                            <circle cx="50" cy="50" r="40" stroke="#f3f4f6" strokeWidth="12" fill="transparent" />
-                            {stat.onTime > 0 && (
-                              <circle cx="50" cy="50" r="40" stroke="#10b981" strokeWidth="12" fill="transparent" strokeDasharray={`${(stat.onTime / stat.total) * 251.2} 251.2`} strokeDashoffset="0" />
-                            )}
-                            {stat.delayed > 0 && (
-                              <circle cx="50" cy="50" r="40" stroke="#ef4444" strokeWidth="12" fill="transparent" strokeDasharray={`${(stat.delayed / stat.total) * 251.2} 251.2`} strokeDashoffset={-(stat.onTime / stat.total) * 251.2} />
-                            )}
-                          </g>
-                        </svg>
-                      </div>
-                      <div className="flex-1 space-y-2">
-                        <div className="flex justify-between text-xs items-center bg-green-50 p-1.5 rounded">
-                          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span>준수 ({stat.onTimeRate}%)</span>
-                          <span className="font-bold text-green-700">{stat.onTime}건</span>
+                  <div key={stat.unit} id={`compliance-chart-${stat.unit}`} className="bg-white p-6 rounded-xl border shadow-sm relative group flex flex-col items-center">
+                     <div className="w-full flex justify-between items-center border-b pb-2 mb-6">
+                       <h3 className="font-black text-gray-700">{stat.unit}</h3>
+                       <span className="text-xs text-gray-400">종결: {stat.total}건</span>
+                     </div>
+                     
+                     <ComplianceDonutChart onTime={stat.onTime} delayed={stat.delayed} size={180} strokeWidth={16} />
+                     
+                     <div className="w-full mt-6 space-y-2">
+                        <div className="flex justify-between text-xs items-center bg-green-50 p-2 rounded">
+                          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-green-500"></span>준수</span>
+                          <span className="font-bold text-green-700">{stat.onTime}건 ({stat.onTimeRate}%)</span>
                         </div>
-                        <div className="flex justify-between text-xs items-center bg-red-50 p-1.5 rounded">
-                          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span>지연 ({stat.delayRate}%)</span>
-                          <span className="font-bold text-red-700">{stat.delayed}건</span>
+                        <div className="flex justify-between text-xs items-center bg-red-50 p-2 rounded">
+                          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>지연</span>
+                          <span className="font-bold text-red-700">{stat.delayed}건 ({stat.delayRate}%)</span>
                         </div>
                         <div className="pt-2 mt-2 border-t flex justify-between text-xs items-center px-1">
                           <span className="text-gray-500 font-bold">평균 지연일</span>
                           <span className="font-black text-red-600">{stat.avgDelay}일</span>
                         </div>
-                      </div>
-                    </div>
-                    <button onClick={() => handleCopyChart(`compliance-chart-${stat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
-                      <Copy className="w-4 h-4" />
-                    </button>
+                     </div>
+                     <button onClick={() => handleCopyChart(`compliance-chart-${stat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                       <Copy className="w-4 h-4" />
+                     </button>
                   </div>
                 ))}
               </div>
@@ -2158,21 +2199,58 @@ export default function App() {
             {dashboardTab === '종합 지표' && (
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                  <div className="bg-white p-6 rounded-xl border border-gray-200 flex flex-col items-center shadow-sm relative group">
-                    <h3 className="w-full text-left font-bold mb-6 flex items-center gap-2 text-blue-600"><PieChart className="w-5 h-5" /> 종합 현황</h3>
-                    <DonutChart normal={aggregatedStats.reduce((a,c) => a+c.normal, 0)} complaint={aggregatedStats.reduce((a,c) => a+c.complaint, 0)} size={180} strokeWidth={16} />
-                    <div className="w-full mt-8 space-y-2">
-                       <div className="flex justify-between text-sm bg-blue-50 p-2.5 rounded border border-blue-100 text-blue-800"><span>일반 A/S 건수</span> <strong>{aggregatedStats.reduce((a,c) => a+c.normal, 0)}건</strong></div>
-                       <div className="flex justify-between text-sm bg-red-50 p-2.5 rounded border border-red-100 text-red-800"><span>고객 불만 건수</span> <strong>{aggregatedStats.reduce((a,c) => a+c.complaint, 0)}건</strong></div>
+                    <div className="flex justify-between items-start w-full mb-6">
+                      <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                        <PieChart className="w-5 h-5 text-blue-600" /> 종합 현황
+                      </h3>
+                      <div className="flex bg-gray-100 p-0.5 rounded-md relative z-10 shrink-0">
+                        <button onClick={() => setTotalChartType('donut')} className={`p-1.5 rounded ${totalChartType === 'donut' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="도넛 차트 보기"><PieChart className="w-4 h-4" /></button>
+                        <button onClick={() => setTotalChartType('trend')} className={`p-1.5 rounded ${totalChartType === 'trend' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="연도별 트렌드 보기"><TrendingUp className="w-4 h-4" /></button>
+                      </div>
                     </div>
+                    
+                    <div className="flex-1 flex flex-col items-center justify-center w-full relative z-0">
+                      {totalChartType === 'donut' ? (
+                        <DonutChart normal={aggregatedStats.reduce((a,c) => a+c.normal, 0)} complaint={aggregatedStats.reduce((a,c) => a+c.complaint, 0)} size={180} strokeWidth={16} />
+                      ) : (
+                        <YearlyTrendChart data={yearlyStats} type="mixed" />
+                      )}
+                    </div>
+
+                    {totalChartType === 'donut' && (
+                      <div className="w-full mt-8 space-y-2">
+                         <div className="flex justify-between text-sm bg-blue-50 p-2.5 rounded border border-blue-100 text-blue-800"><span>일반 A/S 건수</span> <strong>{aggregatedStats.reduce((a,c) => a+c.normal, 0)}건</strong></div>
+                         <div className="flex justify-between text-sm bg-red-50 p-2.5 rounded border border-red-100 text-red-800"><span>고객 불만 건수</span> <strong>{aggregatedStats.reduce((a,c) => a+c.complaint, 0)}건</strong></div>
+                      </div>
+                    )}
                  </div>
+                 
                  <div className="lg:col-span-3 bg-white p-6 rounded-xl border border-gray-200 shadow-sm relative group" id="sub-chart-container">
                     <h3 className="font-bold mb-8 flex items-center gap-2 text-gray-600"><BarChart3 className="w-5 h-5" /> 사업부별 상세 비율</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                       {aggregatedStats.map(s => (
+                       {aggregatedStats.filter(s => !s.isTotal).map(s => (
                          <div key={s.unit} className="flex flex-col items-center p-4 border rounded-xl hover:shadow-lg transition-all bg-gray-50/30">
-                            <span className="text-xs font-black text-gray-700 mb-4">{s.unit}</span>
-                            <DonutChart normal={s.normal} complaint={s.complaint} size={100} strokeWidth={10} />
-                            <div className="mt-4 text-[11px] font-bold text-gray-500">{s.totalClaims}건 (불만율 {s.complaintRate}%)</div>
+                            <div className="w-full flex justify-between items-center pb-3 mb-4 border-b border-gray-100">
+                              <span className="text-sm font-black text-gray-700">{s.unit}</span>
+                              <div className="flex bg-gray-50 p-0.5 rounded-md relative z-10 shrink-0">
+                                <button onClick={() => setBuChartType(prev => ({...prev, [s.unit]: 'donut'}))} className={`p-1 rounded ${buChartType[s.unit] !== 'trend' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="도넛 차트 보기"><PieChart className="w-3 h-3" /></button>
+                                <button onClick={() => setBuChartType(prev => ({...prev, [s.unit]: 'trend'}))} className={`p-1 rounded ${buChartType[s.unit] === 'trend' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="연도별 트렌드 보기"><TrendingUp className="w-3 h-3" /></button>
+                              </div>
+                            </div>
+                            
+                            <div className="flex-1 flex w-full items-center justify-center min-h-[180px] relative z-0">
+                              {buChartType[s.unit] === 'trend' ? (
+                                <YearlyTrendChart data={buYearlyStats[s.unit] || []} heightClass="h-[180px]" type="mixed" />
+                              ) : (
+                                <DonutChart normal={s.normal} complaint={s.complaint} size={180} strokeWidth={16} />
+                              )}
+                            </div>
+                            
+                            {buChartType[s.unit] !== 'trend' && (
+                              <div className="mt-4 text-[11px] font-bold text-gray-500 w-full text-center">
+                                총 {s.totalClaims}건 (불만율 {s.complaintRate}%)
+                              </div>
+                            )}
                          </div>
                        ))}
                     </div>
@@ -2187,9 +2265,23 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                 {dashboardStats.map(buStat => (
                   <div key={buStat.unit} id={`model-chart-${buStat.unit}`} className="bg-white rounded-xl border p-6 flex flex-col items-center shadow-sm relative group">
-                    <h3 className="text-sm font-bold text-gray-800 mb-6 border-b pb-2 w-full text-center">{buStat.unit} 모델군 집계</h3>
-                    <MultiDonutChart data={buStat.modelsArr.map(m => ({ label: m.label, value: m.total, color: m.color }))} size={160} strokeWidth={22} />
-                    <div className="w-full mt-6 space-y-1.5 overflow-y-auto max-h-40 hide-scrollbar">
+                    <div className="flex justify-between items-center w-full mb-6 border-b border-gray-100 pb-4">
+                      <h3 className="text-sm font-bold text-gray-800 text-center">{buStat.unit} 모델군 집계</h3>
+                      <div className="flex bg-gray-100 p-0.5 rounded-md relative z-10 shrink-0">
+                        <button onClick={() => setModelChartType(prev => ({...prev, [buStat.unit]: 'donut'}))} className={`p-1 rounded ${modelChartType[buStat.unit] !== 'bar' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="도넛 차트 보기"><PieChart className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => setModelChartType(prev => ({...prev, [buStat.unit]: 'bar'}))} className={`p-1 rounded ${modelChartType[buStat.unit] === 'bar' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="가로 막대 차트 보기"><BarChart3 className="w-3.5 h-3.5" /></button>
+                      </div>
+                    </div>
+                    
+                    <div className="flex justify-center mb-8 w-full h-[180px] items-center relative z-0">
+                      {modelChartType[buStat.unit] === 'bar' ? (
+                        <ModelHorizontalBarChart data={buStat.modelsArr} />
+                      ) : (
+                        <MultiDonutChart data={buStat.modelsArr.map(m => ({ label: m.label, value: m.total, color: m.color }))} size={180} strokeWidth={16} />
+                      )}
+                    </div>
+                    
+                    <div className="w-full mt-2 space-y-1.5 overflow-y-auto max-h-40 hide-scrollbar">
                       {buStat.modelsArr.map(m => (
                         <div key={m.label} className="flex justify-between text-[11px] px-2 py-1 bg-gray-50 rounded">
                           <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{backgroundColor: m.color}}></span>{m.label}</span>
@@ -2267,10 +2359,14 @@ export default function App() {
                         <h3 className="text-lg font-bold text-gray-900">
                           {bu} 사업부
                         </h3>
+                        <div className="flex bg-gray-100 p-0.5 rounded-md relative z-10 shrink-0">
+                          <button onClick={() => setYearlyTabChartType(prev => ({...prev, [bu]: 'line'}))} className={`p-1 rounded ${yearlyTabChartType[bu] !== 'mixed' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="다중 꺾은선 차트 보기"><LineChart className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => setYearlyTabChartType(prev => ({...prev, [bu]: 'mixed'}))} className={`p-1 rounded ${yearlyTabChartType[bu] === 'mixed' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="막대-꺾은선 혼합 차트 보기"><TrendingUp className="w-3.5 h-3.5" /></button>
+                        </div>
                       </div>
                       
                       <div className="flex-1 flex flex-col items-center justify-center w-full relative z-0">
-                        <YearlyTrendChart data={unitData} type="mixed" />
+                        <YearlyTrendChart data={unitData} type={yearlyTabChartType[bu] === 'mixed' ? 'mixed' : 'line'} />
                       </div>
                       
                       <button onClick={() => handleCopyChart(`yearly-chart-${bu}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
