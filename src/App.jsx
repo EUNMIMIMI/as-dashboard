@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Search, Filter, X, FileText, Calendar, CheckCircle2, Clock, AlertCircle, 
-  Download, Upload, FileCode, Plus, Edit, Trash2, Save, BarChart3, PieChart, Layers, Lock, LogOut, RotateCcw, FileSpreadsheet, TrendingUp, Copy, LineChart, CheckCircle, Wrench, Archive
+  Download, Upload, FileCode, Plus, Edit, Trash2, Save, BarChart3, PieChart, Layers, Lock, LogOut, RotateCcw, FileSpreadsheet, TrendingUp, Copy, LineChart, CheckCircle, Wrench, Archive, Activity
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
@@ -13,7 +13,7 @@ const ACCESS_ROLES = {
   'pmd123': { name: 'pmd 담당자', tabs: ['PMD'] },
   'tmd123': { name: 'tmd 담당자', tabs: ['TMD'] },
   'fld123': { name: 'fld 담당자', tabs: ['FLD'] },
-  'uhp123': { name: 'uhp 담당자', tabs: ['SMT', 'PG', 'PT', 'UPT900'] }
+  'uhp123': { name: 'uhp 담당자', tabs: ['UHP', 'PT', 'UPT900'] }
 };
 
 // --- Firebase 초기화 ---
@@ -49,15 +49,133 @@ const getCollectionPath = () => {
   return 'as_records';
 };
 
+// --- 유틸리티 함수 ---
+const formatDisplayDate = (dateStr) => {
+  if (!dateStr) return '';
+  let str = String(dateStr).trim();
+  let y, m, d;
+  if (str.includes('.')) {
+    const parts = str.split('.').map(p => p.trim());
+    if (parts.length >= 3) {
+      y = parts[0].length === 2 ? 2000 + parseInt(parts[0]) : parseInt(parts[0]);
+      m = parseInt(parts[1]);
+      d = parseInt(parts[2]);
+    }
+  } else if (str.includes('-')) {
+    const parts = str.split('-');
+    if (parts.length >= 3) { y = parseInt(parts[0]); m = parseInt(parts[1]); d = parseInt(parts[2]); }
+  } else return dateStr;
+  if (isNaN(y) || isNaN(m) || isNaN(d)) return dateStr;
+  return `${String(y).slice(-2)}.${String(m).padStart(2, '0')}.${String(d).padStart(2, '0')}`;
+};
+
+const formatForDateInput = (dateStr) => {
+  if (!dateStr || !dateStr.includes('.')) return '';
+  const parts = dateStr.split('.').map(p => p.trim());
+  if (parts.length === 3) return `20${parts[0]}-${parts[1]}-${parts[2]}`;
+  return '';
+};
+
+const addBusinessDays = (dateStr, days) => {
+  if (!dateStr) return '';
+  const parts = dateStr.split('.');
+  if (parts.length !== 3) return '';
+  const dObj = new Date(2000 + parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+  let addedDays = 0;
+  while (addedDays < days) {
+    dObj.setDate(dObj.getDate() + 1);
+    const dayOfWeek = dObj.getDay();
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) addedDays++;
+  }
+  return `${String(dObj.getFullYear()).slice(-2)}.${String(dObj.getMonth() + 1).padStart(2, '0')}.${String(dObj.getDate()).padStart(2, '0')}`;
+};
+
+const calculateCompliance = (reqDate, compDate) => {
+  if (!compDate || compDate === '-' || !reqDate) return '미완료';
+  try {
+    const r = reqDate.split('.').map(Number);
+    const c = compDate.split('.').map(Number);
+    const rObj = new Date(2000 + r[0], r[1] - 1, r[2]);
+    const cObj = new Date(2000 + c[0], c[1] - 1, c[2]);
+    return cObj.getTime() <= rObj.getTime() ? '준수' : '지연';
+  } catch(e) { return '오류'; }
+};
+
+const getDelayDays = (reqDate, compDate) => {
+  if (!compDate || compDate === '-' || !reqDate) return 0;
+  try {
+    const r = reqDate.split('.').map(Number);
+    const c = compDate.split('.').map(Number);
+    const rObj = new Date(2000 + r[0], r[1] - 1, r[2]);
+    const cObj = new Date(2000 + c[0], c[1] - 1, c[2]);
+    const diff = cObj.getTime() - rObj.getTime();
+    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+    return days > 0 ? days : 0;
+  } catch(e) { return 0; }
+};
+
+const calculateDuration = (startDate, endDate) => {
+  if (!startDate || !endDate || endDate === '-') return '-';
+  try {
+    const sParts = startDate.split('.').map(Number);
+    const eParts = endDate.split('.').map(Number);
+    const sObj = new Date(2000 + sParts[0], sParts[1] - 1, sParts[2]);
+    const eObj = new Date(2000 + eParts[0], eParts[1] - 1, eParts[2]);
+    const diffDays = Math.ceil((eObj.getTime() - sObj.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays >= 0 ? `${diffDays}일` : '-';
+  } catch(e) { return '-'; }
+};
+
+const getRemainingTime = (deletedAt) => {
+  if (!deletedAt) return '-';
+  const remainingMs = (3 * 24 * 60 * 60 * 1000) - (Date.now() - deletedAt);
+  if (remainingMs <= 0) return '삭제 예정';
+  const days = Math.floor(remainingMs / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((remainingMs / (1000 * 60 * 60)) % 24);
+  if (days > 0) return `${days}일 ${hours}시간`;
+  return `${hours}시간`;
+};
+
+const parseDateObj = (dateStr) => {
+  if (!dateStr) return null;
+  let str = String(dateStr).trim();
+  let y = new Date().getFullYear();
+  let m, d;
+  if (str.includes('.')) {
+    const parts = str.split('.').map(p => p.trim());
+    if (parts.length >= 3) {
+      y = parts[0].length === 2 ? 2000 + parseInt(parts[0]) : parseInt(parts[0]);
+      m = parseInt(parts[1]);
+      d = parseInt(parts[2]);
+    }
+  } else if (str.includes('-')) {
+     const parts = str.split('-');
+     if (parts.length >= 3) {
+      y = parseInt(parts[0]);
+      m = parseInt(parts[1]);
+      d = parseInt(parts[2]);
+     }
+  } else {
+     return null;
+  }
+  if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
+  return new Date(y, m - 1, d);
+};
+
+const getYearFromDate = (dateStr) => {
+  const d = parseDateObj(dateStr);
+  if (d) return String(d.getFullYear());
+  return null;
+};
+
 // --- 하드코딩 데이터 ---
 const HISTORICAL_YEARLY = {
   'PMD': { '2023': { total: 287, complaint: 4 }, '2024': { total: 251, complaint: 29 }, '2025': { total: 215, complaint: 15 } },
   'TMD': { '2023': { total: 116, complaint: 5 }, '2024': { total: 112, complaint: 24 }, '2025': { total: 96, complaint: 16 } },
   'FLD': { '2023': { total: 15, complaint: 0 }, '2024': { total: 7, complaint: 1 }, '2025': { total: 14, complaint: 3 } },
-  'SMT': { '2023': { total: 134, complaint: 9 }, '2024': { total: 154, complaint: 140 }, '2025': { total: 127, complaint: 12 } },
-  'PG': { '2023': { total: 0, complaint: 0 }, '2024': { total: 0, complaint: 0 }, '2025': { total: 0, complaint: 0 } }
+  'UHP': { '2023': { total: 134, complaint: 9 }, '2024': { total: 154, complaint: 140 }, '2025': { total: 127, complaint: 12 } }
 };
-const TREND_UNITS = ['PMD', 'TMD', 'FLD', 'SMT', 'PG']; 
+const TREND_UNITS = ['PMD', 'TMD', 'FLD', 'UHP']; 
 
 const CAUSE_HEADERS = [
   { id: 'c1', label: '설치\n조건' }, { id: 'c2', label: '취급\n부주의' }, { id: 'c3', label: '품질\n보증\n기간' },
@@ -127,99 +245,7 @@ const getCauseGroup = (id) => {
   return '기타';
 };
 
-const formatDisplayDate = (dateStr) => {
-  if (!dateStr) return '';
-  let str = String(dateStr).trim();
-  let y = new Date().getFullYear();
-  let m, d;
-  if (str.includes('.')) {
-    const parts = str.split('.').map(p => p.trim());
-    if (parts.length >= 3) {
-      y = parts[0].length === 2 ? 2000 + parseInt(parts[0]) : parseInt(parts[0]);
-      m = parseInt(parts[1]);
-      d = parseInt(parts[2]);
-    }
-  } else if (str.includes('-')) {
-    const parts = str.split('-');
-    if (parts.length >= 3) { y = parseInt(parts[0]); m = parseInt(parts[1]); d = parseInt(parts[2]); }
-  } else { return dateStr; }
-  if (isNaN(y) || isNaN(m) || isNaN(d)) return dateStr;
-  return `${String(y).slice(-2)}.${String(m).padStart(2, '0')}.${String(d).padStart(2, '0')}`;
-};
-
-const formatForDateInput = (dateStr) => {
-  if (!dateStr || !dateStr.includes('.')) return '';
-  const parts = dateStr.split('.').map(p => p.trim());
-  if (parts.length === 3) return `20${parts[0]}-${parts[1]}-${parts[2]}`;
-  return '';
-};
-
-const calculateCompliance = (reqDate, compDate) => {
-  if (!compDate || compDate === '-' || !reqDate) return '미완료';
-  try {
-    const reqParts = reqDate.split('.').map(Number);
-    const compParts = compDate.split('.').map(Number);
-    const reqObj = new Date(2000 + reqParts[0], reqParts[1] - 1, reqParts[2]);
-    const compObj = new Date(2000 + compParts[0], compParts[1] - 1, compParts[2]);
-    return compObj.getTime() <= reqObj.getTime() ? '준수' : '지연';
-  } catch(e) { return '오류'; }
-};
-
-const calculateDuration = (startDate, endDate) => {
-  if (!startDate || !endDate || endDate === '-') return '-';
-  try {
-    const sParts = startDate.split('.').map(Number);
-    const eParts = endDate.split('.').map(Number);
-    const sObj = new Date(2000 + sParts[0], sParts[1] - 1, sParts[2]);
-    const eObj = new Date(2000 + eParts[0], eParts[1] - 1, eParts[2]);
-    const diffDays = Math.ceil((eObj.getTime() - sObj.getTime()) / (1000 * 60 * 60 * 24));
-    return diffDays >= 0 ? `${diffDays}일` : '-';
-  } catch(e) { return '-'; }
-};
-
-const addBusinessDays = (dateStr, days) => {
-  if (!dateStr) return '';
-  let str = String(dateStr).trim();
-  let y = new Date().getFullYear();
-  let m, d;
-  if (str.includes('.')) {
-    const parts = str.split('.').map(p => p.trim());
-    if (parts.length >= 3) {
-      y = parts[0].length === 2 ? 2000 + parseInt(parts[0]) : parseInt(parts[0]);
-      m = parseInt(parts[1]);
-      d = parseInt(parts[2]);
-    }
-  } else if (str.includes('-')) {
-    const parts = str.split('-');
-    if (parts.length >= 3) { y = parseInt(parts[0]); m = parseInt(parts[1]); d = parseInt(parts[2]); }
-  } else return '';
-  
-  if (isNaN(y) || isNaN(m) || isNaN(d)) return '';
-  const dObj = new Date(y, m - 1, d);
-  
-  let addedDays = 0;
-  while (addedDays < days) {
-    dObj.setDate(dObj.getDate() + 1);
-    const dayOfWeek = dObj.getDay();
-    if (dayOfWeek !== 0 && dayOfWeek !== 6) addedDays++;
-  }
-  const yy = String(dObj.getFullYear()).slice(-2);
-  const mm = String(dObj.getMonth() + 1).padStart(2, '0');
-  const dd = String(dObj.getDate()).padStart(2, '0');
-  return `${yy}.${mm}.${dd}`;
-};
-
-const getRemainingTime = (deletedAt) => {
-  if (!deletedAt) return '-';
-  const remainingMs = (3 * 24 * 60 * 60 * 1000) - (Date.now() - deletedAt);
-  if (remainingMs <= 0) return '삭제 예정';
-  const days = Math.floor(remainingMs / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((remainingMs / (1000 * 60 * 60)) % 24);
-  if (days > 0) return `${days}일 ${hours}시간`;
-  return `${hours}시간`;
-};
-
-const FIXED_UNITS_ORDER = ['PMD', 'TMD', 'FLD', 'SMT', 'PG', 'PT', 'UPT900'];
+const FIXED_UNITS_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'];
 const STATUS_STEPS = ['접수 대기', '접수 완료', '견적 승인 대기', '수리 중', '수리 완료', '종결'];
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6', '#84cc16', '#a855f7'];
 
@@ -275,38 +301,6 @@ const getUniqueCount = (dataList, statusFilter) => {
     }
   });
   return uniqueRecords.size;
-};
-
-const parseDateObj = (dateStr) => {
-  if (!dateStr) return null;
-  let str = String(dateStr).trim();
-  let y = new Date().getFullYear();
-  let m, d;
-  if (str.includes('.')) {
-    const parts = str.split('.').map(p => p.trim());
-    if (parts.length >= 3) {
-      y = parts[0].length === 2 ? 2000 + parseInt(parts[0]) : parseInt(parts[0]);
-      m = parseInt(parts[1]);
-      d = parseInt(parts[2]);
-    }
-  } else if (str.includes('-')) {
-     const parts = str.split('-');
-     if (parts.length >= 3) {
-      y = parseInt(parts[0]);
-      m = parseInt(parts[1]);
-      d = parseInt(parts[2]);
-     }
-  } else {
-     return null;
-  }
-  if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
-  return new Date(y, m - 1, d);
-};
-
-const getYearFromDate = (dateStr) => {
-  const d = parseDateObj(dateStr);
-  if (d) return String(d.getFullYear());
-  return null;
 };
 
 const MultiDonutChart = ({ data, size = 160, strokeWidth = 24 }) => {
@@ -640,7 +634,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   
   const [currentPage, setCurrentPage] = useState(1); 
-  const itemsPerPage = 5; 
+  const itemsPerPage = 15; 
   
   const [selectedRow, setSelectedRow] = useState(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -684,7 +678,7 @@ export default function App() {
 
   useEffect(() => {
     if (currentUserRole) {
-      if (!isQM && (activeTab === '전체' || activeTab === '휴지통' || activeTab === '보고서' || activeTab === '미입력')) {
+      if (!isQM && (activeTab === '휴지통' || activeTab === '보고서' || activeTab === '미입력' || activeTab === '전체')) {
         setActiveTab(currentUserRole.tabs[0]);
       } else if (currentUserRole.tabs !== 'ALL' && !currentUserRole.tabs.includes(activeTab) && activeTab !== '집계') {
         setActiveTab(currentUserRole.tabs[0]);
@@ -698,10 +692,14 @@ export default function App() {
 
   useEffect(() => {
     const initAuth = async () => {
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (error) {
+        console.error("Auth error:", error);
       }
     };
     initAuth();
@@ -727,20 +725,12 @@ export default function App() {
         }
       });
       
-      const mappedRecords = records.map(d => {
-        let bu = d.businessUnit;
-        if (bu === 'UHP') {
-          bu = (d.orderNumber || '').toUpperCase().startsWith('P3') ? 'PG' : 'SMT';
-        }
-        return { ...d, businessUnit: bu };
-      });
-      
-      mappedRecords.sort((a, b) => {
+      records.sort((a, b) => {
         const numA = a.asNumber || '';
         const numB = b.asNumber || '';
         return numB.localeCompare(numA); 
       });
-      setData(mappedRecords);
+      setData(records);
     }, (error) => console.error("Firestore Error:", error));
     return () => unsubscribe();
   }, [user]);
@@ -756,6 +746,7 @@ export default function App() {
       processDate: formatDisplayDate(item.processDate),
       releaseDate: formatDisplayDate(item.releaseDate),
       complianceStatus: calculateCompliance(formatDisplayDate(item.reqDeliveryDate), formatDisplayDate(item.processDate)),
+      delayDays: getDelayDays(formatDisplayDate(item.reqDeliveryDate), formatDisplayDate(item.processDate)),
       duration: calculateDuration(formatDisplayDate(item.receiptDate), formatDisplayDate(item.processDate))
     }));
   }, [activeRecords]);
@@ -772,14 +763,10 @@ export default function App() {
     }));
   }, [deletedRecords]);
 
-  // -------------------------------------------------------------
-  // [집계 데이터 구성 로직] : 접수번호 1개 + 일반/고객불만별 1건 중복 방지 처리
-  // -------------------------------------------------------------
   const uniqueClaimsData = useMemo(() => {
     const map = new Map();
     processedData.forEach(item => {
       const claim = item.claimType === '고객불만' ? '고객불만' : '일반 A/S';
-      // 접수번호가 아예 없거나 공란인 경우 서로 덮어쓰지 않도록 고유 id를 사용
       const key = item.asNumber ? `${item.asNumber.trim().toUpperCase()}_${claim}` : `doc_${item.id}_${claim}`;
       
       if (!map.has(key)) {
@@ -811,7 +798,7 @@ export default function App() {
   const targetYears = [String(currentYear - 2), String(currentYear - 1), String(currentYear)];
 
   const allowedAggOrder = useMemo(() => {
-    const order = ['PMD', 'TMD', 'FLD', 'SMT', 'PG', 'PT (ZMDI)', 'PT (N)', 'UPT900'];
+    const order = ['PMD', 'TMD', 'FLD', 'UHP', 'PT (ZMDI)', 'PT (N)', 'UPT900'];
     if (!currentUserRole || currentUserRole.tabs === 'ALL') return order;
     return order.filter(bu => {
       if (bu.startsWith('PT')) return currentUserRole.tabs.includes('PT');
@@ -1050,6 +1037,32 @@ export default function App() {
     }).filter(buStat => buStat.totalCauses > 0 || buStat.totalProcesses > 0);
   }, [allowedProcessedData, allowedFixedUnits]);
 
+  const complianceStats = useMemo(() => {
+    const stats = {};
+    FIXED_UNITS_ORDER.forEach(bu => {
+      stats[bu] = { total: 0, onTime: 0, delayed: 0, totalDelayDays: 0 };
+    });
+
+    processedData.forEach(item => {
+      if (item.currentStatus === '종결' && FIXED_UNITS_ORDER.includes(item.businessUnit)) {
+        const bu = item.businessUnit;
+        stats[bu].total++;
+        if (item.complianceStatus === '준수') stats[bu].onTime++;
+        else if (item.complianceStatus === '지연') {
+          stats[bu].delayed++;
+          stats[bu].totalDelayDays += (item.delayDays || 0);
+        }
+      }
+    });
+
+    return Object.entries(stats).map(([unit, s]) => ({
+      unit,
+      ...s,
+      onTimeRate: s.total > 0 ? ((s.onTime / s.total) * 100).toFixed(1) : 0,
+      avgDelay: s.delayed > 0 ? (s.totalDelayDays / s.delayed).toFixed(1) : 0
+    }));
+  }, [processedData]);
+
   // -------------------------------------------------------------
   // [메인 테이블 조회용 데이터 탭 처리]
   // -------------------------------------------------------------
@@ -1201,8 +1214,7 @@ export default function App() {
           if (existingRecord.orderNumber) {
             const orderNum = existingRecord.orderNumber.toUpperCase();
             if (orderNum.startsWith('P1')) newData.businessUnit = 'PMD';
-            else if (orderNum.startsWith('UHP')) newData.businessUnit = 'SMT';
-            else if (orderNum.startsWith('P3')) newData.businessUnit = 'PG';
+            else if (orderNum.startsWith('UHP') || orderNum.startsWith('P3')) newData.businessUnit = 'UHP';
             else if (orderNum.startsWith('P4')) newData.businessUnit = 'PT';
             else if (orderNum.startsWith('T')) newData.businessUnit = 'TMD';
             else if (orderNum.startsWith('F')) newData.businessUnit = 'FLD';
@@ -1218,8 +1230,7 @@ export default function App() {
       if (name === 'orderNumber') {
         const orderNum = finalValue.toUpperCase();
         if (orderNum.startsWith('P1')) newData.businessUnit = 'PMD';
-        else if (orderNum.startsWith('UHP')) newData.businessUnit = 'SMT';
-        else if (orderNum.startsWith('P3')) newData.businessUnit = 'PG';
+        else if (orderNum.startsWith('UHP') || orderNum.startsWith('P3')) newData.businessUnit = 'UHP';
         else if (orderNum.startsWith('P4')) newData.businessUnit = 'PT';
         else if (orderNum.startsWith('T')) newData.businessUnit = 'TMD';
         else if (orderNum.startsWith('F')) newData.businessUnit = 'FLD';
@@ -1410,8 +1421,7 @@ export default function App() {
           if (!bu && orderNumber) {
             const orderNum = orderNumber.toUpperCase();
             if (orderNum.startsWith('P1')) bu = 'PMD';
-            else if (orderNum.startsWith('UHP')) bu = 'SMT';
-            else if (orderNum.startsWith('P3')) bu = 'PG';
+            else if (orderNum.startsWith('UHP') || orderNum.startsWith('P3')) bu = 'UHP';
             else if (orderNum.startsWith('P4')) bu = 'PT';
             else if (orderNum.startsWith('T')) bu = 'TMD';
             else if (orderNum.startsWith('F')) bu = 'FLD'; 
@@ -1531,16 +1541,6 @@ export default function App() {
       customAlert('그래프가 클립보드에 텍스트로 복사되었습니다.');
     } catch (err) {}
     document.body.removeChild(textArea);
-  };
-
-  const getRemainingTime = (deletedAt) => {
-    if (!deletedAt) return '-';
-    const remainingMs = (3 * 24 * 60 * 60 * 1000) - (Date.now() - deletedAt);
-    if (remainingMs <= 0) return '삭제 예정';
-    const days = Math.floor(remainingMs / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((remainingMs / (1000 * 60 * 60)) % 24);
-    if (days > 0) return `${days}일 ${hours}시간`;
-    return `${hours}시간`;
   };
 
   const paginatedData = useMemo(() => {
@@ -2045,7 +2045,7 @@ export default function App() {
             {isQM && (
               <>
                 <button onClick={() => setActiveTab('보고서')} className={`px-6 py-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === '보고서' ? 'border-gray-800 text-gray-900 bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>보고서</button>
-                <button onClick={() => setActiveTab('휴지통')} className={`px-6 py-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === '휴지통' ? 'border-gray-800 text-gray-900 bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>휴지통</button>
+                <button onClick={() => setActiveTab('휴지통')} className={`px-6 py-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === '휴지통' ? 'border-gray-800 text-gray-900 bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>휴지통 (3일)</button>
               </>
             )}
           </div>
@@ -2078,25 +2078,9 @@ export default function App() {
                   <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="rpt" checked={filterExcludeReport === 'all'} onChange={() => setFilterExcludeReport('all')} /> 포함</label>
                   <label className="flex items-center gap-1 cursor-pointer"><input type="radio" name="rpt" checked={filterExcludeReport === 'exclude'} onChange={() => setFilterExcludeReport('exclude')} /> 제외</label>
                 </div>
-                {activeTab === 'PT' && (
-                  <div className="flex items-center gap-2 border-l pl-4 border-gray-300">
-                    <span className="font-bold text-gray-600">PT 보드:</span>
-                    <div className="flex gap-1 bg-gray-100 p-0.5 rounded-lg">
-                      {['all', 'ZMDI', 'N'].map(type => (
-                        <button
-                          key={type}
-                          onClick={() => setFilterPtBoard(type)}
-                          className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${filterPtBoard === type ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                          {type === 'all' ? '전체' : type}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
                 
                 <div className="ml-auto">
-                   <button onClick={() => handleOpenForm()} className="px-4 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-blue-700 transition-colors shadow-sm"><Plus className="w-4 h-4" /> 새 데이터 추가</button>
+                   {isQM && <button onClick={() => handleOpenForm()} className="px-4 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-blue-700 transition-colors shadow-sm"><Plus className="w-4 h-4" /> 새 데이터 추가</button>}
                 </div>
               </div>
             </div>
@@ -2108,83 +2092,65 @@ export default function App() {
           <div className="space-y-6 animate-in fade-in duration-500">
             {/* 집계 서브 탭 */}
             <div className="flex gap-2 mb-4 border-b border-gray-200">
-              {['종합 지표', '모델별 현황', '원인별 분석', '년도별 현황'].map(tab => (
+              {['종합 지표', '모델별 현황', '원인별 분석', '년도별 현황', '납기 준수율'].map(tab => (
                  <button key={tab} onClick={() => setDashboardTab(tab)} className={`px-4 py-2 font-bold text-sm border-b-2 transition-colors ${dashboardTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>{tab}</button>
               ))}
             </div>
 
+            {dashboardTab === '납기 준수율' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {complianceStats.map(stat => (
+                  <div key={stat.unit} className="bg-white p-6 rounded-xl border shadow-sm space-y-4">
+                    <div className="flex justify-between items-center border-b pb-2">
+                      <h3 className="font-black text-gray-700">{stat.unit} 사업부</h3>
+                      <span className="text-xs text-gray-400">종결: {stat.total}건</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="relative w-20 h-20 flex items-center justify-center">
+                        <svg className="w-full h-full transform -rotate-90">
+                          <circle cx="40" cy="40" r="34" stroke="#f3f4f6" strokeWidth="8" fill="transparent" />
+                          <circle cx="40" cy="40" r="34" stroke="#10b981" strokeWidth="8" fill="transparent" strokeDasharray={213.6} strokeDashoffset={213.6 * (1 - stat.onTimeRate/100)} strokeLinecap="round" />
+                        </svg>
+                        <span className="absolute font-black text-gray-700">{stat.onTimeRate}%</span>
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex justify-between text-xs"><span>준수</span><span className="font-bold text-green-600">{stat.onTime}건</span></div>
+                        <div className="flex justify-between text-xs"><span>지연</span><span className="font-bold text-red-500">{stat.delayed}건</span></div>
+                        <div className="pt-2 mt-2 border-t flex justify-between text-xs">
+                          <span className="text-gray-400">평균 지연일</span>
+                          <span className="font-black text-red-600">{stat.avgDelay}일</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {dashboardTab === '종합 지표' && (
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                  <div className="bg-white p-6 rounded-xl border border-gray-200 flex flex-col items-center shadow-sm relative group">
-                    <div className="flex justify-between items-start w-full mb-6">
-                      <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                        <PieChart className="w-5 h-5 text-blue-600" /> 전체 A/S 종합 현황
-                      </h3>
-                      <div className="flex bg-gray-100 p-0.5 rounded-md relative z-10 shrink-0">
-                        <button onClick={() => setTotalChartType('donut')} className={`p-1.5 rounded ${totalChartType === 'donut' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="도넛 차트 보기"><PieChart className="w-4 h-4" /></button>
-                        <button onClick={() => setTotalChartType('trend')} className={`p-1.5 rounded ${totalChartType === 'trend' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="연도별 트렌드 보기"><TrendingUp className="w-4 h-4" /></button>
-                      </div>
+                    <h3 className="w-full text-left font-bold mb-6 flex items-center gap-2 text-blue-600"><PieChart className="w-5 h-5" /> 종합 현황</h3>
+                    <DonutChart normal={aggregatedStats.reduce((a,c) => a+c.normal, 0)} complaint={aggregatedStats.reduce((a,c) => a+c.complaint, 0)} size={180} strokeWidth={16} />
+                    <div className="w-full mt-8 space-y-2">
+                       <div className="flex justify-between text-sm bg-blue-50 p-2.5 rounded border border-blue-100 text-blue-800"><span>일반 A/S 건수</span> <strong>{aggregatedStats.reduce((a,c) => a+c.normal, 0)}건</strong></div>
+                       <div className="flex justify-between text-sm bg-red-50 p-2.5 rounded border border-red-100 text-red-800"><span>고객 불만 건수</span> <strong>{aggregatedStats.reduce((a,c) => a+c.complaint, 0)}건</strong></div>
                     </div>
-                    
-                    <div className="flex-1 flex flex-col items-center justify-center w-full relative z-0">
-                      {totalChartType === 'donut' ? (
-                        <DonutChart normal={aggregatedStats.reduce((a,c) => a+c.normal, 0)} complaint={aggregatedStats.reduce((a,c) => a+c.complaint, 0)} size={180} strokeWidth={16} />
-                      ) : (
-                        <YearlyTrendChart data={yearlyStats} type="mixed" />
-                      )}
-                    </div>
-
-                    {totalChartType === 'donut' && (
-                      <div className="w-full mt-8 space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-100">
-                        <div className="flex justify-between items-center text-sm">
-                          <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500"></span><span className="font-medium text-gray-700">일반 A/S</span></div>
-                          <span className="font-bold text-gray-900">{aggregatedStats.reduce((a,c) => a+c.normal, 0)}건</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm">
-                          <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500"></span><span className="font-medium text-gray-700">고객불만</span></div>
-                          <span className="font-bold text-red-600">{aggregatedStats.reduce((a,c) => a+c.complaint, 0)}건</span>
-                        </div>
-                      </div>
-                    )}
                  </div>
-                 
                  <div className="lg:col-span-3 bg-white p-6 rounded-xl border border-gray-200 shadow-sm relative group" id="sub-chart-container">
                     <h3 className="font-bold mb-8 flex items-center gap-2 text-gray-600"><BarChart3 className="w-5 h-5" /> 사업부별 상세 비율</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                       {aggregatedStats.filter(s => !s.isTotal).map(stat => (
-                         <div key={stat.unit} className="flex flex-col items-center p-4 border rounded-xl hover:shadow-lg transition-all bg-gray-50/30">
-                            <div className="w-full flex justify-between items-center pb-3 mb-4 border-b border-gray-100">
-                              <h4 className="font-bold text-gray-800 text-sm">{stat.unit}</h4>
-                              <div className="flex bg-gray-50 p-0.5 rounded-md relative z-10 shrink-0">
-                                <button onClick={() => setBuChartType(prev => ({...prev, [stat.unit]: 'donut'}))} className={`p-1 rounded ${buChartType[stat.unit] !== 'trend' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="도넛 차트 보기"><PieChart className="w-3 h-3" /></button>
-                                <button onClick={() => setBuChartType(prev => ({...prev, [stat.unit]: 'trend'}))} className={`p-1 rounded ${buChartType[stat.unit] === 'trend' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="연도별 트렌드 보기"><TrendingUp className="w-3 h-3" /></button>
-                              </div>
-                            </div>
-
-                            <div className="flex-1 flex w-full items-center justify-center min-h-[120px] relative z-0">
-                              {buChartType[stat.unit] === 'trend' ? (
-                                <YearlyTrendChart data={buYearlyStats[stat.unit] || []} heightClass="h-[120px]" type="mixed" />
-                              ) : (
-                                <DonutChart normal={stat.normal} complaint={stat.complaint} size={110} strokeWidth={12} />
-                              )}
-                            </div>
-
-                            {buChartType[stat.unit] !== 'trend' && (
-                              <div className="w-full mt-4 space-y-2 text-xs">
-                                <div className="flex justify-between items-center bg-blue-50/50 px-2 py-1.5 rounded text-blue-900">
-                                  <span className="font-medium">일반</span>
-                                  <span className="font-bold">{stat.normal}건 <span className="text-blue-600 font-normal">({stat.normalRate}%)</span></span>
-                                </div>
-                                <div className="flex justify-between items-center bg-red-50/50 px-2 py-1.5 rounded text-red-900">
-                                  <span className="font-medium">불만</span>
-                                  <span className="font-bold text-red-600">{stat.complaint}건 <span className="text-red-500 font-normal">({stat.complaintRate}%)</span></span>
-                                </div>
-                              </div>
-                            )}
+                       {aggregatedStats.map(s => (
+                         <div key={s.unit} className="flex flex-col items-center p-4 border rounded-xl hover:shadow-lg transition-all bg-gray-50/30">
+                            <span className="text-xs font-black text-gray-700 mb-4">{s.unit}</span>
+                            <DonutChart normal={s.normal} complaint={s.complaint} size={100} strokeWidth={10} />
+                            <div className="mt-4 text-[11px] font-bold text-gray-500">{s.totalClaims}건 (불만율 {s.complaintRate}%)</div>
                          </div>
                        ))}
                     </div>
-                    <button onClick={() => handleCopyChart('sub-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"><Copy className="w-4 h-4" /></button>
+                    <button onClick={() => handleCopyChart('sub-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                      <Copy className="w-4 h-4" />
+                    </button>
                  </div>
               </div>
             )}
@@ -2193,31 +2159,19 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                 {dashboardStats.map(buStat => (
                   <div key={buStat.unit} id={`model-chart-${buStat.unit}`} className="bg-white rounded-xl border p-6 flex flex-col items-center shadow-sm relative group">
-                    <div className="flex justify-between items-center w-full mb-6 border-b border-gray-100 pb-4">
-                      <h3 className="text-sm font-bold text-gray-800 text-center">{buStat.unit} 모델군 집계</h3>
-                      <div className="flex bg-gray-100 p-0.5 rounded-md relative z-10 shrink-0">
-                        <button onClick={() => setModelChartType(prev => ({...prev, [buStat.unit]: 'donut'}))} className={`p-1 rounded ${modelChartType[buStat.unit] !== 'bar' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="도넛 차트 보기"><PieChart className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => setModelChartType(prev => ({...prev, [buStat.unit]: 'bar'}))} className={`p-1 rounded ${modelChartType[buStat.unit] === 'bar' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="가로 막대 차트 보기"><BarChart3 className="w-3.5 h-3.5" /></button>
-                      </div>
-                    </div>
-                    
-                    <div className="flex justify-center mb-8 w-full h-[180px] items-center relative z-0">
-                      {modelChartType[buStat.unit] === 'bar' ? (
-                        <ModelHorizontalBarChart data={buStat.modelsArr} />
-                      ) : (
-                        <MultiDonutChart data={buStat.modelsArr.map(m => ({ label: m.label, value: m.total, color: m.color }))} size={160} strokeWidth={22} />
-                      )}
-                    </div>
-                    
-                    <div className="w-full mt-2 space-y-1.5 overflow-y-auto max-h-40 hide-scrollbar">
+                    <h3 className="text-sm font-bold text-gray-800 mb-6 border-b pb-2 w-full text-center">{buStat.unit} 모델군 집계</h3>
+                    <MultiDonutChart data={buStat.modelsArr.map(m => ({ label: m.label, value: m.total, color: m.color }))} size={160} strokeWidth={22} />
+                    <div className="w-full mt-6 space-y-1.5 overflow-y-auto max-h-40 hide-scrollbar">
                       {buStat.modelsArr.map(m => (
-                        <div key={m.label} className="flex justify-between text-[11px] px-2 py-1.5 bg-gray-50 rounded">
+                        <div key={m.label} className="flex justify-between text-[11px] px-2 py-1 bg-gray-50 rounded">
                           <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{backgroundColor: m.color}}></span>{m.label}</span>
                           <span className="font-bold">{m.total}건</span>
                         </div>
                       ))}
                     </div>
-                    <button onClick={() => handleCopyChart(`model-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"><Copy className="w-4 h-4" /></button>
+                    <button onClick={() => handleCopyChart(`model-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                      <Copy className="w-4 h-4" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -2247,7 +2201,9 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                  <button onClick={() => handleCopyChart('grouped-cause-chart')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"><Copy className="w-4 h-4" /></button>
+                  <button onClick={() => handleCopyChart('grouped-cause-chart')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                    <Copy className="w-4 h-4" />
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -2264,13 +2220,15 @@ export default function App() {
                           <HorizontalBarChart data={buStat.processesArr} color="bg-teal-500" />
                         </div>
                       </div>
-                      <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"><Copy className="w-4 h-4" /></button>
+                      <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                        <Copy className="w-4 h-4" />
+                      </button>
                     </div>
                   ))}
                 </div>
               </div>
             )}
-            
+
             {dashboardTab === '년도별 현황' && (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {allowedTrendUnits.map(bu => {
@@ -2281,17 +2239,15 @@ export default function App() {
                         <h3 className="text-lg font-bold text-gray-900">
                           {bu} 사업부
                         </h3>
-                        <div className="flex bg-gray-100 p-0.5 rounded-md relative z-10 shrink-0">
-                          <button onClick={() => setYearlyTabChartType(prev => ({...prev, [bu]: 'line'}))} className={`p-1 rounded ${yearlyTabChartType[bu] !== 'mixed' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="다중 꺾은선 차트 보기"><LineChart className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => setYearlyTabChartType(prev => ({...prev, [bu]: 'mixed'}))} className={`p-1 rounded ${yearlyTabChartType[bu] === 'mixed' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`} title="막대-꺾은선 혼합 차트 보기"><TrendingUp className="w-3.5 h-3.5" /></button>
-                        </div>
                       </div>
                       
                       <div className="flex-1 flex flex-col items-center justify-center w-full relative z-0">
-                        <YearlyTrendChart data={unitData} type={yearlyTabChartType[bu] === 'mixed' ? 'mixed' : 'line'} />
+                        <YearlyTrendChart data={unitData} type="mixed" />
                       </div>
                       
-                      <button onClick={() => handleCopyChart(`yearly-chart-${bu}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" title="차트 복사"><Copy className="w-4 h-4" /></button>
+                      <button onClick={() => handleCopyChart(`yearly-chart-${bu}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                        <Copy className="w-4 h-4" />
+                      </button>
                     </div>
                   );
                 })}
@@ -2302,20 +2258,18 @@ export default function App() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-10 animate-in fade-in duration-300">
              <h2 className="text-2xl font-bold text-gray-900 mb-2">데이터 백업 및 내보내기</h2>
              <p className="text-gray-500 mb-8">현재 필터 조건에 맞는 <span className="font-bold text-blue-600">{filteredData.length}건</span>의 데이터를 백업할 수 있습니다.</p>
-             
-             {/* 상단 버튼 3개 (CSV 업로드, Excel 다운로드, CSV 다운로드) */}
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12 max-w-5xl mx-auto">
-                <div onClick={() => fileInputRef.current.click()} className="flex flex-col items-center justify-center py-10 px-6 border border-gray-200 rounded-2xl hover:border-blue-500 hover:shadow-lg transition-all cursor-pointer bg-white group w-full h-[180px]">
-                  <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-blue-100 transition-colors"><Upload className="w-7 h-7 text-blue-600" /></div>
-                  <h3 className="text-base font-bold text-center text-gray-900">CSV 업로드</h3>
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+                <div onClick={() => fileInputRef.current.click()} className="py-8 px-6 border rounded-2xl hover:border-blue-500 hover:shadow-lg cursor-pointer bg-white group flex flex-col items-center">
+                  <div className="w-14 h-14 bg-blue-50 rounded-full flex items-center justify-center mb-3"><Upload className="w-6 h-6 text-blue-600" /></div>
+                  <h3 className="font-bold">CSV 업로드</h3>
                 </div>
-                <div onClick={exportToExcel} className="flex flex-col items-center justify-center py-10 px-6 border border-gray-200 rounded-2xl hover:border-green-500 hover:shadow-lg transition-all cursor-pointer bg-white group w-full h-[180px]">
-                  <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-green-100 transition-colors"><FileSpreadsheet className="w-7 h-7 text-green-600" /></div>
-                  <h3 className="text-base font-bold text-center text-gray-900">Excel 다운로드</h3>
+                <div onClick={exportToExcel} className="py-8 px-6 border rounded-2xl hover:border-green-500 hover:shadow-lg cursor-pointer bg-white group flex flex-col items-center">
+                  <div className="w-14 h-14 bg-green-50 rounded-full flex items-center justify-center mb-3"><FileSpreadsheet className="w-6 h-6 text-green-600" /></div>
+                  <h3 className="font-bold">Excel 다운로드</h3>
                 </div>
-                <div onClick={exportToCSV} className="flex flex-col items-center justify-center py-10 px-6 border border-gray-200 rounded-2xl hover:border-gray-400 hover:shadow-lg transition-all cursor-pointer bg-gray-50 group w-full h-[180px]">
-                  <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mb-4 group-hover:bg-gray-300 transition-colors"><Download className="w-7 h-7 text-gray-600" /></div>
-                  <h3 className="text-base font-bold text-center text-gray-900">CSV 다운로드</h3>
+                <div onClick={exportToCSV} className="py-8 px-6 border rounded-2xl hover:border-gray-400 hover:shadow-md cursor-pointer bg-gray-50 group flex flex-col items-center">
+                  <div className="w-14 h-14 bg-gray-200 rounded-full flex items-center justify-center mb-3"><Download className="w-6 h-6 text-gray-600" /></div>
+                  <h3 className="font-bold">CSV 다운로드</h3>
                 </div>
              </div>
 
@@ -2323,25 +2277,24 @@ export default function App() {
                <h2 className="text-2xl font-bold text-gray-900 mb-2">HTML 보고서 출력</h2>
                <p className="text-gray-500 mb-8">웹페이지 형태로 깔끔하게 포맷팅된 요약 보고서를 생성하여 인쇄하거나 PDF로 저장합니다.</p>
                
-               {/* 하단 버튼 3개 (HTML 생성, 국문, 영문) */}
                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-                 <div onClick={exportToHTML} className="flex flex-col items-center justify-center py-10 px-6 border border-gray-200 rounded-2xl hover:border-purple-500 hover:shadow-lg transition-all cursor-pointer bg-white group w-full h-[180px]">
-                   <div className="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-purple-100 transition-colors">
-                     <FileCode className="w-7 h-7 text-purple-600" />
+                 <div onClick={exportToHTML} className="py-8 px-6 border border-gray-200 rounded-2xl hover:border-purple-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center">
+                   <div className="w-14 h-14 bg-purple-50 rounded-full flex items-center justify-center mb-3 group-hover:bg-purple-100 transition-colors">
+                     <FileCode className="w-6 h-6 text-purple-600" />
                    </div>
                    <h3 className="text-base font-bold text-center text-gray-900">AS 관리대장 HTML 생성</h3>
                  </div>
 
-                 <div onClick={() => exportToASReportHTML('ko')} className="flex flex-col items-center justify-center py-10 px-6 border border-gray-200 rounded-2xl hover:border-indigo-500 hover:shadow-lg transition-all cursor-pointer bg-white group w-full h-[180px]">
-                   <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-indigo-100 transition-colors">
-                     <FileText className="w-7 h-7 text-indigo-600" />
+                 <div onClick={() => exportToASReportHTML('ko')} className="py-8 px-6 border border-gray-200 rounded-2xl hover:border-indigo-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center">
+                   <div className="w-14 h-14 bg-indigo-50 rounded-full flex items-center justify-center mb-3 group-hover:bg-indigo-100 transition-colors">
+                     <FileText className="w-6 h-6 text-indigo-600" />
                    </div>
                    <h3 className="text-base font-bold text-center text-gray-900">AS 보고서 HTML (국문)</h3>
                  </div>
 
-                 <div onClick={() => exportToASReportHTML('en')} className="flex flex-col items-center justify-center py-10 px-6 border border-gray-200 rounded-2xl hover:border-blue-500 hover:shadow-lg transition-all cursor-pointer bg-white group w-full h-[180px]">
-                   <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-blue-100 transition-colors">
-                     <FileText className="w-7 h-7 text-blue-600" />
+                 <div onClick={() => exportToASReportHTML('en')} className="py-8 px-6 border border-gray-200 rounded-2xl hover:border-blue-500 hover:shadow-lg transition-all cursor-pointer bg-white group flex flex-col items-center justify-center">
+                   <div className="w-14 h-14 bg-blue-50 rounded-full flex items-center justify-center mb-3 group-hover:bg-blue-100 transition-colors">
+                     <FileText className="w-6 h-6 text-blue-600" />
                    </div>
                    <h3 className="text-base font-bold text-center text-gray-900">AS 보고서 HTML (영문)</h3>
                  </div>
@@ -2350,12 +2303,6 @@ export default function App() {
           </div>
         ) : (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-             {activeTab === '휴지통' && (
-                <div className="p-4 bg-red-50 text-red-600 font-bold border-b border-red-100 flex items-center gap-2 text-sm">
-                  <AlertCircle className="w-5 h-5" />
-                  삭제된 데이터는 3일 후 영구적으로 자동 삭제됩니다.
-                </div>
-             )}
              <div className="overflow-x-auto">
                <table className="min-w-full divide-y divide-gray-200">
                  <thead className="bg-gray-50 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-b">
@@ -2433,7 +2380,7 @@ export default function App() {
                                 </>
                               ) : (
                                 <>
-                                  <button onClick={e => { e.stopPropagation(); handleOpenForm(row); }} className="p-1.5 hover:bg-blue-100 rounded-md text-blue-600 transition-colors" title="수정"><Edit className="w-4 h-4" /></button>
+                                  {isQM && <button onClick={e => { e.stopPropagation(); handleOpenForm(row); }} className="p-1.5 hover:bg-blue-100 rounded-md text-blue-600 transition-colors" title="수정"><Edit className="w-4 h-4" /></button>}
                                   {isQM && <button onClick={e => { e.stopPropagation(); handleDeletePrepare(row.id); }} className="p-1.5 hover:bg-red-100 rounded-md text-red-600 transition-colors" title="삭제"><Trash2 className="w-4 h-4" /></button>}
                                 </>
                               )}
@@ -2452,8 +2399,8 @@ export default function App() {
              
              {/* 페이지네이션 */}
              {filteredData.length > 0 && (
-               <div className="p-4 bg-white border-t flex items-center justify-between text-sm text-gray-600">
-                  <span>총 <strong>{filteredData.length}</strong>건</span>
+               <div className="p-4 bg-white border-t flex items-center justify-between text-sm">
+                  <span className="text-gray-500">총 <strong>{filteredData.length}</strong>건</span>
                   <div className="flex gap-2">
                      <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="px-3 py-1.5 border rounded-lg hover:bg-gray-50 disabled:opacity-30 transition-all font-medium">이전</button>
                      <div className="flex gap-1 overflow-x-auto max-w-[200px] md:max-w-none hide-scrollbar">
@@ -2475,11 +2422,11 @@ export default function App() {
       {selectedRow && !isFormOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0 bg-gray-50 rounded-t-2xl">
               <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                 A/S 상세 정보 <span className="text-sm font-normal text-gray-500 ml-2">{selectedRow.asNumber}</span>
               </h2>
-              <button onClick={() => setSelectedRow(null)} className="p-2 hover:bg-gray-100 rounded-full"><X className="w-5 h-5 text-gray-500" /></button>
+              <button onClick={() => setSelectedRow(null)} className="p-2 hover:bg-gray-200 rounded-full"><X className="w-5 h-5 text-gray-500" /></button>
             </div>
             
             <div className="p-6 overflow-y-auto space-y-6 flex-1">
@@ -2553,7 +2500,7 @@ export default function App() {
                 {activeTab === '휴지통' ? (
                   <button onClick={(e) => handleRestore(selectedRow.id, e)} className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center text-sm font-bold"><RotateCcw className="w-4 h-4 mr-2" /> 복원하기</button>
                 ) : (
-                  <button onClick={() => handleOpenForm(selectedRow)} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm font-bold"><Edit className="w-4 h-4 mr-2" /> 수정</button>
+                  isQM && <button onClick={() => handleOpenForm(selectedRow)} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm font-bold"><Edit className="w-4 h-4 mr-2" /> 수정</button>
                 )}
                 <button onClick={() => setSelectedRow(null)} className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors text-sm font-bold">닫기</button>
               </div>
@@ -2562,7 +2509,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 2. 추가/수정 폼 모달 */}
+      {/* 2. 추가/수정 폼 모달 (복구됨) */}
       {isFormOpen && formData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
@@ -2662,7 +2609,7 @@ export default function App() {
                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-gray-100 pb-4">
                   <FormGroup label="접수일자 (클릭 시 달력)"><input type="date" name="receiptDate" value={formatForDateInput(formData.receiptDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} /></FormGroup>
                   <FormGroup label="납기요구일 (자동 5영업일 계산)"><input type="date" name="reqDeliveryDate" value={formatForDateInput(formData.reqDeliveryDate)} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} /></FormGroup>
-                  <FormGroup label="처리완료일"><input type="date" name="processDate" value={formData.processDate === '-' ? '' : formatForDateInput(formData.processDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} /></FormGroup>
+                  <FormGroup label="처리완료일"><input type="date" name="processDate" value={formData.processDate === '-' ? '' : formatForDateInput(formData.processDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" /></FormGroup>
                </div>
 
                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
@@ -2672,13 +2619,13 @@ export default function App() {
 
                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <FormGroup label="MODEL"><input type="text" name="model" value={formData.model} onChange={handleFormChange} className="form-input" disabled={!isQM} /></FormGroup>
-                  <FormGroup label="불량 수량"><input type="number" name="qtyDefect" value={formData.qtyDefect} onChange={handleFormChange} className="form-input" min="1" /></FormGroup>
+                  <FormGroup label="불량 수량"><input type="number" name="qtyDefect" value={formData.qtyDefect} onChange={handleFormChange} className="form-input" min="1" disabled={!isQM} /></FormGroup>
                   <FormGroup label="출고일자 (달력 선택)"><input type="date" name="releaseDate" value={formatForDateInput(formData.releaseDate)} max={todayStr} onChange={handleFormChange} className="form-input cursor-pointer" disabled={!isQM} /></FormGroup>
                   <FormGroup label="기존수주번호"><input type="text" name="originalOrderNumber" value={formData.originalOrderNumber} onChange={handleFormChange} className="form-input" disabled={!isQM} /></FormGroup>
                </div>
                
                <FormGroup label="Serial No. (여러 개일 경우 줄바꿈 가능)">
-                 <textarea name="serialNo" value={formData.serialNo} onChange={handleFormChange} className="form-input h-16" />
+                 <textarea name="serialNo" value={formData.serialNo} onChange={handleFormChange} className="form-input h-16" disabled={!isQM} />
                </FormGroup>
 
                <div className="border-t border-gray-200 pt-6 space-y-4">
@@ -2689,7 +2636,7 @@ export default function App() {
                  <FormGroup label="하자 내용"><textarea name="defectContent" value={formData.defectContent} onChange={handleFormChange} className="form-input h-20 text-sm" disabled={!isQM} /></FormGroup>
                  <FormGroup label="원인 분석"><textarea name="causeAnalysis" value={formData.causeAnalysis} onChange={handleFormChange} className="form-input h-20 text-sm" /></FormGroup>
                  
-                 {isQM && ['PMD', 'TMD', 'FLD', 'SMT', 'PG', 'PT', 'UPT900'].includes(formData.businessUnit) && (() => {
+                 {isQM && ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (() => {
                     const config = getCauseTableConfig(formData.businessUnit);
                     return (
                       <div className="overflow-x-auto border rounded-md mt-3">
@@ -2729,7 +2676,7 @@ export default function App() {
                    <textarea name="processDetails" value={formData.processDetails} onChange={handleFormChange} className="form-input h-24 text-sm" />
                  </FormGroup>
                  
-                 {isQM && ['PMD', 'TMD', 'FLD', 'SMT', 'PG', 'PT', 'UPT900'].includes(formData.businessUnit) && (
+                 {isQM && ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (
                     <div className="overflow-x-auto border rounded-md mt-3">
                       <table className="w-full text-[11px] text-center border-collapse">
                         <thead>
@@ -2762,7 +2709,7 @@ export default function App() {
             </form>
             <div className="p-6 border-t flex justify-end gap-3 bg-gray-50 rounded-b-2xl">
                <button onClick={() => setIsFormOpen(false)} className="px-6 py-2 border rounded-lg font-bold bg-white hover:bg-gray-100">취소</button>
-               <button onClick={handleFormSubmitInternal} className="px-8 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md hover:bg-blue-700 transition-all flex items-center gap-2"><Save className="w-4 h-4" /> 저장하기</button>
+               {isQM && <button onClick={handleFormSubmitInternal} className="px-8 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md hover:bg-blue-700 transition-all flex items-center gap-2"><Save className="w-4 h-4" /> 저장하기</button>}
             </div>
           </div>
         </div>
@@ -2775,7 +2722,7 @@ export default function App() {
               <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
               <h3 className="text-xl font-bold mb-2">데이터를 삭제하시겠습니까?</h3>
               <p className="text-gray-500 text-sm mb-6">삭제된 데이터는 품질팀 관리하에 복구가 가능할 때까지 보관됩니다.</p>
-              <div className="flex gap-3 mt-6">
+              <div className="flex gap-3">
                  <button onClick={() => setItemToDelete(null)} className="flex-1 py-3 border rounded-xl font-bold hover:bg-gray-50">취소</button>
                  <button onClick={executeDelete} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg hover:bg-red-700">삭제하기</button>
               </div>
@@ -2784,7 +2731,7 @@ export default function App() {
       )}
 
       {alertMessage && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] bg-gray-900/90 text-white px-8 py-3.5 rounded-full shadow-2xl animate-in slide-in-from-bottom-5 duration-300 flex items-center gap-3">
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] bg-gray-900 text-white px-6 py-3 rounded-full shadow-2xl animate-in slide-in-from-bottom-5 duration-300 flex items-center gap-3">
            <CheckCircle className="text-green-400 w-5 h-5" /> {alertMessage}
            <button onClick={() => setAlertMessage('')} className="ml-2 hover:text-gray-300"><X className="w-4 h-4" /></button>
         </div>
@@ -2806,11 +2753,11 @@ export default function App() {
 }
 
 function DetailItem({ label, value, isMultiline = false }) {
-  if (!value || value === 0 || value === '-') value = '-';
+  if (!value || value === 0) value = '-';
   return (
     <div>
-      <div className="text-[10px] text-gray-400 font-black uppercase mb-1">{label}</div>
-      <div className={`text-sm text-gray-900 font-bold ${isMultiline ? 'whitespace-pre-wrap leading-relaxed' : ''}`}>{value}</div>
+      <div className="text-[10px] text-gray-400 font-bold uppercase mb-1">{label}</div>
+      <div className={`text-sm text-gray-900 font-medium ${isMultiline ? 'whitespace-pre-wrap leading-relaxed' : ''}`}>{value}</div>
     </div>
   );
 }
@@ -2818,7 +2765,7 @@ function DetailItem({ label, value, isMultiline = false }) {
 function FormGroup({ label, children }) {
   return (
     <div className="space-y-1">
-      <label className="text-xs font-black text-gray-600 ml-1">{label}</label>
+      <label className="text-xs font-bold text-gray-500 ml-1">{label}</label>
       {children}
     </div>
   );
