@@ -13,7 +13,7 @@ const ACCESS_ROLES = {
   'pmd123': { name: 'pmd 담당자', tabs: ['PMD'] },
   'tmd123': { name: 'tmd 담당자', tabs: ['TMD'] },
   'fld123': { name: 'fld 담당자', tabs: ['FLD'] },
-  'uhp123': { name: 'uhp 담당자', tabs: ['UHP', 'PT', 'UPT900'] }
+  'uhp123': { name: 'uhp 담당자', tabs: ['SMT', 'PG', 'PT', 'UPT900'] }
 };
 
 // --- Firebase 초기화 ---
@@ -173,9 +173,10 @@ const HISTORICAL_YEARLY = {
   'PMD': { '2023': { total: 287, complaint: 4 }, '2024': { total: 251, complaint: 29 }, '2025': { total: 215, complaint: 15 } },
   'TMD': { '2023': { total: 116, complaint: 5 }, '2024': { total: 112, complaint: 24 }, '2025': { total: 96, complaint: 16 } },
   'FLD': { '2023': { total: 15, complaint: 0 }, '2024': { total: 7, complaint: 1 }, '2025': { total: 14, complaint: 3 } },
-  'UHP': { '2023': { total: 134, complaint: 9 }, '2024': { total: 154, complaint: 140 }, '2025': { total: 127, complaint: 12 } }
+  'SMT': { '2023': { total: 134, complaint: 9 }, '2024': { total: 154, complaint: 140 }, '2025': { total: 127, complaint: 12 } },
+  'PG': { '2023': { total: 0, complaint: 0 }, '2024': { total: 0, complaint: 0 }, '2025': { total: 0, complaint: 0 } }
 };
-const TREND_UNITS = ['PMD', 'TMD', 'FLD', 'UHP']; 
+const TREND_UNITS = ['PMD', 'TMD', 'FLD', 'SMT', 'PG']; 
 
 const CAUSE_HEADERS = [
   { id: 'c1', label: '설치\n조건' }, { id: 'c2', label: '취급\n부주의' }, { id: 'c3', label: '품질\n보증\n기간' },
@@ -245,7 +246,7 @@ const getCauseGroup = (id) => {
   return '기타';
 };
 
-const FIXED_UNITS_ORDER = ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'];
+const FIXED_UNITS_ORDER = ['PMD', 'TMD', 'FLD', 'SMT', 'PG', 'PT', 'UPT900'];
 const STATUS_STEPS = ['접수 대기', '접수 완료', '견적 승인 대기', '수리 중', '수리 완료', '종결'];
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6', '#84cc16', '#a855f7'];
 
@@ -725,12 +726,20 @@ export default function App() {
         }
       });
       
-      records.sort((a, b) => {
+      const mappedRecords = records.map(d => {
+        let bu = d.businessUnit;
+        if (bu === 'UHP') {
+          bu = (d.orderNumber || '').toUpperCase().startsWith('P3') ? 'PG' : 'SMT';
+        }
+        return { ...d, businessUnit: bu };
+      });
+      
+      mappedRecords.sort((a, b) => {
         const numA = a.asNumber || '';
         const numB = b.asNumber || '';
         return numB.localeCompare(numA); 
       });
-      setData(records);
+      setData(mappedRecords);
     }, (error) => console.error("Firestore Error:", error));
     return () => unsubscribe();
   }, [user]);
@@ -798,7 +807,7 @@ export default function App() {
   const targetYears = [String(currentYear - 2), String(currentYear - 1), String(currentYear)];
 
   const allowedAggOrder = useMemo(() => {
-    const order = ['PMD', 'TMD', 'FLD', 'UHP', 'PT (ZMDI)', 'PT (N)', 'UPT900'];
+    const order = ['PMD', 'TMD', 'FLD', 'SMT', 'PG', 'PT (ZMDI)', 'PT (N)', 'UPT900'];
     if (!currentUserRole || currentUserRole.tabs === 'ALL') return order;
     return order.filter(bu => {
       if (bu.startsWith('PT')) return currentUserRole.tabs.includes('PT');
@@ -1059,6 +1068,7 @@ export default function App() {
       unit,
       ...s,
       onTimeRate: s.total > 0 ? ((s.onTime / s.total) * 100).toFixed(1) : 0,
+      delayRate: s.total > 0 ? ((s.delayed / s.total) * 100).toFixed(1) : 0,
       avgDelay: s.delayed > 0 ? (s.totalDelayDays / s.delayed).toFixed(1) : 0
     }));
   }, [processedData]);
@@ -1181,10 +1191,10 @@ export default function App() {
         businessUnit: defaultBU, agencyName: '', companyName: '',
         model: '', qtyDefect: 1, serialNo: '', releaseDate: '',
         defectContent: '', causeAnalysis: '', processDetails: '',
-        processType: '', cost: '', ptBoardType: 'N',
+        processType: '견적 후 착수', cost: '', ptBoardType: 'N',
         claimType: '일반 A/S', repairMethod: '',
         causeAnalysisTypes: [], processDetailType: '',
-        currentStatus: '접수 대기'
+        currentStatus: isQM ? '접수 완료' : '접수 대기'
       });
     }
     setIsFormOpen(true);
@@ -1214,10 +1224,11 @@ export default function App() {
           if (existingRecord.orderNumber) {
             const orderNum = existingRecord.orderNumber.toUpperCase();
             if (orderNum.startsWith('P1')) newData.businessUnit = 'PMD';
-            else if (orderNum.startsWith('UHP') || orderNum.startsWith('P3')) newData.businessUnit = 'UHP';
+            else if (orderNum.startsWith('UHP') || orderNum.startsWith('P3')) newData.businessUnit = 'PG';
             else if (orderNum.startsWith('P4')) newData.businessUnit = 'PT';
             else if (orderNum.startsWith('T')) newData.businessUnit = 'TMD';
             else if (orderNum.startsWith('F')) newData.businessUnit = 'FLD';
+            else if (orderNum.startsWith('SMT')) newData.businessUnit = 'SMT';
           }
           
           if (existingRecord.receiptDate) {
@@ -1230,7 +1241,8 @@ export default function App() {
       if (name === 'orderNumber') {
         const orderNum = finalValue.toUpperCase();
         if (orderNum.startsWith('P1')) newData.businessUnit = 'PMD';
-        else if (orderNum.startsWith('UHP') || orderNum.startsWith('P3')) newData.businessUnit = 'UHP';
+        else if (orderNum.startsWith('UHP') || orderNum.startsWith('SMT')) newData.businessUnit = 'SMT';
+        else if (orderNum.startsWith('P3') || orderNum.startsWith('PG')) newData.businessUnit = 'PG';
         else if (orderNum.startsWith('P4')) newData.businessUnit = 'PT';
         else if (orderNum.startsWith('T')) newData.businessUnit = 'TMD';
         else if (orderNum.startsWith('F')) newData.businessUnit = 'FLD';
@@ -1421,7 +1433,8 @@ export default function App() {
           if (!bu && orderNumber) {
             const orderNum = orderNumber.toUpperCase();
             if (orderNum.startsWith('P1')) bu = 'PMD';
-            else if (orderNum.startsWith('UHP') || orderNum.startsWith('P3')) bu = 'UHP';
+            else if (orderNum.startsWith('UHP') || orderNum.startsWith('SMT')) bu = 'SMT';
+            else if (orderNum.startsWith('P3') || orderNum.startsWith('PG')) bu = 'PG';
             else if (orderNum.startsWith('P4')) bu = 'PT';
             else if (orderNum.startsWith('T')) bu = 'TMD';
             else if (orderNum.startsWith('F')) bu = 'FLD'; 
@@ -2045,7 +2058,7 @@ export default function App() {
             {isQM && (
               <>
                 <button onClick={() => setActiveTab('보고서')} className={`px-6 py-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === '보고서' ? 'border-gray-800 text-gray-900 bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>보고서</button>
-                <button onClick={() => setActiveTab('휴지통')} className={`px-6 py-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === '휴지통' ? 'border-gray-800 text-gray-900 bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>휴지통 (3일)</button>
+                <button onClick={() => setActiveTab('휴지통')} className={`px-6 py-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === '휴지통' ? 'border-gray-800 text-gray-900 bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>휴지통</button>
               </>
             )}
           </div>
@@ -2100,28 +2113,43 @@ export default function App() {
             {dashboardTab === '납기 준수율' && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {complianceStats.map(stat => (
-                  <div key={stat.unit} className="bg-white p-6 rounded-xl border shadow-sm space-y-4">
+                  <div key={stat.unit} id={`compliance-chart-${stat.unit}`} className="bg-white p-6 rounded-xl border shadow-sm space-y-4 relative group">
                     <div className="flex justify-between items-center border-b pb-2">
                       <h3 className="font-black text-gray-700">{stat.unit} 사업부</h3>
                       <span className="text-xs text-gray-400">종결: {stat.total}건</span>
                     </div>
                     <div className="flex items-center gap-4">
-                      <div className="relative w-20 h-20 flex items-center justify-center">
-                        <svg className="w-full h-full transform -rotate-90">
-                          <circle cx="40" cy="40" r="34" stroke="#f3f4f6" strokeWidth="8" fill="transparent" />
-                          <circle cx="40" cy="40" r="34" stroke="#10b981" strokeWidth="8" fill="transparent" strokeDasharray={213.6} strokeDashoffset={213.6 * (1 - stat.onTimeRate/100)} strokeLinecap="round" />
+                      <div className="relative w-24 h-24 flex items-center justify-center">
+                        <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-sm">
+                          <g transform="rotate(-90 50 50)">
+                            <circle cx="50" cy="50" r="40" stroke="#f3f4f6" strokeWidth="12" fill="transparent" />
+                            {stat.onTime > 0 && (
+                              <circle cx="50" cy="50" r="40" stroke="#10b981" strokeWidth="12" fill="transparent" strokeDasharray={`${(stat.onTime / stat.total) * 251.2} 251.2`} strokeDashoffset="0" />
+                            )}
+                            {stat.delayed > 0 && (
+                              <circle cx="50" cy="50" r="40" stroke="#ef4444" strokeWidth="12" fill="transparent" strokeDasharray={`${(stat.delayed / stat.total) * 251.2} 251.2`} strokeDashoffset={-(stat.onTime / stat.total) * 251.2} />
+                            )}
+                          </g>
                         </svg>
-                        <span className="absolute font-black text-gray-700">{stat.onTimeRate}%</span>
                       </div>
-                      <div className="flex-1 space-y-1">
-                        <div className="flex justify-between text-xs"><span>준수</span><span className="font-bold text-green-600">{stat.onTime}건</span></div>
-                        <div className="flex justify-between text-xs"><span>지연</span><span className="font-bold text-red-500">{stat.delayed}건</span></div>
-                        <div className="pt-2 mt-2 border-t flex justify-between text-xs">
-                          <span className="text-gray-400">평균 지연일</span>
+                      <div className="flex-1 space-y-2">
+                        <div className="flex justify-between text-xs items-center bg-green-50 p-1.5 rounded">
+                          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span>준수 ({stat.onTimeRate}%)</span>
+                          <span className="font-bold text-green-700">{stat.onTime}건</span>
+                        </div>
+                        <div className="flex justify-between text-xs items-center bg-red-50 p-1.5 rounded">
+                          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span>지연 ({stat.delayRate}%)</span>
+                          <span className="font-bold text-red-700">{stat.delayed}건</span>
+                        </div>
+                        <div className="pt-2 mt-2 border-t flex justify-between text-xs items-center px-1">
+                          <span className="text-gray-500 font-bold">평균 지연일</span>
                           <span className="font-black text-red-600">{stat.avgDelay}일</span>
                         </div>
                       </div>
                     </div>
+                    <button onClick={() => handleCopyChart(`compliance-chart-${stat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                      <Copy className="w-4 h-4" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -2509,7 +2537,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 2. 추가/수정 폼 모달 (복구됨) */}
+      {/* 2. 추가/수정 폼 모달 */}
       {isFormOpen && formData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
@@ -2598,7 +2626,6 @@ export default function App() {
                   <FormGroup label="수주번호"><input type="text" name="orderNumber" value={formData.orderNumber} onChange={handleFormChange} className="form-input" disabled={!isQM} /></FormGroup>
                   <FormGroup label="처리방식 (접수단계)">
                     <select name="processType" value={formData.processType} onChange={handleFormChange} className="form-input" disabled={!isQM}>
-                      <option value="">선택안함</option>
                       <option value="견적 후 착수">견적 후 착수</option>
                       <option value="선조치">선조치</option>
                       <option value="출장">출장</option>
@@ -2636,7 +2663,7 @@ export default function App() {
                  <FormGroup label="하자 내용"><textarea name="defectContent" value={formData.defectContent} onChange={handleFormChange} className="form-input h-20 text-sm" disabled={!isQM} /></FormGroup>
                  <FormGroup label="원인 분석"><textarea name="causeAnalysis" value={formData.causeAnalysis} onChange={handleFormChange} className="form-input h-20 text-sm" /></FormGroup>
                  
-                 {isQM && ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (() => {
+                 {isQM && ['PMD', 'TMD', 'FLD', 'SMT', 'PG', 'PT', 'UPT900'].includes(formData.businessUnit) && (() => {
                     const config = getCauseTableConfig(formData.businessUnit);
                     return (
                       <div className="overflow-x-auto border rounded-md mt-3">
@@ -2676,7 +2703,7 @@ export default function App() {
                    <textarea name="processDetails" value={formData.processDetails} onChange={handleFormChange} className="form-input h-24 text-sm" />
                  </FormGroup>
                  
-                 {isQM && ['PMD', 'TMD', 'FLD', 'UHP', 'PT', 'UPT900'].includes(formData.businessUnit) && (
+                 {isQM && ['PMD', 'TMD', 'FLD', 'SMT', 'PG', 'PT', 'UPT900'].includes(formData.businessUnit) && (
                     <div className="overflow-x-auto border rounded-md mt-3">
                       <table className="w-full text-[11px] text-center border-collapse">
                         <thead>
