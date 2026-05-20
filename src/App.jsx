@@ -688,7 +688,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   
   const [currentPage, setCurrentPage] = useState(1); 
-  const itemsPerPage = 15; 
+  const itemsPerPage = 5; 
   
   const [selectedRow, setSelectedRow] = useState(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -1211,18 +1211,29 @@ export default function App() {
     const config = DASHBOARD_CONFIG.find(c => c.status === status);
     const hexColor = config ? config.hex : '#D9D5D2';
     
-    const badgeStyle = { backgroundColor: hexColor, color: '#fff', textShadow: '0 1px 1px rgba(0,0,0,0.2)' };
-    const delayedStyle = { backgroundColor: '#ef4444', color: '#fff', textShadow: '0 1px 1px rgba(0,0,0,0.2)' };
-    const onTimeStyle = { backgroundColor: '#10b981', color: '#fff', textShadow: '0 1px 1px rgba(0,0,0,0.2)' };
+    let bgColor = hexColor;
+    let text = status;
+    let Icon = config ? config.icon : Clock;
 
     if (status === '종결') {
-      if (row.complianceStatus === '준수') return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold shadow-sm" style={onTimeStyle}><CheckCircle2 className="w-3.5 h-3.5 mr-1" />준수</span>;
-      if (row.complianceStatus === '지연') return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold shadow-sm" style={delayedStyle}><AlertCircle className="w-3.5 h-3.5 mr-1" />지연</span>;
-      return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold shadow-sm" style={badgeStyle}><Archive className="w-3.5 h-3.5 mr-1" />종결</span>;
+      if (row.complianceStatus === '준수') { bgColor = '#10b981'; Icon = CheckCircle2; text = '준수'; }
+      else if (row.complianceStatus === '지연') { bgColor = '#ef4444'; Icon = AlertCircle; text = '지연'; }
+      else { bgColor = hexColor; Icon = Archive; text = '종결'; }
     }
 
-    let Icon = config ? config.icon : Clock;
-    return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold shadow-sm" style={badgeStyle}><Icon className="w-3.5 h-3.5 mr-1" />{status}</span>;
+    const words = text.split(' ');
+
+    return (
+      <span 
+        className="inline-flex flex-col items-center justify-center p-1 rounded text-[10px] font-bold shadow-sm w-[46px] leading-tight whitespace-normal break-keep mx-auto" 
+        style={{ backgroundColor: bgColor, color: '#fff', textShadow: '0 1px 1px rgba(0,0,0,0.2)' }}
+      >
+        <Icon className="w-3.5 h-3.5 mb-0.5" />
+        <span className="text-center">
+          {words.map((w, i) => <React.Fragment key={i}>{w}{i < words.length - 1 && <br/>}</React.Fragment>)}
+        </span>
+      </span>
+    );
   };
 
   const handleOpenForm = (record = null) => {
@@ -2188,7 +2199,7 @@ export default function App() {
                           <span className="font-black text-red-600">{stat.avgDelay}일</span>
                         </div>
                      </div>
-                     <button onClick={() => handleCopyChart(`compliance-chart-${stat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                     <button onClick={() => handleCopyChart(`compliance-chart-${stat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
                        <Copy className="w-4 h-4" />
                      </button>
                   </div>
@@ -2198,7 +2209,7 @@ export default function App() {
 
             {dashboardTab === '종합 지표' && (
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                 <div className="bg-white p-6 rounded-xl border border-gray-200 flex flex-col items-center shadow-sm relative group">
+                 <div className="bg-white p-6 rounded-xl border border-gray-200 flex flex-col items-center shadow-sm relative group" id="overall-chart-container">
                     <div className="flex justify-between items-start w-full mb-6">
                       <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
                         <PieChart className="w-5 h-5 text-blue-600" /> 종합 현황
@@ -2223,6 +2234,9 @@ export default function App() {
                          <div className="flex justify-between text-sm bg-red-50 p-2.5 rounded border border-red-100 text-red-800"><span>고객 불만 건수</span> <strong>{aggregatedStats.reduce((a,c) => a+c.complaint, 0)}건</strong></div>
                       </div>
                     )}
+                    <button onClick={() => handleCopyChart('overall-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
+                      <Copy className="w-4 h-4" />
+                    </button>
                  </div>
                  
                  <div className="lg:col-span-3 bg-white p-6 rounded-xl border border-gray-200 shadow-sm relative group" id="sub-chart-container">
@@ -2254,7 +2268,7 @@ export default function App() {
                          </div>
                        ))}
                     </div>
-                    <button onClick={() => handleCopyChart('sub-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                    <button onClick={() => handleCopyChart('sub-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
                       <Copy className="w-4 h-4" />
                     </button>
                  </div>
@@ -2289,7 +2303,7 @@ export default function App() {
                         </div>
                       ))}
                     </div>
-                    <button onClick={() => handleCopyChart(`model-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                    <button onClick={() => handleCopyChart(`model-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
                       <Copy className="w-4 h-4" />
                     </button>
                   </div>
@@ -2321,7 +2335,7 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                  <button onClick={() => handleCopyChart('grouped-cause-chart')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                  <button onClick={() => handleCopyChart('grouped-cause-chart')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
                     <Copy className="w-4 h-4" />
                   </button>
                 </div>
@@ -2340,7 +2354,7 @@ export default function App() {
                           <HorizontalBarChart data={buStat.processesArr} color="bg-teal-500" />
                         </div>
                       </div>
-                      <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                      <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
                         <Copy className="w-4 h-4" />
                       </button>
                     </div>
@@ -2369,7 +2383,7 @@ export default function App() {
                         <YearlyTrendChart data={unitData} type={yearlyTabChartType[bu] === 'mixed' ? 'mixed' : 'line'} />
                       </div>
                       
-                      <button onClick={() => handleCopyChart(`yearly-chart-${bu}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                      <button onClick={() => handleCopyChart(`yearly-chart-${bu}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
                         <Copy className="w-4 h-4" />
                       </button>
                     </div>
@@ -2432,9 +2446,9 @@ export default function App() {
                  <thead className="bg-gray-50 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-b">
                    <tr>
                      {activeTab === '휴지통' && <th scope="col" className="px-4 py-3 text-center whitespace-nowrap text-red-500">남은 기한</th>}
-                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">사업부</th>
-                     <th scope="col" className="px-4 py-3 text-center whitespace-nowrap min-w-[110px]">상태</th>
-                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">접수번호</th>
+                     <th scope="col" className="px-2 py-3 text-center whitespace-nowrap w-1">사업부</th>
+                     <th scope="col" className="px-2 py-3 text-center whitespace-nowrap w-14">상태</th>
+                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap w-full min-w-[120px]">접수번호</th>
                      <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">수주번호</th>
                      <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">대리점</th>
                      <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">업체명</th>
@@ -2442,8 +2456,8 @@ export default function App() {
                      <th scope="col" className="px-4 py-3 text-right whitespace-nowrap">수량</th>
                      <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">하자내용</th>
                      <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">기존 주문정보</th>
-                     <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">처리방식</th>
-                     <th scope="col" className="px-2 py-3 text-right whitespace-nowrap min-w-[130px]">처리방법</th>
+                     <th scope="col" className="px-2 py-3 text-left whitespace-nowrap w-1">처리방식</th>
+                     <th scope="col" className="px-2 py-3 text-right whitespace-nowrap w-1">처리방법</th>
                      <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">일정</th>
                      <th scope="col" className="px-4 py-3 text-center whitespace-nowrap">관리</th>
                    </tr>
@@ -2457,9 +2471,9 @@ export default function App() {
                              {getRemainingTime(row.deletedAt)}
                            </td>
                          )}
-                         <td className="px-4 py-3 font-medium text-gray-900 text-xs">{row.businessUnit}</td>
-                         <td className="px-4 py-3 text-center min-w-[110px]">{renderStatusBadge(row)}</td>
-                         <td className="px-4 py-3 text-blue-600 font-bold text-xs">{row.asNumber}</td>
+                         <td className="px-2 py-3 font-medium text-gray-900 text-xs text-center w-1">{row.businessUnit}</td>
+                         <td className="px-2 py-3 text-center align-middle w-14">{renderStatusBadge(row)}</td>
+                         <td className="px-4 py-3 text-blue-600 font-bold text-xs w-full min-w-[120px]">{row.asNumber}</td>
                          <td className="px-4 py-3 text-gray-500 text-xs">{row.orderNumber}</td>
                          <td className="px-2 py-3 text-gray-900 max-w-[120px] truncate text-xs" title={row.agencyName}>{row.agencyName}</td>
                          <td className="px-2 py-3 text-gray-500 max-w-[120px] truncate text-xs" title={row.companyName}>{row.companyName}</td>
@@ -2476,8 +2490,8 @@ export default function App() {
                              <div className="flex items-center"><span className="text-gray-400 w-8">수주:</span> <span className="text-gray-900 max-w-[100px] truncate" title={row.originalOrderNumber}>{row.originalOrderNumber || '-'}</span></div>
                            </div>
                          </td>
-                         <td className="px-2 py-3 text-xs text-gray-500">{row.processType || '-'}</td>
-                         <td className="px-2 py-3 text-xs text-right align-middle min-w-[130px]">
+                         <td className="px-2 py-3 text-xs text-gray-500 whitespace-nowrap w-1">{row.processType || '-'}</td>
+                         <td className="px-2 py-3 text-xs text-right align-middle whitespace-nowrap w-1">
                            {row.repairMethod === '유상수리' ? (
                              <div>
                                <span className="font-medium text-blue-700">{row.repairMethod}</span>
