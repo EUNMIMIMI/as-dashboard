@@ -428,7 +428,7 @@ const DonutChart = ({ normal, complaint, size = 180, strokeWidth = 16 }) => {
            </text>
         )}
       </svg>
-      <div className="absolute flex flex-col items-center justify-center text-center bg-white rounded-full" style={{ width: '48%', height: '48%' }}>
+      <div className="absolute flex flex-col items-center justify-center text-center bg-white rounded-full" style={{ width: '55%', height: '55%' }}>
         <span className="text-[10px] text-gray-500 mb-0.5">총 접수</span>
         <span className="text-sm font-bold text-gray-900 leading-none">{total}건</span>
       </div>
@@ -1214,23 +1214,34 @@ export default function App() {
     let bgColor = hexColor;
     let text = status;
     let Icon = config ? config.icon : Clock;
+    let displayLines = [];
 
     if (status === '종결') {
-      if (row.complianceStatus === '준수') { bgColor = '#10b981'; Icon = CheckCircle2; text = '준수'; }
-      else if (row.complianceStatus === '지연') { bgColor = '#ef4444'; Icon = AlertCircle; text = '지연'; }
-      else { bgColor = hexColor; Icon = Archive; text = '종결'; }
+      if (row.complianceStatus === '준수') { bgColor = '#10b981'; Icon = CheckCircle2; displayLines = ['준수']; }
+      else if (row.complianceStatus === '지연') { bgColor = '#ef4444'; Icon = AlertCircle; displayLines = ['지연']; }
+      else { bgColor = hexColor; Icon = Archive; displayLines = ['종결']; }
+    } else {
+      if (status === '접수 대기') displayLines = ['접수', '대기'];
+      else if (status === '접수 완료') displayLines = ['접수', '완료'];
+      else if (status === '견적 승인 대기') displayLines = ['견적', '대기'];
+      else if (status === '수리 중') displayLines = ['수리 중'];
+      else if (status === '수리 완료') displayLines = ['수리', '완료'];
+      else displayLines = text.split(' ');
     }
-
-    const words = text.split(' ');
 
     return (
       <span 
-        className="inline-flex flex-col items-center justify-center p-1 rounded text-[10px] font-bold shadow-sm w-[46px] leading-tight whitespace-normal break-keep mx-auto" 
+        className="inline-flex flex-col items-center justify-center p-1 rounded text-[10px] font-bold shadow-sm w-[52px] leading-tight mx-auto" 
         style={{ backgroundColor: bgColor, color: '#fff', textShadow: '0 1px 1px rgba(0,0,0,0.2)' }}
       >
         <Icon className="w-3.5 h-3.5 mb-0.5" />
-        <span className="text-center">
-          {words.map((w, i) => <React.Fragment key={i}>{w}{i < words.length - 1 && <br/>}</React.Fragment>)}
+        <span className="text-center whitespace-nowrap">
+          {displayLines.map((line, i) => (
+            <React.Fragment key={i}>
+              {line}
+              {i < displayLines.length - 1 && <br/>}
+            </React.Fragment>
+          ))}
         </span>
       </span>
     );
@@ -2447,8 +2458,8 @@ export default function App() {
                    <tr>
                      {activeTab === '휴지통' && <th scope="col" className="px-4 py-3 text-center whitespace-nowrap text-red-500">남은 기한</th>}
                      <th scope="col" className="px-2 py-3 text-center whitespace-nowrap w-1">사업부</th>
-                     <th scope="col" className="px-2 py-3 text-center whitespace-nowrap w-14">상태</th>
-                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap w-full min-w-[120px]">접수번호</th>
+                     <th scope="col" className="px-2 py-3 text-center whitespace-nowrap w-[60px]">상태</th>
+                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap w-full min-w-[104px]">접수번호</th>
                      <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">수주번호</th>
                      <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">대리점</th>
                      <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">업체명</th>
@@ -2472,8 +2483,8 @@ export default function App() {
                            </td>
                          )}
                          <td className="px-2 py-3 font-medium text-gray-900 text-xs text-center w-1">{row.businessUnit}</td>
-                         <td className="px-2 py-3 text-center align-middle w-14">{renderStatusBadge(row)}</td>
-                         <td className="px-4 py-3 text-blue-600 font-bold text-xs w-full min-w-[120px]">{row.asNumber}</td>
+                         <td className="px-2 py-3 text-center align-middle w-[60px]">{renderStatusBadge(row)}</td>
+                         <td className="px-4 py-3 text-blue-600 font-bold text-xs w-full min-w-[104px]">{row.asNumber}</td>
                          <td className="px-4 py-3 text-gray-500 text-xs">{row.orderNumber}</td>
                          <td className="px-2 py-3 text-gray-900 max-w-[120px] truncate text-xs" title={row.agencyName}>{row.agencyName}</td>
                          <td className="px-2 py-3 text-gray-500 max-w-[120px] truncate text-xs" title={row.companyName}>{row.companyName}</td>
