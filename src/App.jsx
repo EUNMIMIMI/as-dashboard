@@ -30,13 +30,10 @@ try {
     appId: import.meta.env.VITE_FIREBASE_APP_ID || ""
   };
 } catch (e) {
-  // 환경변수가 없는 환경(캔버스 등)에서 발생하는 에러 무시
+  // 환경변수가 없는 환경 무시
 }
 
-const firebaseConfig = isCanvasEnv 
-  ? JSON.parse(__firebase_config) 
-  : localConfig;
-
+const firebaseConfig = isCanvasEnv ? JSON.parse(__firebase_config) : localConfig;
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -304,7 +301,6 @@ const getUniqueCount = (dataList, statusFilter) => {
   return uniqueRecords.size;
 };
 
-// %와 건수 모두를 보여주는 도넛 차트 컴포넌트
 const MultiDonutChart = ({ data, size = 180, strokeWidth = 16 }) => {
   const total = data.reduce((acc, item) => acc + item.value, 0);
   const radius = 50 - strokeWidth / 2;
@@ -372,7 +368,6 @@ const MultiDonutChart = ({ data, size = 180, strokeWidth = 16 }) => {
   );
 };
 
-// 일반 A/S와 고객불만을 비교하여 %와 건수 모두를 보여주는 도넛 차트
 const DonutChart = ({ normal, complaint, size = 180, strokeWidth = 16 }) => {
   const total = normal + complaint;
   const radius = 50 - strokeWidth / 2;
@@ -428,7 +423,7 @@ const DonutChart = ({ normal, complaint, size = 180, strokeWidth = 16 }) => {
            </text>
         )}
       </svg>
-      <div className="absolute flex flex-col items-center justify-center text-center bg-white rounded-full" style={{ width: '48%', height: '48%' }}>
+      <div className="absolute flex flex-col items-center justify-center text-center bg-white rounded-full" style={{ width: '55%', height: '55%' }}>
         <span className="text-[10px] text-gray-500 mb-0.5">총 접수</span>
         <span className="text-sm font-bold text-gray-900 leading-none">{total}건</span>
       </div>
@@ -436,7 +431,6 @@ const DonutChart = ({ normal, complaint, size = 180, strokeWidth = 16 }) => {
   );
 };
 
-// 납기 준수 및 지연을 보여주는 도넛 차트
 const ComplianceDonutChart = ({ onTime, delayed, size = 180, strokeWidth = 16 }) => {
   const total = onTime + delayed;
   const radius = 50 - strokeWidth / 2;
@@ -505,7 +499,6 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
   return (
     <div className={`w-full flex justify-center items-center ${heightClass}`}>
       <svg viewBox={`0 0 ${w} ${h}`} className="w-full max-w-full h-full font-sans">
-        {/* Background grid */}
         {[0, 0.25, 0.5, 0.75, 1].map(ratio => {
           const yPos = py + ch * ratio;
           return (
@@ -517,7 +510,6 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
 
         {type === 'mixed' ? (
           <>
-            {/* Bars for Total */}
             {data.map((d, i) => {
               const barH = (d.total / maxVal) * ch;
               const xPos = getX(i);
@@ -529,8 +521,6 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
                 </g>
               );
             })}
-
-            {/* Line and Dots for Complaint */}
             {data.length > 1 && <polyline points={complaintPoints} fill="none" stroke="#ef4444" strokeWidth="3" />}
             {data.map((d, i) => (
               <g key={`dot-${i}`}>
@@ -541,7 +531,6 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
           </>
         ) : (
           <>
-            {/* Line and Dots for Total */}
             {data.length > 1 && <polyline points={totalPoints} fill="none" stroke="#b91c1c" strokeWidth="2.5" />}
             {data.map((d, i) => (
               <g key={`total-dot-${i}`}>
@@ -550,8 +539,6 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
                 <text x={getX(i)} y={h - 15} textAnchor="middle" fontSize="13" fill="#6b7280" fontWeight="bold">{d.year}년</text>
               </g>
             ))}
-
-            {/* Line and Dots for Complaint */}
             {data.length > 1 && <polyline points={complaintPoints} fill="none" stroke="#fca5a5" strokeWidth="2.5" />}
             {data.map((d, i) => (
               <g key={`comp-dot-${i}`}>
@@ -562,7 +549,6 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
           </>
         )}
 
-        {/* Legend */}
         <g transform={`translate(${w/2 - 80}, ${h - 2})`}>
           {type === 'mixed' ? (
             <>
@@ -577,7 +563,6 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
               <polyline points="0,-5 20,-5" fill="none" stroke="#b91c1c" strokeWidth="2" />
               <circle cx="10" cy="-5" r="4" fill="#b91c1c" />
               <text x="26" y="-2" fontSize="12" fill="#4b5563" fontWeight="bold">A/S접수건수</text>
-              
               <polyline points="95,-5 115,-5" fill="none" stroke="#fca5a5" strokeWidth="2" />
               <circle cx="105" cy="-5" r="4" fill="#fca5a5" />
               <text x="120" y="-2" fontSize="12" fill="#4b5563" fontWeight="bold">고객불만</text>
@@ -613,7 +598,6 @@ const HorizontalBarChart = ({ data, color }) => {
 
 const ModelHorizontalBarChart = ({ data }) => {
   if (!data || data.length === 0) return <div className="text-sm text-gray-400 flex items-center justify-center h-full w-full">데이터가 없습니다.</div>;
-
   const maxVal = Math.max(...data.map(d => d.total));
 
   return (
@@ -762,7 +746,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // PDF.js 동적 로드 (CDN 방식)
   useEffect(() => {
     if (!window.pdfjsLib) {
       const script = document.createElement('script');
@@ -781,16 +764,9 @@ export default function App() {
     
     const unsubscribe = onSnapshot(colRef, (snapshot) => {
       const records = [];
-      const now = Date.now();
-      const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
-
       snapshot.forEach(docSnap => {
         const d = docSnap.data();
-        if (d.deletedAt && (now - d.deletedAt > THREE_DAYS_MS)) {
-          deleteDoc(doc(db, getCollectionPath(), docSnap.id)).catch(console.error);
-        } else {
-          records.push({ id: docSnap.id, ...d });
-        }
+        records.push({ id: docSnap.id, ...d });
       });
       
       const mappedRecords = records.map(d => {
@@ -1140,13 +1116,9 @@ export default function App() {
     }));
   }, [processedData]);
 
-  // -------------------------------------------------------------
-  // [메인 테이블 조회용 데이터 탭 처리]
-  // -------------------------------------------------------------
   const visibleBusinessUnits = useMemo(() => {
     if (!currentUserRole) return [];
     if (isQM) return ['전체', ...FIXED_UNITS_ORDER, '미입력', '집계'];
-    // 일반 담당자는 '전체' 탭 안 보이고 소속 탭과 '집계' 탭만 보임
     return [...currentUserRole.tabs, '집계'];
   }, [currentUserRole, isQM]);
   
@@ -1154,7 +1126,6 @@ export default function App() {
     if (activeTab === '휴지통') return processedDeletedData;
 
     let baseData = processedData; 
-    // 권한이 없으면 자신이 포함된 사업부 탭 데이터만 열람 가능
     if (!isQM) {
       baseData = processedData.filter(item => currentUserRole?.tabs.includes(item.businessUnit));
     }
@@ -1415,24 +1386,6 @@ export default function App() {
     customAlert('데이터가 성공적으로 복구되었습니다.');
   };
 
-  const handlePtBoardTypeChange = (id, newType) => {
-    setPendingUploadData(prev => 
-      prev.map(item => item.id === id ? { ...item, ptBoardType: newType } : item)
-    );
-  };
-
-  const executeUpload = (records) => {
-    if (!user) {
-      customAlert('데이터베이스 연결이 안되어 업로드할 수 없습니다.');
-      return;
-    }
-    records.forEach(async (record) => {
-      await setDoc(doc(db, getCollectionPath(), String(record.id)), record);
-    });
-    customAlert(`${records.length}건의 데이터를 성공적으로 업로드 중입니다.`);
-  };
-
-  // --- PDF 파싱 기능 (Y좌표 기반 구조화 + Regex 혼합 엔진) ---
   const parsePDF = async (e) => {
     const file = e.target.files[0];
     if (!file || !window.pdfjsLib) {
@@ -1443,45 +1396,71 @@ export default function App() {
     try {
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      
-      let allItems = [];
-      
-      // 1. 모든 페이지의 텍스트 아이템 추출
-      for (let i = 1; i <= pdf.numPages; i++) {
+      const totalPages = pdf.numPages;
+
+      let pageLines = {}; 
+
+      for (let i = 1; i <= totalPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
-        allItems = allItems.concat(textContent.items);
+
+        // 좌표 기반 줄바꿈 정렬
+        let items = textContent.items.map(item => ({
+          str: item.str.trim(),
+          x: item.transform[4],
+          y: item.transform[5]
+        })).filter(item => item.str !== '' && item.str !== '|' && item.str !== '☐' && item.str !== '☑');
+
+        items.sort((a, b) => {
+          if (Math.abs(b.y - a.y) > 5) return b.y - a.y; // 5px 오차 내에서 같은 줄로 취급
+          return a.x - b.x;
+        });
+
+        let lines = [];
+        let currentLine = [];
+        let lastY = -1;
+
+        items.forEach(item => {
+          if (lastY === -1 || Math.abs(lastY - item.y) <= 5) {
+            currentLine.push(item);
+            lastY = item.y;
+          } else {
+            lines.push(currentLine);
+            currentLine = [item];
+            lastY = item.y;
+          }
+        });
+        if (currentLine.length > 0) lines.push(currentLine);
+        pageLines[i] = lines;
       }
 
-      // 2. Y좌표(내림차순) -> X좌표(오름차순) 정렬 (오차범위 6px 허용)
-      allItems.sort((a, b) => {
-          if (Math.abs(b.transform[5] - a.transform[5]) > 6) {
-              return b.transform[5] - a.transform[5];
-          }
-          return a.transform[4] - b.transform[4];
-      });
-
-      // 3. 단어 단위 배열 및 전체 텍스트 문자열 생성 (Regex 분석용)
-      const allWords = allItems.map(i => i.str.trim()).filter(s => s !== '' && s !== '|');
-      const fullText = allWords.join(' ');
-
-      // 4. 단일 항목 추출 (Regex 엔진 적용 - 문맥 상관없이 가장 정확함)
+      // 1 & 2: 접수번호, 진행상태 (고정)
       const asNumber = file.name.replace(/\.[^/.]+$/, "");
-      
+
+      // 3. 수주번호: 맨 마지막 페이지 [생산의뢰서] 또는 [생산의뢰 서] 바로 다음 위치의 텍스트 무조건 추출
       let orderNumber = '';
-      const orderMatch = fullText.match(/\[생산의뢰서\]\s*([A-Za-z0-9]+)/);
-      if (orderMatch) orderNumber = orderMatch[1];
+      const lastPageLines = pageLines[totalPages] || [];
+      for (let i = 0; i < lastPageLines.length; i++) {
+        const lineStr = lastPageLines[i].map(it => it.str).join('').replace(/\s/g, '');
+        if (lineStr.includes('생산의뢰서')) {
+          if (i + 1 < lastPageLines.length) {
+            orderNumber = lastPageLines[i + 1].map(it => it.str).join(' ').trim();
+            if (!orderNumber || orderNumber.includes('거래처')) {
+               orderNumber = lastPageLines[i + 1][0]?.str || '';
+            }
+          }
+          break;
+        }
+      }
 
-      const processType = fullText.includes('NX06000920') ? '견적 후 착수' : '선조치';
+      // 4. 처리방식: 마지막 페이지에서 'NX06000920' 포함 여부 검사
+      let processType = '선조치';
+      const lastPageFullText = lastPageLines.flat().map(it => it.str).join('');
+      if (lastPageFullText.includes('NX06000920')) {
+        processType = '견적 후 착수';
+      }
 
-      let agencyName = '';
-      const agencyMatch = fullText.match(/대리점명\s+([^\s]+)/);
-      if (agencyMatch) agencyName = agencyMatch[1];
-
-      let companyName = '';
-      const companyMatch = fullText.match(/고객명\s+([^\s]+)/);
-      if (companyMatch) companyName = companyMatch[1];
-
+      // 5 & 6. 접수일자(업로드일), 납기요구일(+5영업일)
       const today = new Date();
       const yy = String(today.getFullYear()).slice(-2);
       const mm = String(today.getMonth() + 1).padStart(2, '0');
@@ -1489,120 +1468,110 @@ export default function App() {
       const receiptDate = `${yy}.${mm}.${dd}`;
       const reqDeliveryDate = addBusinessDays(receiptDate, 5);
 
-      // 5. 사업부 결정 로직
+      // 7 & 8. 대리점명, 업체명 추출 (배열 인덱스를 추적하여 무조건 우측 텍스트를 정확하게 집어냄)
+      let agencyName = '';
+      let companyName = '';
+      const firstPageLines = pageLines[1] || [];
+      
+      for (let i = 0; i < firstPageLines.length; i++) {
+         const line = firstPageLines[i];
+         for(let j = 0; j < line.length; j++) {
+            if (line[j].str.includes('대리점명') && j + 1 < line.length) {
+                agencyName = line[j+1].str.replace('대리점 담당자', '').trim();
+            }
+            if (line[j].str.includes('고객명') && j + 1 < line.length) {
+                companyName = line[j+1].str.replace('고객 담당자', '').trim();
+            }
+         }
+      }
+
+      // 9 ~ 14. 표(Table) 내부 항목 분리 추출 (다중 데이터 완벽 호환)
+      let rows = [];
+      let inTable = false;
+      
+      for (let i = 0; i < firstPageLines.length; i++) {
+         const line = firstPageLines[i];
+         const lineText = line.map(it => it.str).join('');
+         
+         if (!inTable && (lineText.includes('제품명') || lineText.includes('Model'))) {
+             inTable = true;
+             continue;
+         }
+         
+         if (inTable && (lineText.includes('처리 방법') || lineText.includes('처리방법'))) {
+             break; 
+         }
+         
+         if (inTable) {
+             let firstItemStr = line[0].str.trim();
+             let isNewRow = /^\d+$/.test(firstItemStr) && firstItemStr.length <= 2;
+             
+             if (isNewRow) {
+                 rows.push({ items: line.slice(1) }); // 숫자는 제외하고 배열에 삽입
+             } else if (rows.length > 0) {
+                 rows[rows.length - 1].items.push(...line);
+             }
+         }
+      }
+
+      let extractedRows = [];
+      rows.forEach(r => {
+         let rowObj = { model: '', qtyDefect: 1, serialNo: '', releaseDate: '', originalOrderNumber: '', defectContent: '' };
+         r.items.sort((a,b) => a.x - b.x); // X 좌표 기준으로 재정렬
+         
+         let defectStrs = [];
+         let modelStrs = [];
+         
+         r.items.forEach(it => {
+            const text = it.str;
+            if (!rowObj.qtyDefect_found && /^\d+$/.test(text) && text !== '1' && text.length < 4) {
+               rowObj.qtyDefect = parseInt(text, 10);
+               rowObj.qtyDefect_found = true;
+            } else if (!rowObj.serialNo && /^[A-Z0-9]+[A-Z0-9\-]*\d+[A-Z0-9\-]*$/.test(text) && text.length >= 6) {
+               rowObj.serialNo = text;
+            } else if (!rowObj.releaseDate && /\d{2,4}[-.]\d{1,2}([-.]\d{1,2})?/.test(text)) {
+               rowObj.releaseDate = text;
+            } else if (!rowObj.originalOrderNumber && /^[A-Z]{2,}\d+/.test(text)) {
+               rowObj.originalOrderNumber = text;
+            } else if (it.x > 500) {
+               defectStrs.push(text);
+            } else if (it.x < 300) {
+               modelStrs.push(text);
+            } else {
+               if (it.x > 400) defectStrs.push(text);
+               else modelStrs.push(text);
+            }
+         });
+         
+         rowObj.model = modelStrs.join(' ').trim();
+         rowObj.defectContent = defectStrs.join(' ').trim();
+         
+         const allText = r.items.map(it=>it.str).join(' ');
+         if (allText.includes('성적서') && !rowObj.defectContent.includes('성적서')) {
+            rowObj.defectContent = '성적서 ' + rowObj.defectContent;
+         }
+         if (!rowObj.qtyDefect_found) {
+             const match = allText.match(/\s(\d+)\s/);
+             if (match && parseInt(match[1]) > 0) rowObj.qtyDefect = parseInt(match[1]);
+         }
+         extractedRows.push(rowObj);
+      });
+
+      // 사업부 (수주번호 기반)
       let businessUnit = 'PMD';
       const orderNumUpper = orderNumber.toUpperCase();
       if (orderNumUpper.startsWith('P1')) businessUnit = 'PMD';
-      else if (orderNumUpper.startsWith('UHP') || orderNumUpper.startsWith('P3')) businessUnit = 'PG';
+      else if (orderNumUpper.startsWith('UHP') || orderNumUpper.startsWith('SMT')) businessUnit = 'SMT';
+      else if (orderNumUpper.startsWith('P3') || orderNumUpper.startsWith('PG')) businessUnit = 'PG';
       else if (orderNumUpper.startsWith('P4')) businessUnit = 'PT';
       else if (orderNumUpper.startsWith('T')) businessUnit = 'TMD';
       else if (orderNumUpper.startsWith('F')) businessUnit = 'FLD';
-      else if (orderNumUpper.startsWith('SMT')) businessUnit = 'SMT';
 
-      // 6. 표(Table) 항목 추출 로직 (라인별 그룹화 엔진)
-      let lines = [];
-      let currentLine = [];
-      let lastY = -1;
-
-      allItems.forEach(item => {
-          const str = item.str.trim();
-          if (!str || str === '|') return; 
-          
-          if (lastY === -1 || Math.abs(lastY - item.transform[5]) <= 6) {
-              currentLine.push(str);
-              lastY = item.transform[5];
-          } else {
-              lines.push(currentLine);
-              currentLine = [str];
-              lastY = item.transform[5];
-          }
-      });
-      if (currentLine.length > 0) lines.push(currentLine);
-
-      let extractedRows = [];
-      let inTable = false;
-      let currentRow = null;
-
-      for (let i = 0; i < lines.length; i++) {
-          const lineStrs = lines[i];
-          const lineText = lineStrs.join(' ');
-
-          // 테이블 시작 및 종료 감지
-          if (lineText.includes('제품명') || lineText.includes('Model')) {
-              inTable = true;
-              continue;
-          }
-          if (inTable && (lineText.includes('처리 방법') || lineText.includes('견적 후 착수') || lineText.includes('선조치'))) {
-              inTable = false;
-              break;
-          }
-
-          if (inTable) {
-              // 순번(1, 2, 3...)으로 시작하는 행이면 새로운 데이터
-              if (/^\d+$/.test(lineStrs[0])) {
-                  currentRow = {
-                      model: '', qtyDefect: 1, serialNo: '', releaseDate: '', originalOrderNumber: '', defectContent: ''
-                  };
-                  
-                  // 수량(숫자) 위치를 찾아 모델명 분리
-                  let qtyIdx = lineStrs.findIndex((t, idx) => idx > 0 && /^\d+$/.test(t));
-                  if (qtyIdx !== -1) {
-                      currentRow.model = lineStrs.slice(1, qtyIdx).join(' ').replace(/EA|SET/ig, '').trim();
-                      currentRow.qtyDefect = parseInt(lineStrs[qtyIdx], 10);
-                  } else {
-                      currentRow.model = lineStrs[1] || '';
-                  }
-
-                  // 나머지 필드들 순회하며 정규식으로 판별
-                  for (let j = 1; j < lineStrs.length; j++) {
-                      const t = lineStrs[j];
-                      
-                      // 기존주문번호 판단 (P1, P3, P4, UHP, SAZ, AGZ, AHZ 등)
-                      if (/^(P1|P3|P4|UHP|SAZ|AGZ|AHZ)[A-Z0-9]{4,}/i.test(t)) {
-                           currentRow.originalOrderNumber = t;
-                      } 
-                      // 시리얼번호 판단 (PT, P, TM, R 등 + 숫자)
-                      else if (!currentRow.serialNo && /^[A-Z0-9]{8,}$/i.test(t) && /^[A-Z]/i.test(t) && t !== currentRow.model && t !== orderNumber) {
-                           currentRow.serialNo = t;
-                      } 
-                      // 출고일자 판단
-                      else if (!currentRow.releaseDate && /\d{2,4}[-.]\d{1,2}([-.]\d{1,2})?/.test(t)) {
-                           currentRow.releaseDate = formatDisplayDate(t);
-                      } 
-                      // 위 조건에 안걸리고 수량 뒤에 있으면 하자내용
-                      else if (qtyIdx !== -1 && j > qtyIdx && !['EA', 'SET'].includes(t.toUpperCase())) {
-                           currentRow.defectContent += t + ' ';
-                      }
-                  }
-                  
-                  // 문맥상 성적서가 포함되면 덮어쓰기
-                  if (lineText.includes('성적서')) currentRow.defectContent = '성적서 발행 요청';
-
-                  currentRow.defectContent = currentRow.defectContent.trim();
-                  extractedRows.push(currentRow);
-              } else if (currentRow) {
-                  // 순번으로 안시작하면 이전 행의 하자내용이 줄바꿈 된 것으로 간주
-                  if (lineText.includes('성적서')) currentRow.defectContent = '성적서 발행 요청';
-                  else currentRow.defectContent += ' ' + lineText;
-              }
-          }
-      }
-      
-      // 표 추출 완전 실패 시 Fallback (최소 1개의 빈 데이터 폼 유지)
       if (extractedRows.length === 0) {
-          extractedRows.push({
-              model: '',
-              qtyDefect: 1,
-              serialNo: '',
-              releaseDate: '',
-              originalOrderNumber: '',
-              defectContent: fullText.includes('성적서') ? '성적서 발행 요청' : ''
-          });
+         extractedRows.push({ model: '', qtyDefect: 1, serialNo: '', releaseDate: '', originalOrderNumber: '', defectContent: '' });
       }
 
-      // 7. 객체 조립 및 DB 삽입
       const buildRecord = (rowData, index) => {
-          const isReport = rowData.defectContent.includes('성적서');
           return {
               id: Date.now() + index,
               asNumber: asNumber,
@@ -1620,24 +1589,23 @@ export default function App() {
               reqDeliveryDate: reqDeliveryDate,
               processDate: '',
               businessUnit: businessUnit,
-              currentStatus: '접수 완료', // 무조건 접수 완료
+              currentStatus: '접수 완료', // 모든 문서는 무조건 접수 완료
               ptBoardType: businessUnit === 'PT' ? 'N' : '',
               claimType: '일반 A/S',
-              repairMethod: isReport ? '유상수리' : '',
+              repairMethod: '',
               causeAnalysisTypes: [],
               processDetailType: '',
               causeAnalysis: '',
               processDetails: '',
-              cost: isReport ? (rowData.qtyDefect || 1) * 1000 : ''
+              cost: ''
           };
       };
 
-      // 첫 번째 데이터는 화면(Form)에 렌더링
       const firstRecord = buildRecord(extractedRows[0], 0);
       setFormData(firstRecord);
       setIsFormOpen(true);
 
-      // 2개 이상일 경우 즉시 DB에 리스트로 등록
+      // 항목이 2개 이상일 경우, 첫 번째를 제외하고 즉시 DB로 다중 저장
       if (extractedRows.length > 1) {
           for (let j = 1; j < extractedRows.length; j++) {
               const extraRecord = buildRecord(extractedRows[j], j);
@@ -1652,7 +1620,18 @@ export default function App() {
       console.error("PDF Parsing Error:", error);
       customAlert('PDF 파일 분석 중 오류가 발생했습니다. 수기로 작성해주세요.');
     }
-    e.target.value = null; // input 초기화
+    e.target.value = null;
+  };
+
+  const executeUpload = (records) => {
+    if (!user) {
+      customAlert('데이터베이스 연결이 안되어 업로드할 수 없습니다.');
+      return;
+    }
+    records.forEach(async (record) => {
+      await setDoc(doc(db, getCollectionPath(), String(record.id)), record);
+    });
+    customAlert(`${records.length}건의 데이터를 성공적으로 업로드 중입니다.`);
   };
 
   const parseCSVText = (text) => {
@@ -1703,7 +1682,6 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target.result;
-      
       const rows = parseCSVText(text);
       if (rows.length < 3) return customAlert('유효한 데이터가 부족합니다. (헤더 2줄 포함 필요)');
       
@@ -2447,7 +2425,7 @@ export default function App() {
                           <span className="font-black text-red-600">{stat.avgDelay}일</span>
                         </div>
                      </div>
-                     <button onClick={() => handleCopyChart(`compliance-chart-${stat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                     <button onClick={() => handleCopyChart(`compliance-chart-${stat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
                        <Copy className="w-4 h-4" />
                      </button>
                   </div>
@@ -2482,7 +2460,7 @@ export default function App() {
                          <div className="flex justify-between text-sm bg-red-50 p-2.5 rounded border border-red-100 text-red-800"><span>고객 불만 건수</span> <strong>{aggregatedStats.reduce((a,c) => a+c.complaint, 0)}건</strong></div>
                       </div>
                     )}
-                    <button onClick={() => handleCopyChart('overall-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                    <button onClick={() => handleCopyChart('overall-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
                       <Copy className="w-4 h-4" />
                     </button>
                  </div>
@@ -2516,7 +2494,7 @@ export default function App() {
                          </div>
                        ))}
                     </div>
-                    <button onClick={() => handleCopyChart('sub-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                    <button onClick={() => handleCopyChart('sub-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
                       <Copy className="w-4 h-4" />
                     </button>
                  </div>
@@ -2551,7 +2529,7 @@ export default function App() {
                         </div>
                       ))}
                     </div>
-                    <button onClick={() => handleCopyChart(`model-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                    <button onClick={() => handleCopyChart(`model-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
                       <Copy className="w-4 h-4" />
                     </button>
                   </div>
@@ -2583,7 +2561,7 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                  <button onClick={() => handleCopyChart('grouped-cause-chart')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                  <button onClick={() => handleCopyChart('grouped-cause-chart')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
                     <Copy className="w-4 h-4" />
                   </button>
                 </div>
@@ -2602,7 +2580,7 @@ export default function App() {
                           <HorizontalBarChart data={buStat.processesArr} color="bg-teal-500" />
                         </div>
                       </div>
-                      <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                      <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
                         <Copy className="w-4 h-4" />
                       </button>
                     </div>
@@ -2631,7 +2609,7 @@ export default function App() {
                         <YearlyTrendChart data={unitData} type={yearlyTabChartType[bu] === 'mixed' ? 'mixed' : 'line'} />
                       </div>
                       
-                      <button onClick={() => handleCopyChart(`yearly-chart-${bu}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
+                      <button onClick={() => handleCopyChart(`yearly-chart-${bu}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
                         <Copy className="w-4 h-4" />
                       </button>
                     </div>
@@ -2696,7 +2674,7 @@ export default function App() {
                      {activeTab === '휴지통' && <th scope="col" className="px-4 py-3 text-center whitespace-nowrap text-red-500">남은 기한</th>}
                      <th scope="col" className="px-2 py-3 text-center whitespace-nowrap w-1">사업부</th>
                      <th scope="col" className="px-2 py-3 text-center whitespace-nowrap w-[60px]">상태</th>
-                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap w-full min-w-[120px]">접수번호</th>
+                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap w-full min-w-[104px]">접수번호</th>
                      <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">수주번호</th>
                      <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">대리점</th>
                      <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">업체명</th>
@@ -2721,7 +2699,7 @@ export default function App() {
                          )}
                          <td className="px-2 py-3 font-medium text-gray-900 text-xs text-center w-1">{row.businessUnit}</td>
                          <td className="px-2 py-3 text-center align-middle w-[60px]">{renderStatusBadge(row)}</td>
-                         <td className="px-4 py-3 text-blue-600 font-bold text-xs w-full min-w-[120px]">{row.asNumber}</td>
+                         <td className="px-4 py-3 text-blue-600 font-bold text-xs w-full min-w-[104px]">{row.asNumber}</td>
                          <td className="px-4 py-3 text-gray-500 text-xs">{row.orderNumber}</td>
                          <td className="px-2 py-3 text-gray-900 max-w-[120px] truncate text-xs" title={row.agencyName}>{row.agencyName}</td>
                          <td className="px-2 py-3 text-gray-500 max-w-[120px] truncate text-xs" title={row.companyName}>{row.companyName}</td>
@@ -3097,7 +3075,6 @@ export default function App() {
                  <input type="file" accept=".pdf" ref={pdfInputRef} onChange={parsePDF} className="hidden" />
                  <button type="button" onClick={() => pdfInputRef.current.click()} className="px-6 py-2 border border-blue-200 rounded-lg font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 transition-colors flex items-center gap-2 shadow-sm"><Upload className="w-4 h-4" /> PDF 등록</button>
                </div>
-               
                <div className="flex gap-3">
                  <button type="button" onClick={() => setIsFormOpen(false)} className="px-6 py-2 border rounded-lg font-bold bg-white hover:bg-gray-100 transition-colors">취소</button>
                  {isQM && <button type="button" onClick={handleFormSubmitInternal} className="px-8 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md hover:bg-blue-700 transition-all flex items-center gap-2"><Save className="w-4 h-4" /> 저장하기</button>}
