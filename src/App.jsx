@@ -1435,82 +1435,156 @@ export default function App() {
       const pdf = await window.pdfjsLib.getDocument(arrayBuffer).promise;
       
       let fullText = '';
+      let textItems = [];
+
+      // 전체 페이지 텍스트 아이템화 및 병합
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
+        
+        // 아이템 배열을 저장 (순차 탐색용)
+        textContent.items.forEach(item => {
+          const str = item.str.trim();
+          if (str && str !== '|') textItems.push(str);
+        });
+        
         const pageText = textContent.items.map(item => item.str).join(' ');
         fullText += pageText + ' ';
       }
       
-      // 정규식을 활용한 데이터 추출
-      const fileNameMatch = file.name.match(/(.+?)\.pdf$/i);
-      const asNumber = fileNameMatch ? fileNameMatch[1] : '';
+      // 1. 접수번호: 파일명 (확장자 제외)
+      const asNumber = file.name.replace(/\.[^/.]+$/, "");
 
-      const orderNumberMatch = fullText.match(/\[생산의뢰서\]\s*([A-Z0-9]+)/i);
-      const orderNumber = orderNumberMatch ? orderNumberMatch[1].trim() : '';
+      // 2. 수주번호: [생산의뢰서] 하단의 볼드 텍스트
+      let orderNumber = '';
+      const orderMatch = fullText.match(/\[생산의뢰서\]\s*([A-Z0-9]+)/);
+      if (orderMatch) orderNumber = orderMatch[1];
+      else {
+        // 대체 정규식: P1~P4로 시작하는 10자리 문자
+        const fallbackOrder = textItems.find(t => /^P[1-4][A-Z0-9]{8,}/.test(t));
+        if (fallbackOrder) orderNumber = fallbackOrder;
+      }
 
-      const processTypeMatch = fullText.match(/NX06000920/);
-      const processType = processTypeMatch ? '견적 후 착수' : '선조치';
+      // 3. 처리방식: NX06000920 포함 여부
+      const processType = fullText.includes('NX06000920') ? '견적 후 착수' : '선조치';
 
-      const agencyMatch = fullText.match(/대리점명\s*\|\s*([^\s|]+)/);
-      const agencyName = agencyMatch ? agencyMatch[1].trim() : '';
+      // 4. 대리점명
+      let agencyName = '';
+      const agencyIdx = textItems.findIndex(t => t.includes('대리점명'));
+      if (agencyIdx !== -1) {
+        for (let i = agencyIdx + 1; i < agencyIdx + 5; i++) {
+          // 불필요 문자 스킵 후 한글 이름 추출
+          if (textItems[i] && /[가-힣]/.test(textItems[i]) && !textItems[i].includes('담당자')) {
+            agencyName = textItems[i];
+            break;
+          }
+        }
+      }
 
-      const companyMatch = fullText.match(/고객명\s*\|\s*([^\s|]+)/);
-      const companyName = companyMatch ? companyMatch[1].trim() : '';
+      // 5. 업체명 (고객명)
+      let companyName = '';
+      const companyIdx = textItems.findIndex(t => t.includes('고객명'));
+      if (companyIdx !== -1) {
+        for (let i = companyIdx + 1; i < companyIdx + 4; i++) {
+          if (textItems[i] && /[가-힣(주)]/.test(textItems[i]) && !textItems[i].includes('담당자')) {
+            companyName = textItems[i];
+            break;
+          }
+        }
+      }
 
-      const qtyMatch = fullText.match(/의뢰수량\s*\|\s*(\d+)/);
-      const qtyDefect = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
+      // 6. 모델명 (제품명)
+      let model = '';
+      // 순번 '1'과 관련된 문자열 찾기
+      const oneIdx = textItems.findIndex(t => t === '1');
+      if (oneIdx !== -1 && textItems[oneIdx + 1]) {
+        let candidate = textItems[oneIdx + 1];
+        if (candidate.length > 2 && candidate !== 'EA') model = candidate;
+        // WQ-390 예외처리: 1440 P252 처럼 띄어쓰기가 나뉜 경우 합침
+        if (model === '1440' && textItems[oneIdx + 2]) {
+          model = '1440 ' + textItems[oneIdx + 2];
+        }
+      }
+      if (!model) {
+        // 대체 정규식
+        const regexModel = textItems.find(t => /^PT\d+/.test(t) || /^P\d{3}/.test(t));
+        if (regexModel) model = regexModel;
+      }
 
-      const modelMatch = fullText.match(/제품명\s*\(Model\)\s*\|\s*([^|]+)/);
-      const model = modelMatch ? modelMatch[1].trim() : '';
+      // 7. 시리얼 번호
+      let serialNo = '';
+      const serialMatch = fullText.match(/\b(P[T]?\d{8,})\b/);
+      if (serialMatch && serialMatch[1] !== orderNumber) {
+        serialNo = serialMatch[1];
+      }
 
-      const releaseDateMatch = fullText.match(/출고일자\s*\|\s*([^|]+)/);
-      const releaseDate = releaseDateMatch ? formatDisplayDate(releaseDateMatch[1].trim()) : '';
+      // 8. 기존주문번호
+      let originalOrderNumber = '';
+      const allPNums = [...fullText.matchAll(/\b(P[A-Z0-9]{8,})\b/g)].map(m => m[1]);
+      const origMatch = allPNums.find(p => p !== orderNumber && p !== serialNo && p.startsWith('P'));
+      if (origMatch) originalOrderNumber = origMatch;
 
-      const origOrderMatch = fullText.match(/기존\s*주문번호\s*\|\s*([^|]+)/);
-      const originalOrderNumber = origOrderMatch ? origOrderMatch[1].trim() : '';
+      // 9. 불량 수량
+      let qtyDefect = 1;
+      const qtyMatch = fullText.match(/(\d+)\s*EA/i);
+      if (qtyMatch) qtyDefect = parseInt(qtyMatch[1], 10);
 
-      const serialMatch = fullText.match(/시리얼 번호\s*\(Serial No\.\)\s*\|\s*([^|]+)/);
-      const serialNo = serialMatch ? serialMatch[1].trim() : '';
+      // 10. 출고일자 (정규식 탐색)
+      let releaseDate = '';
+      const dateMatch = fullText.match(/(\d{4}[-.]\d{2}[-.]\d{2})/);
+      // 의뢰일자(보통 오늘)와 겹치지 않는 다른 날짜를 찾기
+      if (dateMatch && !dateMatch[1].includes(String(new Date().getFullYear()))) {
+        releaseDate = formatDisplayDate(dateMatch[1]);
+      }
 
-      const defectMatch = fullText.match(/하자 내용\s*\(상세히 기재바랍니다\.\)\s*\|\s*([^|]+)/);
-      const defectContent = defectMatch ? defectMatch[1].trim() : '';
+      // 11. 하자내용
+      let defectContent = '';
+      if (fullText.includes('성적서')) {
+        defectContent = '성적서 발행 요청';
+      } else {
+        const defectIdx = textItems.findIndex(t => t.includes('하자 내용'));
+        if (defectIdx !== -1 && textItems[defectIdx + 1]) {
+           defectContent = textItems[defectIdx + 1];
+        }
+      }
 
+      // 12. 사업부 자동 판별 (수주번호 기준)
+      let businessUnit = 'PMD';
+      if (orderNumber) {
+        const orderNum = orderNumber.toUpperCase();
+        if (orderNum.startsWith('P1')) businessUnit = 'PMD';
+        else if (orderNum.startsWith('UHP') || orderNum.startsWith('P3')) businessUnit = 'PG';
+        else if (orderNum.startsWith('P4')) businessUnit = 'PT';
+        else if (orderNum.startsWith('T')) businessUnit = 'TMD';
+        else if (orderNum.startsWith('F')) businessUnit = 'FLD';
+        else if (orderNum.startsWith('SMT')) businessUnit = 'SMT';
+      }
+
+      // 13. 접수일자 및 납기요구일 세팅
       const today = new Date();
       const yy = String(today.getFullYear()).slice(-2);
       const mm = String(today.getMonth() + 1).padStart(2, '0');
       const dd = String(today.getDate()).padStart(2, '0');
       const receiptDate = `${yy}.${mm}.${dd}`;
 
-      // 사업부 자동 판별
-      let businessUnit = 'PMD';
-      if (orderNumber) {
-        const orderNum = orderNumber.toUpperCase();
-        if (orderNum.startsWith('P1')) businessUnit = 'PMD';
-        else if (orderNum.startsWith('UHP') || orderNum.startsWith('SMT')) businessUnit = 'SMT';
-        else if (orderNum.startsWith('P3') || orderNum.startsWith('PG')) businessUnit = 'PG';
-        else if (orderNum.startsWith('P4')) businessUnit = 'PT';
-        else if (orderNum.startsWith('T')) businessUnit = 'TMD';
-        else if (orderNum.startsWith('F')) businessUnit = 'FLD';
-      }
-
+      // 폼 데이터 일괄 업데이트
       setFormData({
         id: Date.now(),
-        asNumber,
-        orderNumber,
-        agencyName,
-        companyName,
-        model,
-        qtyDefect,
-        serialNo,
-        releaseDate,
-        originalOrderNumber,
-        defectContent,
-        processType,
-        receiptDate,
+        asNumber: asNumber,
+        orderNumber: orderNumber,
+        agencyName: agencyName,
+        companyName: companyName,
+        model: model,
+        qtyDefect: qtyDefect,
+        serialNo: serialNo,
+        releaseDate: releaseDate,
+        originalOrderNumber: originalOrderNumber,
+        defectContent: defectContent,
+        processType: processType,
+        receiptDate: receiptDate,
         reqDeliveryDate: addBusinessDays(receiptDate, 5),
-        businessUnit,
-        currentStatus: '접수 완료', // PDF 업로드 시 기본 상태
+        businessUnit: businessUnit,
+        currentStatus: '접수 완료', // 말씀하신 대로 고정
         ptBoardType: businessUnit === 'PT' ? 'N' : '',
         claimType: '일반 A/S',
         repairMethod: '',
@@ -1518,11 +1592,12 @@ export default function App() {
         processDetailType: '',
         processDate: '',
         causeAnalysis: '',
-        processDetails: ''
+        processDetails: '',
+        cost: defectContent.includes('성적서') ? qtyDefect * 1000 : ''
       });
 
       setIsFormOpen(true);
-      customAlert('PDF 데이터가 성공적으로 추출되었습니다. 폼을 확인해주세요.');
+      customAlert('PDF 데이터가 성공적으로 추출되었습니다. 내용을 확인해주세요.');
 
     } catch (error) {
       console.error("PDF Parsing Error:", error);
