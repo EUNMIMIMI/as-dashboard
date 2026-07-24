@@ -702,6 +702,7 @@ export default function App() {
   const [showPtBoardModal, setShowPtBoardModal] = useState(false);
   
   const fileInputRef = useRef(null);
+  const pdfInputRef = useRef(null);
 
   const customAlert = (message) => setAlertMessage(message);
   const isQM = currentUserRole?.name === '품질경영팀';
@@ -1214,34 +1215,23 @@ export default function App() {
     let bgColor = hexColor;
     let text = status;
     let Icon = config ? config.icon : Clock;
-    let displayLines = [];
 
     if (status === '종결') {
-      if (row.complianceStatus === '준수') { bgColor = '#10b981'; Icon = CheckCircle2; displayLines = ['준수']; }
-      else if (row.complianceStatus === '지연') { bgColor = '#ef4444'; Icon = AlertCircle; displayLines = ['지연']; }
-      else { bgColor = hexColor; Icon = Archive; displayLines = ['종결']; }
-    } else {
-      if (status === '접수 대기') displayLines = ['접수', '대기'];
-      else if (status === '접수 완료') displayLines = ['접수', '완료'];
-      else if (status === '견적 승인 대기') displayLines = ['견적', '대기'];
-      else if (status === '수리 중') displayLines = ['수리 중'];
-      else if (status === '수리 완료') displayLines = ['수리', '완료'];
-      else displayLines = text.split(' ');
+      if (row.complianceStatus === '준수') { bgColor = '#10b981'; Icon = CheckCircle2; text = '준수'; }
+      else if (row.complianceStatus === '지연') { bgColor = '#ef4444'; Icon = AlertCircle; text = '지연'; }
+      else { bgColor = hexColor; Icon = Archive; text = '종결'; }
     }
+
+    const words = text.split(' ');
 
     return (
       <span 
-        className="inline-flex flex-col items-center justify-center p-1 rounded text-[10px] font-bold shadow-sm w-[52px] leading-tight mx-auto" 
+        className="inline-flex flex-col items-center justify-center p-1 rounded text-[10px] font-bold shadow-sm w-[46px] leading-tight whitespace-normal break-keep mx-auto" 
         style={{ backgroundColor: bgColor, color: '#fff', textShadow: '0 1px 1px rgba(0,0,0,0.2)' }}
       >
         <Icon className="w-3.5 h-3.5 mb-0.5" />
-        <span className="text-center whitespace-nowrap">
-          {displayLines.map((line, i) => (
-            <React.Fragment key={i}>
-              {line}
-              {i < displayLines.length - 1 && <br/>}
-            </React.Fragment>
-          ))}
+        <span className="text-center">
+          {words.map((w, i) => <React.Fragment key={i}>{w}{i < words.length - 1 && <br/>}</React.Fragment>)}
         </span>
       </span>
     );
@@ -1416,6 +1406,130 @@ export default function App() {
       await setDoc(doc(db, getCollectionPath(), String(record.id)), record);
     });
     customAlert(`${records.length}건의 데이터를 성공적으로 업로드 중입니다.`);
+  };
+
+  // PDF.js 워커 설정 (CDN 사용)
+  useEffect(() => {
+    const loadPdfJs = async () => {
+      if (!window.pdfjsLib) {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js';
+        script.onload = () => {
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+        };
+        document.head.appendChild(script);
+      }
+    };
+    loadPdfJs();
+  }, []);
+
+  const parsePDF = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !window.pdfjsLib) {
+      customAlert('PDF 파싱 모듈이 로드되지 않았거나 파일이 없습니다.');
+      return;
+    }
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await window.pdfjsLib.getDocument(arrayBuffer).promise;
+      
+      let fullText = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map(item => item.str).join(' ');
+        fullText += pageText + ' ';
+      }
+      
+      // 정규식을 활용한 데이터 추출
+      const fileNameMatch = file.name.match(/(.+?)\.pdf$/i);
+      const asNumber = fileNameMatch ? fileNameMatch[1] : '';
+
+      const orderNumberMatch = fullText.match(/\[생산의뢰서\]\s*([A-Z0-9]+)/i);
+      const orderNumber = orderNumberMatch ? orderNumberMatch[1].trim() : '';
+
+      const processTypeMatch = fullText.match(/NX06000920/);
+      const processType = processTypeMatch ? '견적 후 착수' : '선조치';
+
+      const agencyMatch = fullText.match(/대리점명\s*\|\s*([^\s|]+)/);
+      const agencyName = agencyMatch ? agencyMatch[1].trim() : '';
+
+      const companyMatch = fullText.match(/고객명\s*\|\s*([^\s|]+)/);
+      const companyName = companyMatch ? companyMatch[1].trim() : '';
+
+      const qtyMatch = fullText.match(/의뢰수량\s*\|\s*(\d+)/);
+      const qtyDefect = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
+
+      const modelMatch = fullText.match(/제품명\s*\(Model\)\s*\|\s*([^|]+)/);
+      const model = modelMatch ? modelMatch[1].trim() : '';
+
+      const releaseDateMatch = fullText.match(/출고일자\s*\|\s*([^|]+)/);
+      const releaseDate = releaseDateMatch ? formatDisplayDate(releaseDateMatch[1].trim()) : '';
+
+      const origOrderMatch = fullText.match(/기존\s*주문번호\s*\|\s*([^|]+)/);
+      const originalOrderNumber = origOrderMatch ? origOrderMatch[1].trim() : '';
+
+      const serialMatch = fullText.match(/시리얼 번호\s*\(Serial No\.\)\s*\|\s*([^|]+)/);
+      const serialNo = serialMatch ? serialMatch[1].trim() : '';
+
+      const defectMatch = fullText.match(/하자 내용\s*\(상세히 기재바랍니다\.\)\s*\|\s*([^|]+)/);
+      const defectContent = defectMatch ? defectMatch[1].trim() : '';
+
+      const today = new Date();
+      const yy = String(today.getFullYear()).slice(-2);
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      const receiptDate = `${yy}.${mm}.${dd}`;
+
+      // 사업부 자동 판별
+      let businessUnit = 'PMD';
+      if (orderNumber) {
+        const orderNum = orderNumber.toUpperCase();
+        if (orderNum.startsWith('P1')) businessUnit = 'PMD';
+        else if (orderNum.startsWith('UHP') || orderNum.startsWith('SMT')) businessUnit = 'SMT';
+        else if (orderNum.startsWith('P3') || orderNum.startsWith('PG')) businessUnit = 'PG';
+        else if (orderNum.startsWith('P4')) businessUnit = 'PT';
+        else if (orderNum.startsWith('T')) businessUnit = 'TMD';
+        else if (orderNum.startsWith('F')) businessUnit = 'FLD';
+      }
+
+      setFormData({
+        id: Date.now(),
+        asNumber,
+        orderNumber,
+        agencyName,
+        companyName,
+        model,
+        qtyDefect,
+        serialNo,
+        releaseDate,
+        originalOrderNumber,
+        defectContent,
+        processType,
+        receiptDate,
+        reqDeliveryDate: addBusinessDays(receiptDate, 5),
+        businessUnit,
+        currentStatus: '접수 완료', // PDF 업로드 시 기본 상태
+        ptBoardType: businessUnit === 'PT' ? 'N' : '',
+        claimType: '일반 A/S',
+        repairMethod: '',
+        causeAnalysisTypes: [],
+        processDetailType: '',
+        processDate: '',
+        causeAnalysis: '',
+        processDetails: ''
+      });
+
+      setIsFormOpen(true);
+      customAlert('PDF 데이터가 성공적으로 추출되었습니다. 폼을 확인해주세요.');
+
+    } catch (error) {
+      console.error("PDF Parsing Error:", error);
+      customAlert('PDF 파일 분석 중 오류가 발생했습니다.');
+    }
+    
+    e.target.value = null; // Input 초기화
   };
 
   const parseCSVText = (text) => {
@@ -2459,7 +2573,7 @@ export default function App() {
                      {activeTab === '휴지통' && <th scope="col" className="px-4 py-3 text-center whitespace-nowrap text-red-500">남은 기한</th>}
                      <th scope="col" className="px-2 py-3 text-center whitespace-nowrap w-1">사업부</th>
                      <th scope="col" className="px-2 py-3 text-center whitespace-nowrap w-[60px]">상태</th>
-                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap w-full min-w-[104px]">접수번호</th>
+                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap w-full min-w-[120px]">접수번호</th>
                      <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">수주번호</th>
                      <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">대리점</th>
                      <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">업체명</th>
@@ -2484,7 +2598,7 @@ export default function App() {
                          )}
                          <td className="px-2 py-3 font-medium text-gray-900 text-xs text-center w-1">{row.businessUnit}</td>
                          <td className="px-2 py-3 text-center align-middle w-[60px]">{renderStatusBadge(row)}</td>
-                         <td className="px-4 py-3 text-blue-600 font-bold text-xs w-full min-w-[104px]">{row.asNumber}</td>
+                         <td className="px-4 py-3 text-blue-600 font-bold text-xs w-full min-w-[120px]">{row.asNumber}</td>
                          <td className="px-4 py-3 text-gray-500 text-xs">{row.orderNumber}</td>
                          <td className="px-2 py-3 text-gray-900 max-w-[120px] truncate text-xs" title={row.agencyName}>{row.agencyName}</td>
                          <td className="px-2 py-3 text-gray-500 max-w-[120px] truncate text-xs" title={row.companyName}>{row.companyName}</td>
@@ -2856,7 +2970,9 @@ export default function App() {
                </div>
             </form>
             <div className="p-6 border-t flex justify-end gap-3 bg-gray-50 rounded-b-2xl">
-               <button onClick={() => setIsFormOpen(false)} className="px-6 py-2 border rounded-lg font-bold bg-white hover:bg-gray-100">취소</button>
+               <input type="file" accept=".pdf" ref={pdfInputRef} onChange={parsePDF} className="hidden" />
+               <button onClick={() => pdfInputRef.current.click()} className="px-6 py-2 border border-blue-200 rounded-lg font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 mr-auto transition-colors flex items-center gap-2"><Upload className="w-4 h-4" /> PDF 등록</button>
+               <button onClick={() => setIsFormOpen(false)} className="px-6 py-2 border rounded-lg font-bold bg-white hover:bg-gray-100 transition-colors">취소</button>
                {isQM && <button onClick={handleFormSubmitInternal} className="px-8 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md hover:bg-blue-700 transition-all flex items-center gap-2"><Save className="w-4 h-4" /> 저장하기</button>}
             </div>
           </div>
@@ -2870,7 +2986,7 @@ export default function App() {
               <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
               <h3 className="text-xl font-bold mb-2">데이터를 삭제하시겠습니까?</h3>
               <p className="text-gray-500 text-sm mb-6">삭제된 데이터는 품질팀 관리하에 복구가 가능할 때까지 보관됩니다.</p>
-              <div className="flex gap-3">
+              <div className="flex gap-3 mt-6">
                  <button onClick={() => setItemToDelete(null)} className="flex-1 py-3 border rounded-xl font-bold hover:bg-gray-50">취소</button>
                  <button onClick={executeDelete} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg hover:bg-red-700">삭제하기</button>
               </div>
@@ -2879,7 +2995,7 @@ export default function App() {
       )}
 
       {alertMessage && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] bg-gray-900 text-white px-6 py-3 rounded-full shadow-2xl animate-in slide-in-from-bottom-5 duration-300 flex items-center gap-3">
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] bg-gray-900/90 text-white px-8 py-3.5 rounded-full shadow-2xl animate-in slide-in-from-bottom-5 duration-300 flex items-center gap-3">
            <CheckCircle className="text-green-400 w-5 h-5" /> {alertMessage}
            <button onClick={() => setAlertMessage('')} className="ml-2 hover:text-gray-300"><X className="w-4 h-4" /></button>
         </div>
@@ -2901,11 +3017,11 @@ export default function App() {
 }
 
 function DetailItem({ label, value, isMultiline = false }) {
-  if (!value || value === 0) value = '-';
+  if (!value || value === 0 || value === '-') value = '-';
   return (
     <div>
-      <div className="text-[10px] text-gray-400 font-bold uppercase mb-1">{label}</div>
-      <div className={`text-sm text-gray-900 font-medium ${isMultiline ? 'whitespace-pre-wrap leading-relaxed' : ''}`}>{value}</div>
+      <div className="text-[10px] text-gray-400 font-black uppercase mb-1">{label}</div>
+      <div className={`text-sm text-gray-900 font-bold ${isMultiline ? 'whitespace-pre-wrap leading-relaxed' : ''}`}>{value}</div>
     </div>
   );
 }
@@ -2913,7 +3029,7 @@ function DetailItem({ label, value, isMultiline = false }) {
 function FormGroup({ label, children }) {
   return (
     <div className="space-y-1">
-      <label className="text-xs font-bold text-gray-500 ml-1">{label}</label>
+      <label className="text-xs font-black text-gray-600 ml-1">{label}</label>
       {children}
     </div>
   );
