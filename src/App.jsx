@@ -762,7 +762,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // PDF.js 동적 로드
+  // PDF.js 동적 로드 (CDN 방식)
   useEffect(() => {
     if (!window.pdfjsLib) {
       const script = document.createElement('script');
@@ -1228,23 +1228,34 @@ export default function App() {
     let bgColor = hexColor;
     let text = status;
     let Icon = config ? config.icon : Clock;
+    let displayLines = [];
 
     if (status === '종결') {
-      if (row.complianceStatus === '준수') { bgColor = '#10b981'; Icon = CheckCircle2; text = '준수'; }
-      else if (row.complianceStatus === '지연') { bgColor = '#ef4444'; Icon = AlertCircle; text = '지연'; }
-      else { bgColor = hexColor; Icon = Archive; text = '종결'; }
+      if (row.complianceStatus === '준수') { bgColor = '#10b981'; Icon = CheckCircle2; displayLines = ['준수']; }
+      else if (row.complianceStatus === '지연') { bgColor = '#ef4444'; Icon = AlertCircle; displayLines = ['지연']; }
+      else { bgColor = hexColor; Icon = Archive; displayLines = ['종결']; }
+    } else {
+      if (status === '접수 대기') displayLines = ['접수', '대기'];
+      else if (status === '접수 완료') displayLines = ['접수', '완료'];
+      else if (status === '견적 승인 대기') displayLines = ['견적', '대기'];
+      else if (status === '수리 중') displayLines = ['수리 중'];
+      else if (status === '수리 완료') displayLines = ['수리', '완료'];
+      else displayLines = text.split(' ');
     }
-
-    const words = text.split(' ');
 
     return (
       <span 
-        className="inline-flex flex-col items-center justify-center p-1 rounded text-[10px] font-bold shadow-sm w-[46px] leading-tight whitespace-normal break-keep mx-auto" 
+        className="inline-flex flex-col items-center justify-center p-1 rounded text-[10px] font-bold shadow-sm w-[52px] leading-tight mx-auto" 
         style={{ backgroundColor: bgColor, color: '#fff', textShadow: '0 1px 1px rgba(0,0,0,0.2)' }}
       >
         <Icon className="w-3.5 h-3.5 mb-0.5" />
-        <span className="text-center">
-          {words.map((w, i) => <React.Fragment key={i}>{w}{i < words.length - 1 && <br/>}</React.Fragment>)}
+        <span className="text-center whitespace-nowrap">
+          {displayLines.map((line, i) => (
+            <React.Fragment key={i}>
+              {line}
+              {i < displayLines.length - 1 && <br/>}
+            </React.Fragment>
+          ))}
         </span>
       </span>
     );
@@ -1421,7 +1432,7 @@ export default function App() {
     customAlert(`${records.length}건의 데이터를 성공적으로 업로드 중입니다.`);
   };
 
-  // PDF 파싱 기능 (전면 개편: 위치 기반 탐색 강화)
+  // --- PDF 파싱 기능 (Y좌표 기반 구조화) ---
   const parsePDF = async (e) => {
     const file = e.target.files[0];
     if (!file || !window.pdfjsLib) {
@@ -1434,72 +1445,42 @@ export default function App() {
       const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       
       let fullText = '';
-      let textItems = [];
-      
+      let page1Items = []; // 1페이지 전용 텍스트 아이템 (좌표 포함)
+      let allItems = []; // 전체 페이지 텍스트 아이템
+
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
-        const pageItems = textContent.items.map(item => item.str.trim()).filter(t => t !== '' && t !== '|');
-        textItems = textItems.concat(pageItems);
-        fullText += pageItems.join(' ') + ' ';
+        
+        // 아이템들을 Y좌표(세로)와 X좌표(가로) 순으로 정렬하여 읽기 쉽게 만듦
+        const sortedItems = textContent.items
+          .filter(item => item.str.trim() !== '' && item.str.trim() !== '|')
+          .map(item => ({
+             text: item.str.trim(),
+             x: item.transform[4],
+             y: item.transform[5]
+          }))
+          .sort((a, b) => b.y - a.y || a.x - b.x); // Y 내림차순(위에서 아래로), X 오름차순(왼쪽에서 오른쪽으로)
+
+        if (i === 1) page1Items = sortedItems;
+        allItems = allItems.concat(sortedItems);
+        fullText += sortedItems.map(item => item.text).join(' ') + ' ';
       }
 
-      // 1. 접수번호 (파일명)
+      // 1. 접수번호: 파일명에서 확장자 제거
       const asNumber = file.name.replace(/\.[^/.]+$/, "");
 
-      // 2. 수주번호 (마지막 페이지 [생산의뢰서] 바로 아래 위치한 텍스트 무조건 가져오기)
+      // 2. 수주번호: 문서 전체에서 [생산의뢰서] 바로 다음 아이템 가져오기
       let orderNumber = '';
-      const prodReqIdx = textItems.findIndex(t => t.includes('[생산의뢰서]'));
-      if (prodReqIdx !== -1) {
-          for (let k = prodReqIdx + 1; k < textItems.length; k++) {
-              if (textItems[k].trim() !== '') {
-                  orderNumber = textItems[k].trim();
-                  break;
-              }
-          }
-      } 
-      if (!orderNumber) {
-          const orderMatch = fullText.match(/\[생산의뢰서\]\s*([^\s]+)/);
-          if (orderMatch) orderNumber = orderMatch[1];
+      const prodReqIdx = allItems.findIndex(item => item.text.includes('[생산의뢰서]'));
+      if (prodReqIdx !== -1 && prodReqIdx + 1 < allItems.length) {
+        orderNumber = allItems[prodReqIdx + 1].text.trim();
       }
-
-      // 3. 처리방식 (NX06000920 포함 여부 검사)
+      
+      // 3. 처리방식: 문서 전체에 NX06000920이 포함되어 있으면 "견적 후 착수" 아니면 "선조치"
       const processType = fullText.includes('NX06000920') ? '견적 후 착수' : '선조치';
 
-      // 4. 대리점명
-      let agencyName = '';
-      const agencyIdx = textItems.findIndex(t => t.includes('대리점명'));
-      if (agencyIdx !== -1) {
-          for(let i=1; i<=5; i++){
-              if (agencyIdx + i >= textItems.length) break;
-              const text = textItems[agencyIdx + i].trim();
-              if (text && text !== '대리점 담당자' && text !== '의뢰일') {
-                  const parts = text.split(/\s+/);
-                  if (parts.length > 1 && /^[A-Za-z0-9_-]+$/.test(parts[0])) {
-                      agencyName = parts.slice(1).join(' '); 
-                  } else {
-                      agencyName = text;
-                  }
-                  break;
-              }
-          }
-      }
-
-      // 5. 고객명/업체명
-      let companyName = '';
-      const compIdx = textItems.findIndex(t => t.includes('고객명'));
-      if (compIdx !== -1) {
-          for(let i=1; i<=5; i++){
-              if (compIdx + i >= textItems.length) break;
-              const text = textItems[compIdx + i].trim();
-              if (text && text !== '고객 담당자' && text !== '연락처' && text !== '프로젝트명') {
-                  companyName = text;
-                  break;
-              }
-          }
-      }
-
-      // 6. 접수일자 & 납기요구일 (오늘 날짜)
+      // 4. 접수일자 & 납기요구일 (오늘 날짜)
       const today = new Date();
       const yy = String(today.getFullYear()).slice(-2);
       const mm = String(today.getMonth() + 1).padStart(2, '0');
@@ -1507,35 +1488,136 @@ export default function App() {
       const receiptDate = `${yy}.${mm}.${dd}`;
       const reqDeliveryDate = addBusinessDays(receiptDate, 5);
 
-      // 7. 표 내부 항목 추출
-      let extractedRows = [];
-      const tableStart = textItems.findIndex(t => t.includes('Model') || t.includes('제품명'));
-      const tableEnd = textItems.findIndex((t, idx) => idx > tableStart && (t.includes('처리 방법') || t.includes('견적')));
-
-      if (tableStart !== -1 && tableEnd !== -1) {
-          let currentRow = null;
-          let expectedNum = 1;
-
-          for (let i = tableStart; i < tableEnd; i++) {
-              let t = textItems[i].trim();
-              if (t === String(expectedNum)) {
-                  if (currentRow) extractedRows.push(currentRow);
-                  currentRow = { model: '', qtyDefect: 1, serialNo: '', releaseDate: '', originalOrderNumber: '', defectContent: '' };
-                  expectedNum++;
-              } else if (currentRow) {
-                  if (!currentRow.model && (t.startsWith('PT') || t.startsWith('P') || /^\d/.test(t) && t.includes(' '))) currentRow.model = t;
-                  else if (!currentRow.serialNo && /^(PT\d{8,}|P\d{8,})$/.test(t) && !/^P[A-Z]/.test(t)) currentRow.serialNo = t;
-                  else if (!currentRow.originalOrderNumber && /^P[A-Z0-9]{8,}$/.test(t) && t !== orderNumber) currentRow.originalOrderNumber = t;
-                  else if (!currentRow.releaseDate && /\d{4}[-.]\d{2}[-.]\d{2}/.test(t)) currentRow.releaseDate = formatDisplayDate(t);
-                  else if (t === 'EA' && textItems[i-1] && /^\d+$/.test(textItems[i-1])) currentRow.qtyDefect = parseInt(textItems[i-1], 10);
-                  else if (/^\d{1,2}$/.test(t) && textItems[i+1] && /^(PT|P)\d{8,}$/.test(textItems[i+1])) currentRow.qtyDefect = parseInt(t, 10);
-                  else if (t.includes('성적서') || t.includes('발행')) currentRow.defectContent = '성적서 발행 요청';
-              }
-          }
-          if (currentRow) extractedRows.push(currentRow);
+      // 5. 대리점명 & 고객명 추출 (1페이지)
+      let agencyName = '';
+      let companyName = '';
+      
+      // 대리점명 찾기 (대리점명 바로 오른쪽 혹은 약간 아래쪽에 위치)
+      const agencyLabelItem = page1Items.find(i => i.text.includes('대리점명'));
+      if (agencyLabelItem) {
+         // 같은 줄(Y좌표 차이 5 이하)이면서 오른쪽에 있는 텍스트 중 첫번째 유효한 값
+         const candidates = page1Items.filter(i => Math.abs(i.y - agencyLabelItem.y) < 5 && i.x > agencyLabelItem.x);
+         if (candidates.length > 0) {
+            agencyName = candidates[0].text;
+            // 만약 P1BD... 같은 주문번호가 같이 붙어왔다면 제거
+            if (/^[A-Z0-9]+$/.test(agencyName.split(' ')[0])) {
+               agencyName = agencyName.split(' ').slice(1).join(' ');
+            }
+         }
       }
 
-      // 표 파싱 실패 시 폴백
+      // 고객명 찾기
+      const companyLabelItem = page1Items.find(i => i.text.includes('고객명'));
+      if (companyLabelItem) {
+         const candidates = page1Items.filter(i => Math.abs(i.y - companyLabelItem.y) < 5 && i.x > companyLabelItem.x);
+         if (candidates.length > 0) {
+            companyName = candidates[0].text;
+         }
+      }
+
+      // 6. 표(Table) 항목 추출 로직 (Y좌표 묶음 처리)
+      // 표의 시작(Model 등)과 끝(처리 방법 등) 사이의 항목만 추출
+      const tableStartIndex = page1Items.findIndex(i => i.text.includes('Model') || i.text.includes('제품명'));
+      const tableEndIndex = page1Items.findIndex((i, idx) => idx > tableStartIndex && (i.text.includes('처리 방법') || i.text.includes('견적')));
+
+      let extractedRows = [];
+      
+      if (tableStartIndex !== -1 && tableEndIndex !== -1) {
+         const tableItems = page1Items.slice(tableStartIndex + 1, tableEndIndex);
+         
+         // 같은 줄(Row)을 판별하기 위해 Y좌표 기준으로 그룹화 (오차범위 5)
+         const rows = [];
+         tableItems.forEach(item => {
+            // "1", "2" 같은 단순 숫자만 있는 행 찾기 방지, 어느정도 의미 있는 행에 편입
+            let added = false;
+            for (let r of rows) {
+               if (Math.abs(r.y - item.y) < 5) {
+                  r.items.push(item);
+                  added = true;
+                  break;
+               }
+            }
+            if (!added) rows.push({ y: item.y, items: [item] });
+         });
+
+         // 추출된 각 줄을 분석하여 모델, 수량 등 뽑아내기
+         rows.forEach(row => {
+            // X좌표 순으로 정렬
+            row.items.sort((a, b) => a.x - b.x);
+            const rowText = row.items.map(i => i.text).join(' ');
+
+            // 첫 단어가 순번(1, 2, 3...)인지 확인
+            const firstItem = row.items[0].text;
+            if (/^\d+$/.test(firstItem) && row.items.length > 1) {
+               
+               let model = '';
+               let serialNo = '';
+               let releaseDate = '';
+               let originalOrderNumber = '';
+               let qtyDefect = 1;
+               let defectContent = '';
+
+               row.items.forEach(item => {
+                  const t = item.text;
+                  // 모델명: PT로 시작하거나 P+숫자, 또는 숫자+P 조합 (예: 1440 P252)
+                  if (!model && (t.startsWith('PT') && t.length <= 6 || t.match(/^P\d{3}$/) || /^\d/.test(t) && t.includes('P'))) {
+                      model = t;
+                  } 
+                  // 시리얼번호: PT 또는 P 다음에 8자리 이상 숫자
+                  else if (!serialNo && /^(PT|P)\d{8,}$/.test(t) && !/^P[A-Z]/.test(t)) {
+                      serialNo = t;
+                  }
+                  // 기존수주번호: P 다음에 영문자 포함 패턴 (생산의뢰서와 다름)
+                  else if (!originalOrderNumber && /^P[A-Z0-9]{8,}$/.test(t) && t !== orderNumber) {
+                      originalOrderNumber = t;
+                  }
+                  // 출고일자: 202x-xx-xx 등
+                  else if (!releaseDate && /\d{4}[-.]\d{2}[-.]\d{2}/.test(t)) {
+                      releaseDate = formatDisplayDate(t);
+                  }
+                  // 수량: "EA" 앞의 숫자이거나, 단순히 앞단에 적힌 숫자
+                  else if (t === 'EA') {
+                      // EA가 있으면 앞의 텍스트가 숫자인지 한 번 더 체크(이미 추출됐을 수 있음)
+                  }
+                  // 하자내용: 성적서 관련
+                  else if (t.includes('성적서') || t.includes('발행')) {
+                      defectContent = '성적서 발행 요청';
+                  }
+               });
+
+               // 특별 케이스: 1440과 P252가 분리되어 인식된 경우 (WQ-390 케이스 대응)
+               if (!model && row.items.length > 2) {
+                   const possibleModel = row.items[1].text + ' ' + row.items[2].text;
+                   if (possibleModel.includes('1440 P252')) model = '1440 P252';
+                   else model = row.items[1].text; // 첫번째 컬럼 다음을 일단 모델로 잡음
+               }
+
+               // 수량 찾기: 1 1440 P252 1 EA -> 이 배열에서 모델 다음 숫자를 찾음
+               const qtyMatch = rowText.match(/(?:\s|^)(\d+)\s*(?:EA)?\s*(?:PT\d{8,}|P\d{8,})/);
+               if (qtyMatch) qtyDefect = parseInt(qtyMatch[1], 10);
+               else if (row.items.some(i => i.text === 'EA')) {
+                  const idx = row.items.findIndex(i => i.text === 'EA');
+                  if (idx > 0 && /^\d+$/.test(row.items[idx-1].text)) {
+                     qtyDefect = parseInt(row.items[idx-1].text, 10);
+                  }
+               }
+
+               // 데이터가 유효하면 푸시
+               if (model || serialNo || originalOrderNumber) {
+                  extractedRows.push({
+                      model: model || '',
+                      qtyDefect: qtyDefect || 1,
+                      serialNo: serialNo || '',
+                      releaseDate: releaseDate || '',
+                      originalOrderNumber: originalOrderNumber || '',
+                      defectContent: defectContent || (fullText.includes('성적서') ? '성적서 발행 요청' : '')
+                  });
+               }
+            }
+         });
+      }
+
+      // 7. 표 파싱 실패 시 폴백 (전체 텍스트에서 정규식으로 긁어오기)
       if(extractedRows.length === 0) {
           let modMatch = fullText.match(/\b(PT\d{3}|P\d{3}[A-Z0-9]*|1440\s*P252)\b/i);
           let serialMatch = fullText.match(/\b(PT\d{8,}|P\d{8,})\b/);
@@ -1561,10 +1643,6 @@ export default function App() {
               releaseDate: relDate,
               originalOrderNumber: orig,
               defectContent: fullText.includes('성적서') ? '성적서 발행 요청' : ''
-          });
-      } else {
-          extractedRows.forEach(row => {
-              if(!row.defectContent && fullText.includes('성적서')) row.defectContent = '성적서 발행 요청';
           });
       }
 
@@ -1614,6 +1692,7 @@ export default function App() {
           };
       };
 
+      // 8. 첫 번째 데이터는 폼 화면에 표시, 나머지는 즉시 DB에 추가
       const firstRecord = buildRecord(extractedRows[0], 0);
       setFormData(firstRecord);
       setIsFormOpen(true);
@@ -1623,7 +1702,7 @@ export default function App() {
               const extraRecord = buildRecord(extractedRows[j], j);
               await setDoc(doc(db, getCollectionPath(), String(extraRecord.id)), extraRecord);
           }
-          customAlert(`총 ${extractedRows.length}건의 항목이 감지되었습니다. 1건은 화면에 띄우고 나머지는 자동 등록했습니다.`);
+          customAlert(`총 ${extractedRows.length}건의 항목이 감지되었습니다. 1건은 폼에 세팅되고 나머지는 자동 등록되었습니다.`);
       } else {
           customAlert('PDF 데이터가 성공적으로 추출되었습니다. 폼을 확인해주세요.');
       }
@@ -2427,7 +2506,7 @@ export default function App() {
                           <span className="font-black text-red-600">{stat.avgDelay}일</span>
                         </div>
                      </div>
-                     <button onClick={() => handleCopyChart(`compliance-chart-${stat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
+                     <button onClick={() => handleCopyChart(`compliance-chart-${stat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
                        <Copy className="w-4 h-4" />
                      </button>
                   </div>
@@ -2462,7 +2541,7 @@ export default function App() {
                          <div className="flex justify-between text-sm bg-red-50 p-2.5 rounded border border-red-100 text-red-800"><span>고객 불만 건수</span> <strong>{aggregatedStats.reduce((a,c) => a+c.complaint, 0)}건</strong></div>
                       </div>
                     )}
-                    <button onClick={() => handleCopyChart('overall-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
+                    <button onClick={() => handleCopyChart('overall-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
                       <Copy className="w-4 h-4" />
                     </button>
                  </div>
@@ -2496,7 +2575,7 @@ export default function App() {
                          </div>
                        ))}
                     </div>
-                    <button onClick={() => handleCopyChart('sub-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
+                    <button onClick={() => handleCopyChart('sub-chart-container')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
                       <Copy className="w-4 h-4" />
                     </button>
                  </div>
@@ -2531,7 +2610,7 @@ export default function App() {
                         </div>
                       ))}
                     </div>
-                    <button onClick={() => handleCopyChart(`model-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
+                    <button onClick={() => handleCopyChart(`model-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
                       <Copy className="w-4 h-4" />
                     </button>
                   </div>
@@ -2563,7 +2642,7 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                  <button onClick={() => handleCopyChart('grouped-cause-chart')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
+                  <button onClick={() => handleCopyChart('grouped-cause-chart')} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
                     <Copy className="w-4 h-4" />
                   </button>
                 </div>
@@ -2582,7 +2661,7 @@ export default function App() {
                           <HorizontalBarChart data={buStat.processesArr} color="bg-teal-500" />
                         </div>
                       </div>
-                      <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
+                      <button onClick={() => handleCopyChart(`cause-chart-${buStat.unit}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
                         <Copy className="w-4 h-4" />
                       </button>
                     </div>
@@ -2611,7 +2690,7 @@ export default function App() {
                         <YearlyTrendChart data={unitData} type={yearlyTabChartType[bu] === 'mixed' ? 'mixed' : 'line'} />
                       </div>
                       
-                      <button onClick={() => handleCopyChart(`yearly-chart-${bu}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors z-10" title="차트 복사">
+                      <button onClick={() => handleCopyChart(`yearly-chart-${bu}`)} className="absolute bottom-4 right-4 p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors opacity-0 group-hover:opacity-100 z-10" title="차트 복사">
                         <Copy className="w-4 h-4" />
                       </button>
                     </div>
@@ -2676,7 +2755,7 @@ export default function App() {
                      {activeTab === '휴지통' && <th scope="col" className="px-4 py-3 text-center whitespace-nowrap text-red-500">남은 기한</th>}
                      <th scope="col" className="px-2 py-3 text-center whitespace-nowrap w-1">사업부</th>
                      <th scope="col" className="px-2 py-3 text-center whitespace-nowrap w-[60px]">상태</th>
-                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap w-full min-w-[104px]">접수번호</th>
+                     <th scope="col" className="px-4 py-3 text-left whitespace-nowrap w-full min-w-[120px]">접수번호</th>
                      <th scope="col" className="px-4 py-3 text-left whitespace-nowrap">수주번호</th>
                      <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">대리점</th>
                      <th scope="col" className="px-2 py-3 text-left whitespace-nowrap">업체명</th>
@@ -2701,7 +2780,7 @@ export default function App() {
                          )}
                          <td className="px-2 py-3 font-medium text-gray-900 text-xs text-center w-1">{row.businessUnit}</td>
                          <td className="px-2 py-3 text-center align-middle w-[60px]">{renderStatusBadge(row)}</td>
-                         <td className="px-4 py-3 text-blue-600 font-bold text-xs w-full min-w-[104px]">{row.asNumber}</td>
+                         <td className="px-4 py-3 text-blue-600 font-bold text-xs w-full min-w-[120px]">{row.asNumber}</td>
                          <td className="px-4 py-3 text-gray-500 text-xs">{row.orderNumber}</td>
                          <td className="px-2 py-3 text-gray-900 max-w-[120px] truncate text-xs" title={row.agencyName}>{row.agencyName}</td>
                          <td className="px-2 py-3 text-gray-500 max-w-[120px] truncate text-xs" title={row.companyName}>{row.companyName}</td>
