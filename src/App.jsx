@@ -1426,7 +1426,7 @@ export default function App() {
   const parsePDF = async (e) => {
     const file = e.target.files[0];
     if (!file || !window.pdfjsLib) {
-      customAlert('PDF 파싱 모듈이 로드되지 않았거나 파일이 없습니다.');
+      customAlert('PDF 파싱 모듈이 로드 중입니다. 잠시 후 다시 시도해주세요.');
       return;
     }
 
@@ -1436,33 +1436,30 @@ export default function App() {
       
       let fullText = '';
       let textItems = [];
+      let pagesText = [];
 
-      // 전체 페이지 텍스트 아이템화 및 병합
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
-        
-        // 아이템 배열을 저장 (순차 탐색용)
-        textContent.items.forEach(item => {
-          const str = item.str.trim();
-          if (str && str !== '|') textItems.push(str);
-        });
-        
-        const pageText = textContent.items.map(item => item.str).join(' ');
-        fullText += pageText + ' ';
+        // 공백 및 불필요한 표 기호(|) 제거 후 배열화
+        const pageItems = textContent.items.map(item => item.str.trim()).filter(t => t !== '' && t !== '|');
+        textItems = textItems.concat(pageItems);
+        fullText += pageItems.join(' ') + ' ';
+        pagesText.push(pageItems.join(' '));
       }
-      
+
       // 1. 접수번호: 파일명 (확장자 제외)
       const asNumber = file.name.replace(/\.[^/.]+$/, "");
 
-      // 2. 수주번호: [생산의뢰서] 하단의 볼드 텍스트
+      // 2. 수주번호: 마지막 페이지 [생산의뢰서] 하단의 P로 시작하는 문자열
       let orderNumber = '';
-      const orderMatch = fullText.match(/\[생산의뢰서\]\s*([A-Z0-9]+)/);
-      if (orderMatch) orderNumber = orderMatch[1];
-      else {
-        // 대체 정규식: P1~P4로 시작하는 10자리 문자
-        const fallbackOrder = textItems.find(t => /^P[1-4][A-Z0-9]{8,}/.test(t));
-        if (fallbackOrder) orderNumber = fallbackOrder;
+      const prodMatch = fullText.match(/\[생산의뢰서\]\s*(P[A-Z0-9]{8,})/);
+      if (prodMatch) {
+          orderNumber = prodMatch[1];
+      } else {
+          const lastPageText = pagesText[pagesText.length - 1] || fullText;
+          const fallbackProd = lastPageText.match(/\b(P[A-Z0-9]{8,})\b/g);
+          if (fallbackProd) orderNumber = fallbackProd[fallbackProd.length - 1]; 
       }
 
       // 3. 처리방식: NX06000920 포함 여부
@@ -1470,134 +1467,152 @@ export default function App() {
 
       // 4. 대리점명
       let agencyName = '';
-      const agencyIdx = textItems.findIndex(t => t.includes('대리점명'));
-      if (agencyIdx !== -1) {
-        for (let i = agencyIdx + 1; i < agencyIdx + 5; i++) {
-          // 불필요 문자 스킵 후 한글 이름 추출
-          if (textItems[i] && /[가-힣]/.test(textItems[i]) && !textItems[i].includes('담당자')) {
-            agencyName = textItems[i];
-            break;
-          }
-        }
+      const agencyMatch = fullText.match(/대리점명\s*(?:[A-Z0-9-]+\s*)?([가-힣]+(?:코리아|콘트롤|엔지니어링|계기|상사|산업|시스템)?)/);
+      if (agencyMatch && !agencyMatch[1].includes('담당자')) {
+           agencyName = agencyMatch[1];
+           if(agencyName.includes("우진계기")) agencyName = "우진계기콘트롤";
+           if(agencyName.includes("오토센서")) agencyName = "오토센서코리아";
+      } else {
+          const agencyIdx = textItems.findIndex(t => t.includes('대리점명'));
+          if (agencyIdx !== -1 && textItems[agencyIdx + 1]) agencyName = textItems[agencyIdx + 1].replace(/[A-Z0-9-]/g, '').trim();
       }
 
-      // 5. 업체명 (고객명)
+      // 5. 고객명 (업체명)
       let companyName = '';
-      const companyIdx = textItems.findIndex(t => t.includes('고객명'));
-      if (companyIdx !== -1) {
-        for (let i = companyIdx + 1; i < companyIdx + 4; i++) {
-          if (textItems[i] && /[가-힣(주)]/.test(textItems[i]) && !textItems[i].includes('담당자')) {
-            companyName = textItems[i];
-            break;
+      const compMatch = fullText.match(/고객명\s*([가-힣(주)]+)/);
+      if (compMatch && !compMatch[1].includes('담당자')) {
+          companyName = compMatch[1];
+      } else {
+          const compIdx = textItems.findIndex(t => t.includes('고객명'));
+          if (compIdx !== -1 && textItems[compIdx + 1]) companyName = textItems[compIdx + 1];
+      }
+
+      // 6. 모델명 및 다중 항목 추출
+      let extractedRows = [];
+      const startIdx = textItems.findIndex(t => t.includes('Model') || t.includes('제품명'));
+      if (startIdx !== -1) {
+          for (let i = startIdx; i < textItems.length; i++) {
+              if (/^[1-5]$/.test(textItems[i])) { // 순번 1, 2, 3... 감지
+                  const nextItem = textItems[i+1];
+                  if (nextItem && nextItem.length > 2 && /^[A-Za-z0-9-]+$/.test(nextItem)) {
+                      let mod = nextItem;
+                      // 1440 P252 등 띄어쓰기로 분리된 예외 처리
+                      if (mod === '1440' && textItems[i+2] === 'P252') mod = '1440 P252';
+                      extractedRows.push({ model: mod });
+                  }
+              }
+              if (textItems[i].includes('처리 방법') || textItems[i].includes('견적')) break;
           }
-        }
       }
-
-      // 6. 모델명 (제품명)
-      let model = '';
-      // 순번 '1'과 관련된 문자열 찾기
-      const oneIdx = textItems.findIndex(t => t === '1');
-      if (oneIdx !== -1 && textItems[oneIdx + 1]) {
-        let candidate = textItems[oneIdx + 1];
-        if (candidate.length > 2 && candidate !== 'EA') model = candidate;
-        // WQ-390 예외처리: 1440 P252 처럼 띄어쓰기가 나뉜 경우 합침
-        if (model === '1440' && textItems[oneIdx + 2]) {
-          model = '1440 ' + textItems[oneIdx + 2];
-        }
-      }
+      
+      let model = extractedRows.length > 0 ? extractedRows[0].model : '';
       if (!model) {
-        // 대체 정규식
-        const regexModel = textItems.find(t => /^PT\d+/.test(t) || /^P\d{3}/.test(t));
-        if (regexModel) model = regexModel;
+          const fallbackModel = fullText.match(/\b(PT\d{3}|P\d{3}[A-Z0-9]*|1440\s*P252)\b/);
+          if (fallbackModel) model = fallbackModel[1];
       }
 
-      // 7. 시리얼 번호
+      // 7. 시리얼 번호 및 기존주문번호
       let serialNo = '';
-      const serialMatch = fullText.match(/\b(P[T]?\d{8,})\b/);
-      if (serialMatch && serialMatch[1] !== orderNumber) {
-        serialNo = serialMatch[1];
-      }
-
-      // 8. 기존주문번호
       let originalOrderNumber = '';
-      const allPNums = [...fullText.matchAll(/\b(P[A-Z0-9]{8,})\b/g)].map(m => m[1]);
-      const origMatch = allPNums.find(p => p !== orderNumber && p !== serialNo && p.startsWith('P'));
-      if (origMatch) originalOrderNumber = origMatch;
+      const pMatches = fullText.match(/\b(P[T]?[A-Z0-9]{8,})\b/g) || [];
+      const uniquePMatches = [...new Set(pMatches)].filter(p => p !== orderNumber);
+      
+      const potentialSerials = uniquePMatches.filter(p => p.startsWith('PT') || /^P\d{8,}$/.test(p));
+      if (potentialSerials.length > 0) serialNo = potentialSerials[0];
 
-      // 9. 불량 수량
+      const potentialOrders = uniquePMatches.filter(p => p !== serialNo && /^P[A-Z0-9]{8,}$/.test(p));
+      if (potentialOrders.length > 0) originalOrderNumber = potentialOrders[0];
+
+      // 8. 불량수량
       let qtyDefect = 1;
-      const qtyMatch = fullText.match(/(\d+)\s*EA/i);
+      const qtyMatch = fullText.match(/\b(\d+)\s*EA\b/i);
       if (qtyMatch) qtyDefect = parseInt(qtyMatch[1], 10);
 
-      // 10. 출고일자 (정규식 탐색)
+      // 9. 출고일자
       let releaseDate = '';
-      const dateMatch = fullText.match(/(\d{4}[-.]\d{2}[-.]\d{2})/);
-      // 의뢰일자(보통 오늘)와 겹치지 않는 다른 날짜를 찾기
-      if (dateMatch && !dateMatch[1].includes(String(new Date().getFullYear()))) {
-        releaseDate = formatDisplayDate(dateMatch[1]);
+      const dateMatches = fullText.match(/(\d{4}[-.]\d{2}[-.]\d{2})/g);
+      if (dateMatches) {
+          const todayYr = new Date().getFullYear().toString();
+          const pastDates = dateMatches.filter(d => !d.includes(todayYr));
+          if (pastDates.length > 0) releaseDate = formatDisplayDate(pastDates[0]);
+          else releaseDate = formatDisplayDate(dateMatches[0]);
       }
 
-      // 11. 하자내용
+      // 10. 하자내용
       let defectContent = '';
       if (fullText.includes('성적서')) {
-        defectContent = '성적서 발행 요청';
+          defectContent = '성적서 발행 요청';
       } else {
-        const defectIdx = textItems.findIndex(t => t.includes('하자 내용'));
-        if (defectIdx !== -1 && textItems[defectIdx + 1]) {
-           defectContent = textItems[defectIdx + 1];
-        }
+          const defectMatch = fullText.match(/하자 내용.*?(기재바랍니다\.)?\s*([가-힣\s]+)/);
+          if (defectMatch && defectMatch[2]) defectContent = defectMatch[2].trim();
       }
 
-      // 12. 사업부 자동 판별 (수주번호 기준)
+      // 11. 사업부 자동 설정
       let businessUnit = 'PMD';
       if (orderNumber) {
-        const orderNum = orderNumber.toUpperCase();
-        if (orderNum.startsWith('P1')) businessUnit = 'PMD';
-        else if (orderNum.startsWith('UHP') || orderNum.startsWith('P3')) businessUnit = 'PG';
-        else if (orderNum.startsWith('P4')) businessUnit = 'PT';
-        else if (orderNum.startsWith('T')) businessUnit = 'TMD';
-        else if (orderNum.startsWith('F')) businessUnit = 'FLD';
-        else if (orderNum.startsWith('SMT')) businessUnit = 'SMT';
+          const orderNum = orderNumber.toUpperCase();
+          if (orderNum.startsWith('P1')) businessUnit = 'PMD';
+          else if (orderNum.startsWith('UHP') || orderNum.startsWith('P3')) businessUnit = 'PG';
+          else if (orderNum.startsWith('P4')) businessUnit = 'PT';
+          else if (orderNum.startsWith('T')) businessUnit = 'TMD';
+          else if (orderNum.startsWith('F')) businessUnit = 'FLD';
+          else if (orderNum.startsWith('SMT')) businessUnit = 'SMT';
+      } else if (model.startsWith('PT')) {
+          businessUnit = 'PT';
       }
 
-      // 13. 접수일자 및 납기요구일 세팅
+      // 공통 날짜 세팅 (업로드 당일 기준)
       const today = new Date();
       const yy = String(today.getFullYear()).slice(-2);
       const mm = String(today.getMonth() + 1).padStart(2, '0');
       const dd = String(today.getDate()).padStart(2, '0');
       const receiptDate = `${yy}.${mm}.${dd}`;
+      const reqDeliveryDate = addBusinessDays(receiptDate, 5); // 5영업일 후
 
-      // 폼 데이터 일괄 업데이트
-      setFormData({
-        id: Date.now(),
-        asNumber: asNumber,
-        orderNumber: orderNumber,
-        agencyName: agencyName,
-        companyName: companyName,
-        model: model,
-        qtyDefect: qtyDefect,
-        serialNo: serialNo,
-        releaseDate: releaseDate,
-        originalOrderNumber: originalOrderNumber,
-        defectContent: defectContent,
-        processType: processType,
-        receiptDate: receiptDate,
-        reqDeliveryDate: addBusinessDays(receiptDate, 5),
-        businessUnit: businessUnit,
-        currentStatus: '접수 완료', // 말씀하신 대로 고정
-        ptBoardType: businessUnit === 'PT' ? 'N' : '',
-        claimType: '일반 A/S',
-        repairMethod: '',
-        causeAnalysisTypes: [],
-        processDetailType: '',
-        processDate: '',
-        causeAnalysis: '',
-        processDetails: '',
-        cost: defectContent.includes('성적서') ? qtyDefect * 1000 : ''
+      // 데이터 객체 생성 헬퍼
+      const buildRecord = (modName, index) => ({
+          id: Date.now() + index,
+          asNumber: asNumber,
+          orderNumber: orderNumber,
+          agencyName: agencyName,
+          companyName: companyName,
+          model: modName,
+          qtyDefect: qtyDefect,
+          serialNo: serialNo,
+          releaseDate: releaseDate,
+          originalOrderNumber: originalOrderNumber,
+          defectContent: defectContent,
+          processType: processType,
+          receiptDate: receiptDate,
+          reqDeliveryDate: reqDeliveryDate,
+          processDate: '',
+          businessUnit: businessUnit,
+          currentStatus: '접수 완료', // 상태 고정
+          ptBoardType: businessUnit === 'PT' ? 'N' : '',
+          claimType: '일반 A/S',
+          repairMethod: defectContent.includes('성적서') ? '유상수리' : '',
+          causeAnalysisTypes: [],
+          processDetailType: '',
+          causeAnalysis: '',
+          processDetails: '',
+          cost: defectContent.includes('성적서') ? qtyDefect * 1000 : ''
       });
 
+      // 첫 번째 항목은 폼 화면에 세팅
+      const firstRecord = buildRecord(model, 0);
+      setFormData(firstRecord);
       setIsFormOpen(true);
-      customAlert('PDF 데이터가 성공적으로 추출되었습니다. 내용을 확인해주세요.');
+
+      // 다중 항목이 있는 경우, 두 번째 항목부터는 DB에 즉시 백그라운드 저장
+      if (extractedRows.length > 1) {
+          for (let j = 1; j < extractedRows.length; j++) {
+              const extraRecord = buildRecord(extractedRows[j].model, j);
+              await setDoc(doc(db, getCollectionPath(), String(extraRecord.id)), extraRecord);
+          }
+          customAlert(`총 ${extractedRows.length}건의 수리 항목이 감지되었습니다. 첫 번째 항목을 불러왔으며, 나머지는 자동 등록되었습니다.`);
+      } else {
+          customAlert('PDF 데이터가 성공적으로 추출되었습니다. 폼을 확인해주세요.');
+      }
 
     } catch (error) {
       console.error("PDF Parsing Error:", error);
