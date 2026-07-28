@@ -693,15 +693,10 @@ export default function App() {
 
   const [itemToDelete, setItemToDelete] = useState(null);
   const [itemToPermanentDelete, setItemToPermanentDelete] = useState(null);
-  const [alertMessage, setAlertMessage] = useState('');
+  const [noticeMessage, setNoticeMessage] = useState(''); // 강력한 공지 모달 상태 통합
   
   const fileInputRef = useRef(null);
 
-  const customAlert = (message) => {
-    setAlertMessage(message);
-    setTimeout(() => setAlertMessage(''), 3000);
-  };
-  
   const isQM = currentUserRole?.name === '품질경영팀';
 
   const todayStr = useMemo(() => {
@@ -765,8 +760,12 @@ export default function App() {
     
     const unsubscribe = onSnapshot(colRef, (snapshot) => {
       const records = [];
+      const now = Date.now();
+      const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+
       snapshot.forEach(docSnap => {
-        records.push({ id: docSnap.id, ...docSnap.data() });
+        const d = docSnap.data();
+        records.push({ id: docSnap.id, ...d });
       });
       
       const mappedRecords = records.map(d => {
@@ -1116,9 +1115,6 @@ export default function App() {
     }));
   }, [processedData]);
 
-  // -------------------------------------------------------------
-  // [메인 테이블 조회용 데이터 탭 처리]
-  // -------------------------------------------------------------
   const visibleBusinessUnits = useMemo(() => {
     if (!currentUserRole) return [];
     if (isQM) return ['전체', ...FIXED_UNITS_ORDER, '미입력', '집계'];
@@ -1354,7 +1350,7 @@ export default function App() {
   const handleFormSubmitInternal = async (e) => {
     e.preventDefault();
     if (!user) {
-      customAlert('데이터베이스에 연결 중입니다. 잠시 후 다시 시도해주세요.');
+      setNoticeMessage('데이터베이스에 연결 중입니다. 잠시 후 다시 시도해주세요.');
       return;
     }
 
@@ -1392,10 +1388,9 @@ export default function App() {
     if (!user || !isQM) return;
     await updateDoc(doc(db, getCollectionPath(), String(id)), { deletedAt: null });
     setSelectedRow(null);
-    customAlert('데이터가 성공적으로 복구되었습니다.');
+    setNoticeMessage('데이터가 성공적으로 복원되었습니다.');
   };
 
-  // --- 복구된 CSV 처리 기능 시작 ---
   const parseCSVText = (text) => {
     const rows = [];
     let currentRow = [];
@@ -1435,15 +1430,16 @@ export default function App() {
 
   const executeUpload = (records) => {
     if (!user) {
-      customAlert('데이터베이스 연결이 안되어 업로드할 수 없습니다.');
+      setNoticeMessage('데이터베이스 연결이 안되어 업로드할 수 없습니다.');
       return;
     }
     records.forEach(async (record) => {
       await setDoc(doc(db, getCollectionPath(), String(record.id)), record);
     });
-    customAlert(`${records.length}건의 데이터를 성공적으로 업로드했습니다.`);
+    setNoticeMessage(`축하합니다!\n총 ${records.length}건의 데이터가 성공적으로 업로드되었습니다.`);
   };
 
+  // CSV 업로드 기능 - 하이브리드 인코딩 대응 (UTF-8 우선 판독 후 깨지면 EUC-KR 재시도)
   const importFromCSV = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1452,12 +1448,9 @@ export default function App() {
     let defaultPtBoard = 'N';
     if (fileName.includes('ZMDI')) defaultPtBoard = 'ZMDI';
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target.result;
-      
+    const processCSV = (text) => {
       const rows = parseCSVText(text);
-      if (rows.length < 3) return customAlert('유효한 데이터가 부족합니다. (헤더 2줄 포함 필요)');
+      if (rows.length < 3) return setNoticeMessage('유효한 데이터가 부족합니다.\n(헤더 2줄 포함 필요)');
       
       const newRecords = [];
       const hasBUColumnAt2 = rows[0][2] && rows[0][2].replace(/\s/g, '').includes('사업부');
@@ -1562,14 +1555,26 @@ export default function App() {
       if(newRecords.length > 0) {
          executeUpload(newRecords);
       } else {
-         customAlert('업로드할 유효한 데이터 항목을 찾지 못했습니다.');
+         setNoticeMessage('업로드할 유효한 데이터 항목을 찾지 못했습니다.\n양식을 다시 확인해주세요.');
       }
     };
-    
-    reader.readAsText(file, 'euc-kr');
-    e.target.value = null;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target.result;
+      if (text.includes('')) {
+         // UTF-8로 읽었으나 한글이 깨진 경우 (EUC-KR로 재시도)
+         const eucReader = new FileReader();
+         eucReader.onload = (e) => processCSV(e.target.result);
+         eucReader.readAsText(file, 'euc-kr');
+      } else {
+         processCSV(text);
+      }
+    };
+    // 1차적으로 글로벌 표준인 UTF-8로 읽어들임
+    reader.readAsText(file, 'utf-8');
+    e.target.value = null; // 초기화
   };
-  // --- 복구된 CSV 처리 기능 끝 ---
 
   const handleCopyChart = (containerId) => {
     const el = document.getElementById(containerId);
@@ -1591,7 +1596,7 @@ export default function App() {
           'text/plain': textBlob
         });
         navigator.clipboard.write([item]).then(() => {
-          customAlert('그래프가 클립보드에 복사되었습니다.');
+          setNoticeMessage('그래프가 클립보드에 복사되었습니다.');
         }).catch(() => fallbackCopy(text));
       } catch (e) {
         fallbackCopy(text);
@@ -1608,7 +1613,7 @@ export default function App() {
     textArea.select();
     try {
       document.execCommand('copy');
-      customAlert('그래프가 클립보드에 텍스트로 복사되었습니다.');
+      setNoticeMessage('그래프가 클립보드에 텍스트로 복사되었습니다.');
     } catch (err) {}
     document.body.removeChild(textArea);
   };
@@ -1625,10 +1630,21 @@ export default function App() {
   const endPage = Math.min(startPage + maxVisiblePages - 1, totalPages);
   const visiblePages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
 
-  // --- 복구된 엑셀 및 CSV 다운로드 시작 ---
+  // 엑셀 다운로드 (동적 모듈 로드 오류 방지를 위해 내부 Script 태그 주입 방식으로 변경)
   const exportToExcel = async () => {
     try {
-      const XLSX = await import('https://esm.sh/xlsx-js-style');
+      if (!window.XLSX) {
+        setNoticeMessage('엑셀 변환 엔진을 불러오고 있습니다.\n잠시만 기다려주세요...');
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+      
+      const XLSX = window.XLSX;
       const targetData = activeTab === '집계' || activeTab === '보고서' ? allowedProcessedData : filteredData;
       
       const wsData = [
@@ -1730,15 +1746,16 @@ export default function App() {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "AS 접수대장");
       XLSX.writeFile(wb, `AS관리대장_${new Date().toISOString().slice(0,10)}.xlsx`);
-      customAlert("색상과 서식이 유지된 엑셀 파일이 다운로드되었습니다!");
+      setNoticeMessage("색상과 서식이 유지된 엑셀 파일이\n성공적으로 다운로드되었습니다!");
 
     } catch (error) {
       console.error(error);
-      customAlert("엑셀 변환 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+      setNoticeMessage("엑셀 변환 중 오류가 발생했습니다.\n인터넷 연결 상태를 확인하고 다시 시도해주세요.");
     }
   };
 
-  const exportToCSV = async () => {
+  // CSV 다운로드 (외부 모듈 없이 Native 브라우저 기능 사용)
+  const exportToCSV = () => {
     const header1 = '접수번호,수주번호,대리점명,업체명,MODEL,불량수량,하자내용,SERIAL No.,출고일자,기존주문번호,처리 방법,,,접수일,납기요구일,처리완료일,처리,,,,비용,원인 분석,,제품 원인,처리내역,사업부(시스템용),PT보드구분(시스템용)\n';
     const header2 = ',,,,,,,,,,견적 후 착수,선 조치,출장,,,,무상,유상,수리 불가,수리 취소,,일반 A/S,고객 불만,,,,\n';
     
@@ -1763,29 +1780,18 @@ export default function App() {
       csvContent += rowData.join(',') + '\n';
     });
 
-    const triggerDownload = (blob, filename) => {
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.setAttribute("href", url);
-      link.setAttribute("download", filename);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    };
+    // 외부 라이브러리(iconv)에 의존하지 않고 UTF-8 BOM(\uFEFF)을 추가하여 모든 엑셀에서 깨짐 없이 열리도록 적용
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `AS관리대장_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 
-    try {
-      const iconvModule = await import('https://esm.sh/iconv-lite');
-      const iconv = iconvModule.default || iconvModule;
-      const encodedBuffer = iconv.encode(csvContent, 'euc-kr');
-      const blob = new Blob([encodedBuffer], { type: 'text/csv;charset=euc-kr;' });
-      triggerDownload(blob, `AS관리대장_${new Date().toISOString().slice(0,10)}_EUC-KR.csv`);
-    } catch (error) {
-      console.warn("EUC-KR 인코딩 모듈 로드 실패", error);
-      const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-      triggerDownload(blob, `AS관리대장_${new Date().toISOString().slice(0,10)}.csv`);
-    }
+    setNoticeMessage("CSV 파일이 성공적으로 다운로드되었습니다!\n(엑셀 파일로 열어보시면 한글 깨짐 없이 정상 출력됩니다.)");
   };
-  // --- 복구된 엑셀 및 CSV 다운로드 끝 ---
 
   const exportToHTML = () => {
     const targetData = activeTab === '집계' || activeTab === '보고서' ? allowedProcessedData : filteredData;
@@ -1910,6 +1916,7 @@ export default function App() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setNoticeMessage("HTML 보고서가 성공적으로 생성 및 다운로드되었습니다.");
   };
 
   const exportToASReportHTML = (lang = 'ko') => {
@@ -2050,6 +2057,7 @@ export default function App() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setNoticeMessage(`요약 보고서(${lang.toUpperCase()})가 다운로드 되었습니다.`);
   };
 
   const handleCapsLockCheck = (e) => {
@@ -2392,7 +2400,7 @@ export default function App() {
              <h2 className="text-2xl font-bold text-gray-900 mb-2">데이터 백업 및 내보내기</h2>
              <p className="text-gray-500 mb-8">현재 필터 조건에 맞는 <span className="font-bold text-blue-600">{filteredData.length}건</span>의 데이터를 백업할 수 있습니다.</p>
              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                <div onClick={() => fileInputRef.current.click()} className="py-8 px-6 border rounded-2xl hover:border-blue-500 hover:shadow-lg cursor-pointer bg-white group flex flex-col items-center">
+                <div onClick={() => fileInputRef.current?.click()} className="py-8 px-6 border rounded-2xl hover:border-blue-500 hover:shadow-lg cursor-pointer bg-white group flex flex-col items-center">
                   <div className="w-14 h-14 bg-blue-50 rounded-full flex items-center justify-center mb-3"><Upload className="w-6 h-6 text-blue-600" /></div>
                   <h3 className="font-bold">CSV 업로드</h3>
                 </div>
@@ -2642,7 +2650,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 2. 추가/수정 폼 모달 */}
+      {/* 2. 추가/수정 폼 모달 (PDF 등록 버튼 삭제됨) */}
       {isFormOpen && formData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
@@ -2864,10 +2872,19 @@ export default function App() {
         </div>
       )}
 
-      {alertMessage && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] bg-gray-900 text-white px-6 py-3 rounded-full shadow-2xl animate-in slide-in-from-bottom-5 duration-300 flex items-center gap-3">
-           <CheckCircle className="text-green-400 w-5 h-5" /> {alertMessage}
-           <button onClick={() => setAlertMessage('')} className="ml-2 hover:text-gray-300"><X className="w-4 h-4" /></button>
+      {/* 성공/실패/시스템 공지 통합 모달 */}
+      {noticeMessage && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+           <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center animate-in zoom-in-95 duration-200">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                 <CheckCircle className="w-8 h-8 text-blue-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">시스템 알림</h3>
+              <p className="text-gray-600 mb-8 whitespace-pre-wrap leading-relaxed">{noticeMessage}</p>
+              <button onClick={() => setNoticeMessage('')} className="w-full py-3.5 bg-blue-600 text-white rounded-xl font-bold shadow-md hover:bg-blue-700 transition-colors">
+                 확인
+              </button>
+           </div>
         </div>
       )}
 
