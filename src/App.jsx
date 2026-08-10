@@ -164,6 +164,52 @@ const getYearFromDate = (dateStr) => {
   return null;
 };
 
+// --- 누락되었던 필수 계산 함수 복구 ---
+const generateNextAsNumber = (currentData) => {
+  const currentYear = new Date().getFullYear().toString().slice(-2);
+  const prefix = `WQ-2821-01-${currentYear}-`;
+  let maxSeq = 0;
+  currentData.forEach(item => {
+    if (item.asNumber && item.asNumber.startsWith(prefix)) {
+      const seqStr = item.asNumber.substring(prefix.length);
+      const seqNum = parseInt(seqStr, 10);
+      if (!isNaN(seqNum) && seqNum > maxSeq) maxSeq = seqNum;
+    }
+  });
+  return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
+};
+
+const isIncomplete = (item) => {
+  const coreFields = [
+    'asNumber', 'businessUnit', 'agencyName', 'model', 
+    'defectContent', 'causeAnalysis', 'processDetails', 
+    'processType', 'repairMethod', 'receiptDate', 'processDate'
+  ];
+  return coreFields.some(field => {
+    const val = item[field];
+    return val === null || val === undefined || String(val).trim() === '';
+  });
+};
+
+const getUniqueCount = (dataList, statusFilter) => {
+  let filtered = dataList;
+  if (statusFilter !== '전체') {
+    filtered = dataList.filter(d => (d.currentStatus || '접수 대기') === statusFilter);
+  }
+  const uniqueRecords = new Set();
+  filtered.forEach(d => {
+    const claim = d.claimType === '고객불만' ? '고객불만' : '일반 A/S';
+    const status = d.currentStatus || '접수 대기';
+    if (d.asNumber) {
+      uniqueRecords.add(`${d.asNumber.trim().toUpperCase()}_${claim}_${status}`);
+    } else {
+      uniqueRecords.add(`doc_${d.id}`);
+    }
+  });
+  return uniqueRecords.size;
+};
+// ----------------------------------------
+
 const HISTORICAL_YEARLY = {
   'PMD': { '2023': { total: 287, complaint: 4 }, '2024': { total: 251, complaint: 29 }, '2025': { total: 215, complaint: 15 } },
   'TMD': { '2023': { total: 116, complaint: 5 }, '2024': { total: 112, complaint: 24 }, '2025': { total: 96, complaint: 16 } },
@@ -255,7 +301,6 @@ const DASHBOARD_CONFIG = [
   { status: '종결', label: '종결', icon: Archive, hex: '#9ADBC5' }
 ];
 
-// %와 건수 모두를 보여주는 도넛 차트 컴포넌트
 const MultiDonutChart = ({ data, size = 180, strokeWidth = 16 }) => {
   const total = data.reduce((acc, item) => acc + item.value, 0);
   const radius = 50 - strokeWidth / 2;
@@ -323,7 +368,6 @@ const MultiDonutChart = ({ data, size = 180, strokeWidth = 16 }) => {
   );
 };
 
-// 일반 A/S와 고객불만을 비교하여 %와 건수 모두를 보여주는 도넛 차트
 const DonutChart = ({ normal, complaint, size = 180, strokeWidth = 16 }) => {
   const total = normal + complaint;
   const radius = 50 - strokeWidth / 2;
@@ -387,7 +431,6 @@ const DonutChart = ({ normal, complaint, size = 180, strokeWidth = 16 }) => {
   );
 };
 
-// 납기 준수 및 지연을 보여주는 도넛 차트
 const ComplianceDonutChart = ({ onTime, delayed, size = 180, strokeWidth = 16 }) => {
   const total = onTime + delayed;
   const radius = 50 - strokeWidth / 2;
@@ -579,6 +622,32 @@ const ModelHorizontalBarChart = ({ data }) => {
   );
 };
 
+const getModelGroup = (bu, modelName, ptBoardType) => {
+  if (bu === 'PT') return ptBoardType === 'ZMDI' ? 'ZMDI' : 'N';
+  if (!modelName) return bu === 'PMD' ? 'ACC' : '기타';
+  const upperModel = modelName.toUpperCase().trim();
+  
+  if (bu === 'PMD') {
+    const match = upperModel.match(/^P(\d+)/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      const rounded = Math.floor(num / 100) * 100;
+      return `P${rounded}`;
+    }
+    return 'ACC';
+  }
+  
+  const match = upperModel.match(/^([A-Z]+-?)(\d+)/);
+  if (match) {
+    const prefix = match[1];
+    const num = parseInt(match[2], 10);
+    const rounded = Math.floor(num / 100) * 100;
+    return `${prefix}${rounded}`;
+  }
+  
+  return upperModel;
+};
+
 export default function App() {
   const [currentUserRole, setCurrentUserRole] = useState(null);
   const [loginPassword, setLoginPassword] = useState('');
@@ -681,7 +750,6 @@ export default function App() {
     if (!user) return;
     const colRef = collection(db, getCollectionPath());
     
-    // Soft Delete 방식: onSnapshot 내부에서는 데이터를 지우지 않음. (INTERNAL ASSERTION FAILED 방지)
     const unsubscribe = onSnapshot(colRef, (snapshot) => {
       const records = [];
       snapshot.forEach(docSnap => {
@@ -1036,32 +1104,6 @@ export default function App() {
     }));
   }, [processedData]);
 
-  const getModelGroup = (bu, modelName, ptBoardType) => {
-    if (bu === 'PT') return ptBoardType === 'ZMDI' ? 'ZMDI' : 'N';
-    if (!modelName) return bu === 'PMD' ? 'ACC' : '기타';
-    const upperModel = modelName.toUpperCase().trim();
-    
-    if (bu === 'PMD') {
-      const match = upperModel.match(/^P(\d+)/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        const rounded = Math.floor(num / 100) * 100;
-        return `P${rounded}`;
-      }
-      return 'ACC';
-    }
-    
-    const match = upperModel.match(/^([A-Z]+-?)(\d+)/);
-    if (match) {
-      const prefix = match[1];
-      const num = parseInt(match[2], 10);
-      const rounded = Math.floor(num / 100) * 100;
-      return `${prefix}${rounded}`;
-    }
-    
-    return upperModel;
-  };
-
   const visibleBusinessUnits = useMemo(() => {
     if (!currentUserRole) return [];
     if (isQM) return ['전체', ...FIXED_UNITS_ORDER, '미입력', '집계'];
@@ -1136,6 +1178,18 @@ export default function App() {
       return true;
     });
   }, [tabFilteredData, activeTab, filterAgency, filterModel, filterExcludeReport, searchQuery, selectedDashboardStatus]);
+
+  const paginatedData = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredData.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredData, currentPage]);
+
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage) || 1;
+  const maxVisiblePages = 5;
+  const currentBlock = Math.ceil(currentPage / maxVisiblePages) || 1;
+  const startPage = (currentBlock - 1) * maxVisiblePages + 1;
+  const endPage = Math.min(startPage + maxVisiblePages - 1, totalPages);
+  const visiblePages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
 
   const renderStatusBadge = (row) => {
     const status = row.currentStatus || '접수 대기';
@@ -1590,18 +1644,6 @@ export default function App() {
     } catch (err) {}
     document.body.removeChild(textArea);
   };
-
-  const paginatedData = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredData.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredData, currentPage]);
-
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage) || 1;
-  const maxVisiblePages = 5;
-  const currentBlock = Math.ceil(currentPage / maxVisiblePages) || 1;
-  const startPage = (currentBlock - 1) * maxVisiblePages + 1;
-  const endPage = Math.min(startPage + maxVisiblePages - 1, totalPages);
-  const visiblePages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
 
   const exportToExcel = async () => {
     try {
@@ -2529,7 +2571,6 @@ export default function App() {
         )}
       </div>
 
-      {}
       {/* 1. 상세 정보 모달 */}
       {selectedRow && !isFormOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -2628,7 +2669,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 2. 추가/수정 폼 모달 (PDF 버튼 없음) */}
+      {/* 2. 추가/수정 폼 모달 */}
       {isFormOpen && formData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
