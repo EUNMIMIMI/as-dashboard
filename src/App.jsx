@@ -1277,19 +1277,29 @@ export default function App() {
 
     let triggersDelay = false;
 
+    // [핵심 수정 1] 데이터를 업데이트하기 전에 바깥에서 먼저 지연 여부를 100% 즉시 계산합니다.
+    if (name === 'processDate' || name === 'reqDeliveryDate') {
+      const checkReqDate = name === 'reqDeliveryDate' ? finalValue : formData.reqDeliveryDate;
+      const checkProcDate = name === 'processDate' ? finalValue : formData.processDate;
+      
+      if (checkProcDate) {
+        const comp = calculateCompliance(checkReqDate, checkProcDate);
+        if (comp === '지연' && !formData.delayReason) {
+          triggersDelay = true;
+        }
+      }
+    }
+
     setFormData(prev => {
       const newData = { ...prev, [name]: finalValue };
 
-      // 납기일, 처리완료일 수정 시 지연 여부 실시간 체크
       if (name === 'processDate' || name === 'reqDeliveryDate') {
         const checkReqDate = name === 'reqDeliveryDate' ? finalValue : newData.reqDeliveryDate;
         const checkProcDate = name === 'processDate' ? finalValue : newData.processDate;
         
         if (checkProcDate) {
           const comp = calculateCompliance(checkReqDate, checkProcDate);
-          if (comp === '지연') {
-            if (!newData.delayReason) triggersDelay = true;
-          } else {
+          if (comp !== '지연') {
             newData.delayReason = ''; // 지연이 아니게 되면 사유 초기화
           }
         }
@@ -2698,19 +2708,30 @@ export default function App() {
                           onClick={() => {
                             if (isDisabled) return;
                             let triggersDelay = false;
+
+                            // [핵심 수정 2] 종결 버튼을 눌렀을 때도 업데이트 전에 지연 여부를 즉시 계산합니다.
+                            let tempProcessDate = formData.processDate;
+                            if (status === '종결' && !tempProcessDate) {
+                              const today = new Date();
+                              const yy = String(today.getFullYear()).slice(-2);
+                              const mm = String(today.getMonth() + 1).padStart(2, '0');
+                              const dd = String(today.getDate()).padStart(2, '0');
+                              tempProcessDate = `${yy}.${mm}.${dd}`;
+
+                              const comp = calculateCompliance(formData.reqDeliveryDate, tempProcessDate);
+                              if (comp === '지연' && !formData.delayReason) {
+                                triggersDelay = true;
+                              }
+                            }
+
                             setFormData(prev => {
                               const newData = { ...prev, currentStatus: status };
-                              if (status === '종결' && !newData.processDate) {
+                              if (status === '종결' && !prev.processDate) {
                                 const today = new Date();
                                 const yy = String(today.getFullYear()).slice(-2);
                                 const mm = String(today.getMonth() + 1).padStart(2, '0');
                                 const dd = String(today.getDate()).padStart(2, '0');
                                 newData.processDate = `${yy}.${mm}.${dd}`;
-
-                                const comp = calculateCompliance(newData.reqDeliveryDate, newData.processDate);
-                                if (comp === '지연' && !newData.delayReason) {
-                                  triggersDelay = true;
-                                }
                               }
                               if (prev.currentStatus === '견적 승인 대기' && status === '수리 중') {
                                 const today = new Date();
