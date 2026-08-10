@@ -693,7 +693,15 @@ export default function App() {
 
   const [itemToDelete, setItemToDelete] = useState(null);
   const [itemToPermanentDelete, setItemToPermanentDelete] = useState(null);
-  const [noticeMessage, setNoticeMessage] = useState(''); // 강력한 공지 모달 상태 통합
+  const [alertMessage, setAlertMessage] = useState('');
+  
+  const [pendingUploadData, setPendingUploadData] = useState(null);
+  const [showPtBoardModal, setShowPtBoardModal] = useState(false);
+
+  // 지연 사유 모달 상태 추가
+  const [isDelayModalOpen, setIsDelayModalOpen] = useState(false);
+  const [delayReasonType, setDelayReasonType] = useState('수리 지연');
+  const [customDelayReason, setCustomDelayReason] = useState('');
   
   const fileInputRef = useRef(null);
 
@@ -1274,8 +1282,19 @@ export default function App() {
       finalValue = `${y.slice(2)}.${m}.${d}`;
     }
 
+    let triggersDelay = false;
+
     setFormData(prev => {
       const newData = { ...prev, [name]: finalValue };
+
+      if (name === 'processDate') {
+        const comp = calculateCompliance(newData.reqDeliveryDate, finalValue);
+        if (comp === '지연') {
+          if (!newData.delayReason) triggersDelay = true;
+        } else {
+          newData.delayReason = ''; // 지연이 아니게 되면 사유 초기화
+        }
+      }
 
       if (name === 'asNumber') {
         const existingRecord = data.find(d => d.asNumber === finalValue);
@@ -1334,6 +1353,12 @@ export default function App() {
 
       return newData;
     });
+
+    if (triggersDelay) {
+      setIsDelayModalOpen(true);
+      setDelayReasonType('수리 지연');
+      setCustomDelayReason('');
+    }
   };
 
   const handleCauseCheckbox = (id) => {
@@ -1350,8 +1375,17 @@ export default function App() {
   const handleFormSubmitInternal = async (e) => {
     e.preventDefault();
     if (!user) {
-      setNoticeMessage('데이터베이스에 연결 중입니다. 잠시 후 다시 시도해주세요.');
+      customAlert('데이터베이스에 연결 중입니다. 잠시 후 다시 시도해주세요.');
       return;
+    }
+
+    // 지연 사유 필수 입력 체크
+    const comp = calculateCompliance(formData.reqDeliveryDate, formData.processDate);
+    if (comp === '지연' && !formData.delayReason) {
+      setIsDelayModalOpen(true);
+      setDelayReasonType('수리 지연');
+      setCustomDelayReason('');
+      return; // 저장을 일시 중지하고 지연사유 모달을 띄움
     }
 
     const docId = String(formData.id || Date.now());
@@ -2621,9 +2655,16 @@ export default function App() {
                   <DetailItem label="하자 내용 (고객 접수)" value={selectedRow.defectContent} isMultiline />
                   <DetailItem label="원인 분석" value={selectedRow.causeAnalysis} isMultiline />
                   <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100">
-                    <DetailItem label="처리 내역 및 대책" value={selectedRow.processDetails} isMultiline />
-                  </div>
-                  <div className="mt-4 flex items-center justify-between bg-gray-50 border border-gray-200 p-4 rounded-lg">
+                <DetailItem label="처리 내역 및 대책" value={selectedRow.processDetails} isMultiline />
+              </div>
+              
+              {selectedRow.complianceStatus === '지연' && selectedRow.delayReason && (
+                <div className="bg-red-50 p-4 rounded-lg border border-red-100 mt-4">
+                  <DetailItem label="지연 사유" value={selectedRow.delayReason} isMultiline />
+                </div>
+              )}
+
+              <div className="mt-4 flex items-center justify-between bg-gray-50 border border-gray-200 p-4 rounded-lg">
                     <div className="text-sm font-bold text-gray-800">처리 결과: <span className="text-blue-700 ml-2">{selectedRow.repairMethod || '-'}</span></div>
                     {selectedRow.repairMethod === '유상수리' && <div className="text-sm font-bold text-gray-900 bg-white px-3 py-1.5 rounded border border-gray-200 shadow-sm">청구 금액: ₩ {selectedRow.cost != null && selectedRow.cost !== '' ? Number(selectedRow.cost).toLocaleString() : '0'}</div>}
                   </div>
@@ -2673,21 +2714,27 @@ export default function App() {
                       
                       return (
                         <button
-                          type="button"
-                          key={status}
-                          disabled={isDisabled}
-                          onClick={() => {
-                            if (isDisabled) return;
-                            setFormData(prev => {
-                              const newData = { ...prev, currentStatus: status };
-                              if (status === '종결' && !newData.processDate) {
-                                const today = new Date();
-                                const yy = String(today.getFullYear()).slice(-2);
-                                const mm = String(today.getMonth() + 1).padStart(2, '0');
-                                const dd = String(today.getDate()).padStart(2, '0');
-                                newData.processDate = `${yy}.${mm}.${dd}`;
-                              }
-                              if (prev.currentStatus === '견적 승인 대기' && status === '수리 중') {
+                      type="button"
+                      key={status}
+                      disabled={isDisabled}
+                      onClick={() => {
+                        if (isDisabled) return;
+                        let triggersDelay = false;
+                        setFormData(prev => {
+                          const newData = { ...prev, currentStatus: status };
+                          if (status === '종결' && !newData.processDate) {
+                            const today = new Date();
+                            const yy = String(today.getFullYear()).slice(-2);
+                            const mm = String(today.getMonth() + 1).padStart(2, '0');
+                            const dd = String(today.getDate()).padStart(2, '0');
+                            newData.processDate = `${yy}.${mm}.${dd}`;
+
+                            const comp = calculateCompliance(newData.reqDeliveryDate, newData.processDate);
+                            if (comp === '지연' && !newData.delayReason) {
+                              triggersDelay = true;
+                            }
+                          }
+                          if (prev.currentStatus === '견적 승인 대기' && status === '수리 중') {
                                 const today = new Date();
                                 const yy = String(today.getFullYear()).slice(-2);
                                 const mm = String(today.getMonth() + 1).padStart(2, '0');
@@ -2695,9 +2742,15 @@ export default function App() {
                                 newData.reqDeliveryDate = addBusinessDays(`${yy}.${mm}.${dd}`, 5);
                               }
                               return newData;
-                            });
-                          }}
-                          className={`px-4 py-2 text-sm font-bold rounded-lg transition-all border ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        });
+
+                        if (triggersDelay) {
+                          setIsDelayModalOpen(true);
+                          setDelayReasonType('수리 지연');
+                          setCustomDelayReason('');
+                        }
+                      }}
+                      className={`px-4 py-2 text-sm font-bold rounded-lg transition-all border ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                           style={{
                             backgroundColor: isSelected ? hexColor : '#ffffff',
                             color: isSelected ? '#ffffff' : '#4b5563',
@@ -2849,15 +2902,79 @@ export default function App() {
             </form>
             <div className="p-6 border-t flex items-center justify-end bg-gray-50 rounded-b-2xl">
                <div className="flex gap-3">
-                 <button type="button" onClick={() => setIsFormOpen(false)} className="px-6 py-2 border rounded-lg font-bold bg-white hover:bg-gray-100 transition-colors">취소</button>
-                 {isQM && <button type="button" onClick={handleFormSubmitInternal} className="px-8 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md hover:bg-blue-700 transition-all flex items-center gap-2"><Save className="w-4 h-4" /> 저장하기</button>}
-               </div>
-            </div>
-          </div>
+             <button type="button" onClick={() => setIsFormOpen(false)} className="px-6 py-2 border rounded-lg font-bold bg-white hover:bg-gray-100 transition-colors">취소</button>
+             {isQM && <button type="button" onClick={handleFormSubmitInternal} className="px-8 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md hover:bg-blue-700 transition-all flex items-center gap-2"><Save className="w-4 h-4" /> 저장하기</button>}
+           </div>
         </div>
-      )}
+      </div>
+    </div>
+  )}
 
-      {/* 삭제 확인 모달 */}
+  {/* 3. 지연 사유 입력 모달 */}
+  {isDelayModalOpen && (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 animate-in zoom-in-95 duration-200">
+        <div className="flex items-center gap-2 mb-4">
+          <AlertCircle className="w-6 h-6 text-red-500" />
+          <h3 className="text-lg font-bold text-gray-900">지연 사유 입력</h3>
+        </div>
+        <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+          처리완료일이 납기요구일보다 늦습니다.<br/>
+          정확한 지연 사유를 선택하거나 입력해주세요.
+        </p>
+
+        <select
+          value={delayReasonType}
+          onChange={(e) => {
+            setDelayReasonType(e.target.value);
+            if (e.target.value !== '직접 입력') setCustomDelayReason('');
+          }}
+          className="w-full p-3 border border-gray-300 rounded-xl mb-3 text-sm font-medium focus:ring-2 focus:ring-red-500 outline-none transition-all"
+        >
+          <option value="수리 지연">수리 지연</option>
+          <option value="부품 수급 지연">부품 수급 지연</option>
+          <option value="고품 회수 지연">고품 회수 지연</option>
+          <option value="직접 입력">직접 입력 (하단 작성)</option>
+        </select>
+
+        {delayReasonType === '직접 입력' && (
+          <input
+            type="text"
+            placeholder="지연 사유를 상세히 입력하세요..."
+            value={customDelayReason}
+            onChange={(e) => setCustomDelayReason(e.target.value)}
+            className="w-full p-3 border border-gray-300 rounded-xl mb-4 text-sm focus:ring-2 focus:ring-red-500 outline-none transition-all"
+            autoFocus
+          />
+        )}
+
+        <div className="flex justify-end gap-2 mt-6">
+          <button
+            onClick={() => setIsDelayModalOpen(false)}
+            className="px-5 py-2.5 border rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            닫기
+          </button>
+          <button
+            onClick={() => {
+              const reason = delayReasonType === '직접 입력' ? customDelayReason : delayReasonType;
+              if (!reason.trim()) {
+                customAlert('지연 사유를 입력해주세요.');
+                return;
+              }
+              setFormData(prev => ({ ...prev, delayReason: reason }));
+              setIsDelayModalOpen(false);
+            }}
+            className="px-6 py-2.5 bg-red-500 text-white rounded-xl text-sm font-bold hover:bg-red-600 shadow-md transition-colors"
+          >
+            사유 저장
+          </button>
+        </div>
+      </div>
+    </div>
+  )}
+
+  {/* 삭제 확인 모달 */}
       {itemToDelete && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
            <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center animate-in zoom-in-95 duration-200">
