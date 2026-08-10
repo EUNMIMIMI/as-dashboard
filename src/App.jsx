@@ -30,7 +30,7 @@ try {
     appId: import.meta.env.VITE_FIREBASE_APP_ID || ""
   };
 } catch (e) {
-  // 환경변수가 없는 환경(캔버스 등)에서 발생하는 에러 무시
+  // 환경변수가 없는 환경에서 발생하는 에러 무시
 }
 
 const firebaseConfig = isCanvasEnv ? JSON.parse(__firebase_config) : localConfig;
@@ -46,7 +46,6 @@ const getCollectionPath = () => {
   return 'as_records';
 };
 
-// --- 유틸리티 함수 ---
 const formatDisplayDate = (dateStr) => {
   if (!dateStr) return '';
   let str = String(dateStr).trim();
@@ -165,7 +164,6 @@ const getYearFromDate = (dateStr) => {
   return null;
 };
 
-// --- 하드코딩 데이터 ---
 const HISTORICAL_YEARLY = {
   'PMD': { '2023': { total: 287, complaint: 4 }, '2024': { total: 251, complaint: 29 }, '2025': { total: 215, complaint: 15 } },
   'TMD': { '2023': { total: 116, complaint: 5 }, '2024': { total: 112, complaint: 24 }, '2025': { total: 96, complaint: 16 } },
@@ -256,50 +254,6 @@ const DASHBOARD_CONFIG = [
   { status: '수리 완료', label: '수리 완료', icon: CheckCircle, hex: '#A0DDE0' },
   { status: '종결', label: '종결', icon: Archive, hex: '#9ADBC5' }
 ];
-
-const generateNextAsNumber = (currentData) => {
-  const currentYear = new Date().getFullYear().toString().slice(-2);
-  const prefix = `WQ-2821-01-${currentYear}-`;
-  let maxSeq = 0;
-  currentData.forEach(item => {
-    if (item.asNumber && item.asNumber.startsWith(prefix)) {
-      const seqStr = item.asNumber.substring(prefix.length);
-      const seqNum = parseInt(seqStr, 10);
-      if (!isNaN(seqNum) && seqNum > maxSeq) maxSeq = seqNum;
-    }
-  });
-  return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
-};
-
-const isIncomplete = (item) => {
-  const coreFields = [
-    'asNumber', 'businessUnit', 'agencyName', 'model', 
-    'defectContent', 'causeAnalysis', 'processDetails', 
-    'processType', 'repairMethod', 'receiptDate', 'processDate'
-  ];
-  return coreFields.some(field => {
-    const val = item[field];
-    return val === null || val === undefined || String(val).trim() === '';
-  });
-};
-
-const getUniqueCount = (dataList, statusFilter) => {
-  let filtered = dataList;
-  if (statusFilter !== '전체') {
-    filtered = dataList.filter(d => (d.currentStatus || '접수 대기') === statusFilter);
-  }
-  const uniqueRecords = new Set();
-  filtered.forEach(d => {
-    const claim = d.claimType === '고객불만' ? '고객불만' : '일반 A/S';
-    const status = d.currentStatus || '접수 대기';
-    if (d.asNumber) {
-      uniqueRecords.add(`${d.asNumber.trim().toUpperCase()}_${claim}_${status}`);
-    } else {
-      uniqueRecords.add(`doc_${d.id}`);
-    }
-  });
-  return uniqueRecords.size;
-};
 
 // %와 건수 모두를 보여주는 도넛 차트 컴포넌트
 const MultiDonutChart = ({ data, size = 180, strokeWidth = 16 }) => {
@@ -502,7 +456,6 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
   return (
     <div className={`w-full flex justify-center items-center ${heightClass}`}>
       <svg viewBox={`0 0 ${w} ${h}`} className="w-full max-w-full h-full font-sans">
-        {/* Background grid */}
         {[0, 0.25, 0.5, 0.75, 1].map(ratio => {
           const yPos = py + ch * ratio;
           return (
@@ -514,7 +467,6 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
 
         {type === 'mixed' ? (
           <>
-            {/* Bars for Total */}
             {data.map((d, i) => {
               const barH = (d.total / maxVal) * ch;
               const xPos = getX(i);
@@ -526,8 +478,6 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
                 </g>
               );
             })}
-
-            {/* Line and Dots for Complaint */}
             {data.length > 1 && <polyline points={complaintPoints} fill="none" stroke="#ef4444" strokeWidth="3" />}
             {data.map((d, i) => (
               <g key={`dot-${i}`}>
@@ -538,7 +488,6 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
           </>
         ) : (
           <>
-            {/* Line and Dots for Total */}
             {data.length > 1 && <polyline points={totalPoints} fill="none" stroke="#b91c1c" strokeWidth="2.5" />}
             {data.map((d, i) => (
               <g key={`total-dot-${i}`}>
@@ -547,8 +496,6 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
                 <text x={getX(i)} y={h - 15} textAnchor="middle" fontSize="13" fill="#6b7280" fontWeight="bold">{d.year}년</text>
               </g>
             ))}
-
-            {/* Line and Dots for Complaint */}
             {data.length > 1 && <polyline points={complaintPoints} fill="none" stroke="#fca5a5" strokeWidth="2.5" />}
             {data.map((d, i) => (
               <g key={`comp-dot-${i}`}>
@@ -559,7 +506,6 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
           </>
         )}
 
-        {/* Legend */}
         <g transform={`translate(${w/2 - 80}, ${h - 2})`}>
           {type === 'mixed' ? (
             <>
@@ -574,7 +520,6 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
               <polyline points="0,-5 20,-5" fill="none" stroke="#b91c1c" strokeWidth="2" />
               <circle cx="10" cy="-5" r="4" fill="#b91c1c" />
               <text x="26" y="-2" fontSize="12" fill="#4b5563" fontWeight="bold">A/S접수건수</text>
-              
               <polyline points="95,-5 115,-5" fill="none" stroke="#fca5a5" strokeWidth="2" />
               <circle cx="105" cy="-5" r="4" fill="#fca5a5" />
               <text x="120" y="-2" fontSize="12" fill="#4b5563" fontWeight="bold">고객불만</text>
@@ -610,7 +555,6 @@ const HorizontalBarChart = ({ data, color }) => {
 
 const ModelHorizontalBarChart = ({ data }) => {
   if (!data || data.length === 0) return <div className="text-sm text-gray-400 flex items-center justify-center h-full w-full">데이터가 없습니다.</div>;
-
   const maxVal = Math.max(...data.map(d => d.total));
 
   return (
@@ -633,32 +577,6 @@ const ModelHorizontalBarChart = ({ data }) => {
       ))}
     </div>
   );
-};
-
-const getModelGroup = (bu, modelName, ptBoardType) => {
-  if (bu === 'PT') return ptBoardType === 'ZMDI' ? 'ZMDI' : 'N';
-  if (!modelName) return bu === 'PMD' ? 'ACC' : '기타';
-  const upperModel = modelName.toUpperCase().trim();
-  
-  if (bu === 'PMD') {
-    const match = upperModel.match(/^P(\d+)/);
-    if (match) {
-      const num = parseInt(match[1], 10);
-      const rounded = Math.floor(num / 100) * 100;
-      return `P${rounded}`;
-    }
-    return 'ACC';
-  }
-  
-  const match = upperModel.match(/^([A-Z]+-?)(\d+)/);
-  if (match) {
-    const prefix = match[1];
-    const num = parseInt(match[2], 10);
-    const rounded = Math.floor(num / 100) * 100;
-    return `${prefix}${rounded}`;
-  }
-  
-  return upperModel;
 };
 
 export default function App() {
@@ -693,12 +611,9 @@ export default function App() {
 
   const [itemToDelete, setItemToDelete] = useState(null);
   const [itemToPermanentDelete, setItemToPermanentDelete] = useState(null);
-  const [alertMessage, setAlertMessage] = useState('');
+  const [noticeMessage, setNoticeMessage] = useState('');
   
-  const [pendingUploadData, setPendingUploadData] = useState(null);
-  const [showPtBoardModal, setShowPtBoardModal] = useState(false);
-
-  // 지연 사유 모달 상태 추가
+  // 지연 사유 모달 상태
   const [isDelayModalOpen, setIsDelayModalOpen] = useState(false);
   const [delayReasonType, setDelayReasonType] = useState('수리 지연');
   const [customDelayReason, setCustomDelayReason] = useState('');
@@ -766,11 +681,9 @@ export default function App() {
     if (!user) return;
     const colRef = collection(db, getCollectionPath());
     
+    // Soft Delete 방식: onSnapshot 내부에서는 데이터를 지우지 않음. (INTERNAL ASSERTION FAILED 방지)
     const unsubscribe = onSnapshot(colRef, (snapshot) => {
       const records = [];
-      const now = Date.now();
-      const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
-
       snapshot.forEach(docSnap => {
         const d = docSnap.data();
         records.push({ id: docSnap.id, ...d });
@@ -1123,6 +1036,32 @@ export default function App() {
     }));
   }, [processedData]);
 
+  const getModelGroup = (bu, modelName, ptBoardType) => {
+    if (bu === 'PT') return ptBoardType === 'ZMDI' ? 'ZMDI' : 'N';
+    if (!modelName) return bu === 'PMD' ? 'ACC' : '기타';
+    const upperModel = modelName.toUpperCase().trim();
+    
+    if (bu === 'PMD') {
+      const match = upperModel.match(/^P(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        const rounded = Math.floor(num / 100) * 100;
+        return `P${rounded}`;
+      }
+      return 'ACC';
+    }
+    
+    const match = upperModel.match(/^([A-Z]+-?)(\d+)/);
+    if (match) {
+      const prefix = match[1];
+      const num = parseInt(match[2], 10);
+      const rounded = Math.floor(num / 100) * 100;
+      return `${prefix}${rounded}`;
+    }
+    
+    return upperModel;
+  };
+
   const visibleBusinessUnits = useMemo(() => {
     if (!currentUserRole) return [];
     if (isQM) return ['전체', ...FIXED_UNITS_ORDER, '미입력', '집계'];
@@ -1287,12 +1226,18 @@ export default function App() {
     setFormData(prev => {
       const newData = { ...prev, [name]: finalValue };
 
-      if (name === 'processDate') {
-        const comp = calculateCompliance(newData.reqDeliveryDate, finalValue);
-        if (comp === '지연') {
-          if (!newData.delayReason) triggersDelay = true;
-        } else {
-          newData.delayReason = ''; // 지연이 아니게 되면 사유 초기화
+      // 납기일, 처리완료일 수정 시 지연 여부 실시간 체크
+      if (name === 'processDate' || name === 'reqDeliveryDate') {
+        const checkReqDate = name === 'reqDeliveryDate' ? finalValue : newData.reqDeliveryDate;
+        const checkProcDate = name === 'processDate' ? finalValue : newData.processDate;
+        
+        if (checkProcDate) {
+          const comp = calculateCompliance(checkReqDate, checkProcDate);
+          if (comp === '지연') {
+            if (!newData.delayReason) triggersDelay = true;
+          } else {
+            newData.delayReason = ''; // 지연이 아니게 되면 사유 초기화
+          }
         }
       }
 
@@ -1375,7 +1320,7 @@ export default function App() {
   const handleFormSubmitInternal = async (e) => {
     e.preventDefault();
     if (!user) {
-      customAlert('데이터베이스에 연결 중입니다. 잠시 후 다시 시도해주세요.');
+      setNoticeMessage('데이터베이스에 연결 중입니다. 잠시 후 다시 시도해주세요.');
       return;
     }
 
@@ -1391,6 +1336,7 @@ export default function App() {
     const docId = String(formData.id || Date.now());
     await setDoc(doc(db, getCollectionPath(), docId), { ...formData, id: docId });
     setIsFormOpen(false);
+    setNoticeMessage('데이터가 성공적으로 저장되었습니다.');
   };
 
   const handleDeletePrepare = (id, e) => {
@@ -1473,14 +1419,9 @@ export default function App() {
     setNoticeMessage(`축하합니다!\n총 ${records.length}건의 데이터가 성공적으로 업로드되었습니다.`);
   };
 
-  // CSV 업로드 기능 - 하이브리드 인코딩 대응 (UTF-8 우선 판독 후 깨지면 EUC-KR 재시도)
   const importFromCSV = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    const fileName = file.name.toUpperCase();
-    let defaultPtBoard = 'N';
-    if (fileName.includes('ZMDI')) defaultPtBoard = 'ZMDI';
 
     const processCSV = (text) => {
       const rows = parseCSVText(text);
@@ -1532,7 +1473,7 @@ export default function App() {
 
           let ptBoard = '';
           if (!hasBUColumnAt2 && cols[26]) ptBoard = cols[26].trim();
-          if (!ptBoard) ptBoard = (bu === 'PT' ? defaultPtBoard : 'N');
+          if (!ptBoard) ptBoard = (bu === 'PT' ? 'N' : 'N');
 
           let defectContent = cols[6 + offset] ? cols[6 + offset].trim() : '';
           let qtyDefect = parseInt(cols[5 + offset]) || 1;
@@ -1596,8 +1537,7 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target.result;
-      if (text.includes('')) {
-         // UTF-8로 읽었으나 한글이 깨진 경우 (EUC-KR로 재시도)
+      if (text.includes('')) { // UTF-8 디코딩 실패 시 EUC-KR 재시도
          const eucReader = new FileReader();
          eucReader.onload = (e) => processCSV(e.target.result);
          eucReader.readAsText(file, 'euc-kr');
@@ -1605,7 +1545,6 @@ export default function App() {
          processCSV(text);
       }
     };
-    // 1차적으로 글로벌 표준인 UTF-8로 읽어들임
     reader.readAsText(file, 'utf-8');
     e.target.value = null; // 초기화
   };
@@ -1664,7 +1603,6 @@ export default function App() {
   const endPage = Math.min(startPage + maxVisiblePages - 1, totalPages);
   const visiblePages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
 
-  // 엑셀 다운로드 (동적 모듈 로드 오류 방지를 위해 내부 Script 태그 주입 방식으로 변경)
   const exportToExcel = async () => {
     try {
       if (!window.XLSX) {
@@ -1788,7 +1726,6 @@ export default function App() {
     }
   };
 
-  // CSV 다운로드 (외부 모듈 없이 Native 브라우저 기능 사용)
   const exportToCSV = () => {
     const header1 = '접수번호,수주번호,대리점명,업체명,MODEL,불량수량,하자내용,SERIAL No.,출고일자,기존주문번호,처리 방법,,,접수일,납기요구일,처리완료일,처리,,,,비용,원인 분석,,제품 원인,처리내역,사업부(시스템용),PT보드구분(시스템용)\n';
     const header2 = ',,,,,,,,,,견적 후 착수,선 조치,출장,,,,무상,유상,수리 불가,수리 취소,,일반 A/S,고객 불만,,,,\n';
@@ -1814,7 +1751,6 @@ export default function App() {
       csvContent += rowData.join(',') + '\n';
     });
 
-    // 외부 라이브러리(iconv)에 의존하지 않고 UTF-8 BOM(\uFEFF)을 추가하여 모든 엑셀에서 깨짐 없이 열리도록 적용
     const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -2593,6 +2529,7 @@ export default function App() {
         )}
       </div>
 
+      {}
       {/* 1. 상세 정보 모달 */}
       {selectedRow && !isFormOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -2655,16 +2592,16 @@ export default function App() {
                   <DetailItem label="하자 내용 (고객 접수)" value={selectedRow.defectContent} isMultiline />
                   <DetailItem label="원인 분석" value={selectedRow.causeAnalysis} isMultiline />
                   <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100">
-                <DetailItem label="처리 내역 및 대책" value={selectedRow.processDetails} isMultiline />
-              </div>
-              
-              {selectedRow.complianceStatus === '지연' && selectedRow.delayReason && (
-                <div className="bg-red-50 p-4 rounded-lg border border-red-100 mt-4">
-                  <DetailItem label="지연 사유" value={selectedRow.delayReason} isMultiline />
-                </div>
-              )}
+                    <DetailItem label="처리 내역 및 대책" value={selectedRow.processDetails} isMultiline />
+                  </div>
+                  
+                  {selectedRow.complianceStatus === '지연' && selectedRow.delayReason && (
+                    <div className="bg-red-50 p-4 rounded-lg border border-red-100 mt-4">
+                      <DetailItem label="지연 사유" value={selectedRow.delayReason} isMultiline />
+                    </div>
+                  )}
 
-              <div className="mt-4 flex items-center justify-between bg-gray-50 border border-gray-200 p-4 rounded-lg">
+                  <div className="mt-4 flex items-center justify-between bg-gray-50 border border-gray-200 p-4 rounded-lg">
                     <div className="text-sm font-bold text-gray-800">처리 결과: <span className="text-blue-700 ml-2">{selectedRow.repairMethod || '-'}</span></div>
                     {selectedRow.repairMethod === '유상수리' && <div className="text-sm font-bold text-gray-900 bg-white px-3 py-1.5 rounded border border-gray-200 shadow-sm">청구 금액: ₩ {selectedRow.cost != null && selectedRow.cost !== '' ? Number(selectedRow.cost).toLocaleString() : '0'}</div>}
                   </div>
@@ -2691,7 +2628,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 2. 추가/수정 폼 모달 (PDF 등록 버튼 삭제됨) */}
+      {/* 2. 추가/수정 폼 모달 (PDF 버튼 없음) */}
       {isFormOpen && formData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
@@ -2714,27 +2651,27 @@ export default function App() {
                       
                       return (
                         <button
-                      type="button"
-                      key={status}
-                      disabled={isDisabled}
-                      onClick={() => {
-                        if (isDisabled) return;
-                        let triggersDelay = false;
-                        setFormData(prev => {
-                          const newData = { ...prev, currentStatus: status };
-                          if (status === '종결' && !newData.processDate) {
-                            const today = new Date();
-                            const yy = String(today.getFullYear()).slice(-2);
-                            const mm = String(today.getMonth() + 1).padStart(2, '0');
-                            const dd = String(today.getDate()).padStart(2, '0');
-                            newData.processDate = `${yy}.${mm}.${dd}`;
+                          type="button"
+                          key={status}
+                          disabled={isDisabled}
+                          onClick={() => {
+                            if (isDisabled) return;
+                            let triggersDelay = false;
+                            setFormData(prev => {
+                              const newData = { ...prev, currentStatus: status };
+                              if (status === '종결' && !newData.processDate) {
+                                const today = new Date();
+                                const yy = String(today.getFullYear()).slice(-2);
+                                const mm = String(today.getMonth() + 1).padStart(2, '0');
+                                const dd = String(today.getDate()).padStart(2, '0');
+                                newData.processDate = `${yy}.${mm}.${dd}`;
 
-                            const comp = calculateCompliance(newData.reqDeliveryDate, newData.processDate);
-                            if (comp === '지연' && !newData.delayReason) {
-                              triggersDelay = true;
-                            }
-                          }
-                          if (prev.currentStatus === '견적 승인 대기' && status === '수리 중') {
+                                const comp = calculateCompliance(newData.reqDeliveryDate, newData.processDate);
+                                if (comp === '지연' && !newData.delayReason) {
+                                  triggersDelay = true;
+                                }
+                              }
+                              if (prev.currentStatus === '견적 승인 대기' && status === '수리 중') {
                                 const today = new Date();
                                 const yy = String(today.getFullYear()).slice(-2);
                                 const mm = String(today.getMonth() + 1).padStart(2, '0');
@@ -2742,15 +2679,15 @@ export default function App() {
                                 newData.reqDeliveryDate = addBusinessDays(`${yy}.${mm}.${dd}`, 5);
                               }
                               return newData;
-                        });
+                            });
 
-                        if (triggersDelay) {
-                          setIsDelayModalOpen(true);
-                          setDelayReasonType('수리 지연');
-                          setCustomDelayReason('');
-                        }
-                      }}
-                      className={`px-4 py-2 text-sm font-bold rounded-lg transition-all border ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            if (triggersDelay) {
+                              setIsDelayModalOpen(true);
+                              setDelayReasonType('수리 지연');
+                              setCustomDelayReason('');
+                            }
+                          }}
+                          className={`px-4 py-2 text-sm font-bold rounded-lg transition-all border ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                           style={{
                             backgroundColor: isSelected ? hexColor : '#ffffff',
                             color: isSelected ? '#ffffff' : '#4b5563',
@@ -2902,79 +2839,79 @@ export default function App() {
             </form>
             <div className="p-6 border-t flex items-center justify-end bg-gray-50 rounded-b-2xl">
                <div className="flex gap-3">
-             <button type="button" onClick={() => setIsFormOpen(false)} className="px-6 py-2 border rounded-lg font-bold bg-white hover:bg-gray-100 transition-colors">취소</button>
-             {isQM && <button type="button" onClick={handleFormSubmitInternal} className="px-8 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md hover:bg-blue-700 transition-all flex items-center gap-2"><Save className="w-4 h-4" /> 저장하기</button>}
-           </div>
+                 <button type="button" onClick={() => setIsFormOpen(false)} className="px-6 py-2 border rounded-lg font-bold bg-white hover:bg-gray-100 transition-colors">취소</button>
+                 {isQM && <button type="button" onClick={handleFormSubmitInternal} className="px-8 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md hover:bg-blue-700 transition-all flex items-center gap-2"><Save className="w-4 h-4" /> 저장하기</button>}
+               </div>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-  )}
+      )}
 
-  {/* 3. 지연 사유 입력 모달 */}
-  {isDelayModalOpen && (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 animate-in zoom-in-95 duration-200">
-        <div className="flex items-center gap-2 mb-4">
-          <AlertCircle className="w-6 h-6 text-red-500" />
-          <h3 className="text-lg font-bold text-gray-900">지연 사유 입력</h3>
+      {/* 3. 지연 사유 입력 모달 */}
+      {isDelayModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-2 mb-4">
+              <AlertCircle className="w-6 h-6 text-red-500" />
+              <h3 className="text-lg font-bold text-gray-900">지연 사유 입력</h3>
+            </div>
+            <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+              처리완료일이 납기요구일보다 늦습니다.<br/>
+              정확한 지연 사유를 선택하거나 입력해주세요.
+            </p>
+
+            <select
+              value={delayReasonType}
+              onChange={(e) => {
+                setDelayReasonType(e.target.value);
+                if (e.target.value !== '직접 입력') setCustomDelayReason('');
+              }}
+              className="w-full p-3 border border-gray-300 rounded-xl mb-3 text-sm font-medium focus:ring-2 focus:ring-red-500 outline-none transition-all"
+            >
+              <option value="수리 지연">수리 지연</option>
+              <option value="부품 수급 지연">부품 수급 지연</option>
+              <option value="고품 회수 지연">고품 회수 지연</option>
+              <option value="직접 입력">직접 입력 (하단 작성)</option>
+            </select>
+
+            {delayReasonType === '직접 입력' && (
+              <input
+                type="text"
+                placeholder="지연 사유를 상세히 입력하세요..."
+                value={customDelayReason}
+                onChange={(e) => setCustomDelayReason(e.target.value)}
+                className="w-full p-3 border border-gray-300 rounded-xl mb-4 text-sm focus:ring-2 focus:ring-red-500 outline-none transition-all"
+                autoFocus
+              />
+            )}
+
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={() => setIsDelayModalOpen(false)}
+                className="px-5 py-2.5 border rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                닫기
+              </button>
+              <button
+                onClick={() => {
+                  const reason = delayReasonType === '직접 입력' ? customDelayReason : delayReasonType;
+                  if (!reason.trim()) {
+                    setNoticeMessage('지연 사유를 입력해주세요.');
+                    return;
+                  }
+                  setFormData(prev => ({ ...prev, delayReason: reason }));
+                  setIsDelayModalOpen(false);
+                }}
+                className="px-6 py-2.5 bg-red-500 text-white rounded-xl text-sm font-bold hover:bg-red-600 shadow-md transition-colors"
+              >
+                사유 저장
+              </button>
+            </div>
+          </div>
         </div>
-        <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-          처리완료일이 납기요구일보다 늦습니다.<br/>
-          정확한 지연 사유를 선택하거나 입력해주세요.
-        </p>
+      )}
 
-        <select
-          value={delayReasonType}
-          onChange={(e) => {
-            setDelayReasonType(e.target.value);
-            if (e.target.value !== '직접 입력') setCustomDelayReason('');
-          }}
-          className="w-full p-3 border border-gray-300 rounded-xl mb-3 text-sm font-medium focus:ring-2 focus:ring-red-500 outline-none transition-all"
-        >
-          <option value="수리 지연">수리 지연</option>
-          <option value="부품 수급 지연">부품 수급 지연</option>
-          <option value="고품 회수 지연">고품 회수 지연</option>
-          <option value="직접 입력">직접 입력 (하단 작성)</option>
-        </select>
-
-        {delayReasonType === '직접 입력' && (
-          <input
-            type="text"
-            placeholder="지연 사유를 상세히 입력하세요..."
-            value={customDelayReason}
-            onChange={(e) => setCustomDelayReason(e.target.value)}
-            className="w-full p-3 border border-gray-300 rounded-xl mb-4 text-sm focus:ring-2 focus:ring-red-500 outline-none transition-all"
-            autoFocus
-          />
-        )}
-
-        <div className="flex justify-end gap-2 mt-6">
-          <button
-            onClick={() => setIsDelayModalOpen(false)}
-            className="px-5 py-2.5 border rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            닫기
-          </button>
-          <button
-            onClick={() => {
-              const reason = delayReasonType === '직접 입력' ? customDelayReason : delayReasonType;
-              if (!reason.trim()) {
-                customAlert('지연 사유를 입력해주세요.');
-                return;
-              }
-              setFormData(prev => ({ ...prev, delayReason: reason }));
-              setIsDelayModalOpen(false);
-            }}
-            className="px-6 py-2.5 bg-red-500 text-white rounded-xl text-sm font-bold hover:bg-red-600 shadow-md transition-colors"
-          >
-            사유 저장
-          </button>
-        </div>
-      </div>
-    </div>
-  )}
-
-  {/* 삭제 확인 모달 */}
+      {/* 4. 삭제 확인 모달 */}
       {itemToDelete && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
            <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center animate-in zoom-in-95 duration-200">
@@ -2989,12 +2926,27 @@ export default function App() {
         </div>
       )}
 
-      {/* 성공/실패/시스템 공지 통합 모달 */}
+      {/* 5. 영구 삭제 확인 모달 */}
+      {itemToPermanentDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+           <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center animate-in zoom-in-95 duration-200">
+              <AlertCircle className="w-16 h-16 text-red-600 mx-auto mb-4" />
+              <h3 className="text-xl font-bold mb-2 text-red-600">영구 삭제하시겠습니까?</h3>
+              <p className="text-gray-500 text-sm mb-6">이 작업은 되돌릴 수 없으며, 데이터베이스에서 완전히 삭제됩니다.</p>
+              <div className="flex gap-3">
+                 <button onClick={() => setItemToPermanentDelete(null)} className="flex-1 py-3 border rounded-xl font-bold hover:bg-gray-50">취소</button>
+                 <button onClick={executePermanentDelete} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg hover:bg-red-700">영구 삭제</button>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* 6. 공통 알림 모달 */}
       {noticeMessage && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
            <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center animate-in zoom-in-95 duration-200">
               <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                 <CheckCircle className="w-8 h-8 text-blue-600" />
+                 <Activity className="w-8 h-8 text-blue-600" />
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">시스템 알림</h3>
               <p className="text-gray-600 mb-8 whitespace-pre-wrap leading-relaxed">{noticeMessage}</p>
