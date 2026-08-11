@@ -164,7 +164,6 @@ const getYearFromDate = (dateStr) => {
   return null;
 };
 
-// --- 누락되었던 필수 계산 함수 복구 ---
 const generateNextAsNumber = (currentData) => {
   const currentYear = new Date().getFullYear().toString().slice(-2);
   const prefix = `WQ-2821-01-${currentYear}-`;
@@ -208,7 +207,6 @@ const getUniqueCount = (dataList, statusFilter) => {
   });
   return uniqueRecords.size;
 };
-// ----------------------------------------
 
 const HISTORICAL_YEARLY = {
   'PMD': { '2023': { total: 287, complaint: 4 }, '2024': { total: 251, complaint: 29 }, '2025': { total: 215, complaint: 15 } },
@@ -1277,7 +1275,7 @@ export default function App() {
 
     let triggersDelay = false;
 
-    // [핵심 수정 1] 데이터를 업데이트하기 전에 바깥에서 먼저 지연 여부를 100% 즉시 계산합니다.
+    // 데이터를 업데이트하기 전에 바깥에서 먼저 지연 여부를 즉시 계산합니다.
     if (name === 'processDate' || name === 'reqDeliveryDate') {
       const checkReqDate = name === 'reqDeliveryDate' ? finalValue : formData.reqDeliveryDate;
       const checkProcDate = name === 'processDate' ? finalValue : formData.processDate;
@@ -1598,7 +1596,7 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target.result;
-      if (text.includes('')) { // UTF-8 디코딩 실패 시 EUC-KR 재시도
+      if (text.includes('')) { // UTF-8 디코딩 실패(한글 깨짐) 시 EUC-KR 재시도
          const eucReader = new FileReader();
          eucReader.onload = (e) => processCSV(e.target.result);
          eucReader.readAsText(file, 'euc-kr');
@@ -1655,7 +1653,7 @@ export default function App() {
   const exportToExcel = async () => {
     try {
       if (!window.XLSX) {
-        setNoticeMessage('엑셀 변환 엔진을 불러오고 있습니다.\n잠시만 기다려주세요...');
+        setNoticeMessage('엑셀 변환 모듈을 불러오고 있습니다.\n잠시만 기다려주세요...');
         await new Promise((resolve, reject) => {
           const script = document.createElement('script');
           script.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
@@ -2578,6 +2576,7 @@ export default function App() {
         )}
       </div>
 
+      {}
       {/* 1. 상세 정보 모달 */}
       {selectedRow && !isFormOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -2643,6 +2642,7 @@ export default function App() {
                     <DetailItem label="처리 내역 및 대책" value={selectedRow.processDetails} isMultiline />
                   </div>
                   
+                  {/* 지연 사유 표시 (상세정보에서만 보임) */}
                   {selectedRow.complianceStatus === '지연' && selectedRow.delayReason && (
                     <div className="bg-red-50 p-4 rounded-lg border border-red-100 mt-4">
                       <DetailItem label="지연 사유" value={selectedRow.delayReason} isMultiline />
@@ -2706,7 +2706,6 @@ export default function App() {
                             if (isDisabled) return;
                             let triggersDelay = false;
 
-                            // [핵심 수정 2] 종결 버튼을 눌렀을 때도 업데이트 전에 지연 여부를 즉시 계산합니다.
                             let tempProcessDate = formData.processDate;
                             if (status === '종결' && !tempProcessDate) {
                               const today = new Date();
