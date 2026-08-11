@@ -1497,11 +1497,10 @@ export default function App() {
 
       for (let i = 2; i < rows.length; i++) {
         const cols = rows[i];
-        if (!cols[0] || !cols[0].trim()) continue;
+        if (!cols || cols.length === 0 || !cols[0] || !cols[0].trim()) continue;
         
-        if (cols.length >= 20) {
-          let processType = '';
-          if (cols[10 + offset] && cols[10 + offset].includes('●')) processType = '견적 후 착수';
+        let processType = '';
+        if (cols[10 + offset] && cols[10 + offset].includes('●')) processType = '견적 후 착수';
           else if (cols[11 + offset] && cols[11 + offset].includes('●')) processType = '선조치';
           else if (cols[12 + offset] && cols[12 + offset].includes('●')) processType = '출장';
 
@@ -1556,9 +1555,8 @@ export default function App() {
             reqDeliveryDate = addBusinessDays(receiptDate, 5);
           }
           
-          let currentStatus = '접수 대기';
+          let currentStatus = '접수 완료';
           if (processDate) currentStatus = '종결';
-          else if (processType) currentStatus = '수리 중';
 
           newRecords.push({
             id: Date.now() + i,
@@ -1588,7 +1586,6 @@ export default function App() {
             currentStatus: currentStatus,
             deletedAt: null 
           });
-        }
       }
       
       if(newRecords.length > 0) {
