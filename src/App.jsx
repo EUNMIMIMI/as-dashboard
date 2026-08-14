@@ -30,10 +30,13 @@ try {
     appId: import.meta.env.VITE_FIREBASE_APP_ID || ""
   };
 } catch (e) {
-  // 환경변수가 없는 환경에서 발생하는 에러 무시
+  // 환경변수가 없는 환경(캔버스 등)에서 발생하는 에러 무시
 }
 
-const firebaseConfig = isCanvasEnv ? JSON.parse(__firebase_config) : localConfig;
+const firebaseConfig = isCanvasEnv 
+  ? JSON.parse(__firebase_config) 
+  : localConfig;
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -46,6 +49,7 @@ const getCollectionPath = () => {
   return 'as_records';
 };
 
+// --- 유틸리티 함수 ---
 const formatDisplayDate = (dateStr) => {
   if (!dateStr) return '';
   let str = String(dateStr).trim();
@@ -164,50 +168,7 @@ const getYearFromDate = (dateStr) => {
   return null;
 };
 
-const generateNextAsNumber = (currentData) => {
-  const currentYear = new Date().getFullYear().toString().slice(-2);
-  const prefix = `WQ-2821-01-${currentYear}-`;
-  let maxSeq = 0;
-  currentData.forEach(item => {
-    if (item.asNumber && item.asNumber.startsWith(prefix)) {
-      const seqStr = item.asNumber.substring(prefix.length);
-      const seqNum = parseInt(seqStr, 10);
-      if (!isNaN(seqNum) && seqNum > maxSeq) maxSeq = seqNum;
-    }
-  });
-  return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
-};
-
-const isIncomplete = (item) => {
-  const coreFields = [
-    'asNumber', 'businessUnit', 'agencyName', 'model', 
-    'defectContent', 'causeAnalysis', 'processDetails', 
-    'processType', 'repairMethod', 'receiptDate', 'processDate'
-  ];
-  return coreFields.some(field => {
-    const val = item[field];
-    return val === null || val === undefined || String(val).trim() === '';
-  });
-};
-
-const getUniqueCount = (dataList, statusFilter) => {
-  let filtered = dataList;
-  if (statusFilter !== '전체') {
-    filtered = dataList.filter(d => (d.currentStatus || '접수 대기') === statusFilter);
-  }
-  const uniqueRecords = new Set();
-  filtered.forEach(d => {
-    const claim = d.claimType === '고객불만' ? '고객불만' : '일반 A/S';
-    const status = d.currentStatus || '접수 대기';
-    if (d.asNumber) {
-      uniqueRecords.add(`${d.asNumber.trim().toUpperCase()}_${claim}_${status}`);
-    } else {
-      uniqueRecords.add(`doc_${d.id}`);
-    }
-  });
-  return uniqueRecords.size;
-};
-
+// --- 하드코딩 데이터 ---
 const HISTORICAL_YEARLY = {
   'PMD': { '2023': { total: 287, complaint: 4 }, '2024': { total: 251, complaint: 29 }, '2025': { total: 215, complaint: 15 } },
   'TMD': { '2023': { total: 116, complaint: 5 }, '2024': { total: 112, complaint: 24 }, '2025': { total: 96, complaint: 16 } },
@@ -299,6 +260,51 @@ const DASHBOARD_CONFIG = [
   { status: '종결', label: '종결', icon: Archive, hex: '#9ADBC5' }
 ];
 
+const generateNextAsNumber = (currentData) => {
+  const currentYear = new Date().getFullYear().toString().slice(-2);
+  const prefix = `WQ-2821-01-${currentYear}-`;
+  let maxSeq = 0;
+  currentData.forEach(item => {
+    if (item.asNumber && item.asNumber.startsWith(prefix)) {
+      const seqStr = item.asNumber.substring(prefix.length);
+      const seqNum = parseInt(seqStr, 10);
+      if (!isNaN(seqNum) && seqNum > maxSeq) maxSeq = seqNum;
+    }
+  });
+  return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
+};
+
+const isIncomplete = (item) => {
+  const coreFields = [
+    'asNumber', 'businessUnit', 'agencyName', 'model', 
+    'defectContent', 'causeAnalysis', 'processDetails', 
+    'processType', 'repairMethod', 'receiptDate', 'processDate'
+  ];
+  return coreFields.some(field => {
+    const val = item[field];
+    return val === null || val === undefined || String(val).trim() === '';
+  });
+};
+
+const getUniqueCount = (dataList, statusFilter) => {
+  let filtered = dataList;
+  if (statusFilter !== '전체') {
+    filtered = dataList.filter(d => (d.currentStatus || '접수 대기') === statusFilter);
+  }
+  const uniqueRecords = new Set();
+  filtered.forEach(d => {
+    const claim = d.claimType === '고객불만' ? '고객불만' : '일반 A/S';
+    const status = d.currentStatus || '접수 대기';
+    if (d.asNumber) {
+      uniqueRecords.add(`${d.asNumber.trim().toUpperCase()}_${claim}_${status}`);
+    } else {
+      uniqueRecords.add(`doc_${d.id}`);
+    }
+  });
+  return uniqueRecords.size;
+};
+
+// %와 건수 모두를 보여주는 도넛 차트 컴포넌트
 const MultiDonutChart = ({ data, size = 180, strokeWidth = 16 }) => {
   const total = data.reduce((acc, item) => acc + item.value, 0);
   const radius = 50 - strokeWidth / 2;
@@ -366,6 +372,7 @@ const MultiDonutChart = ({ data, size = 180, strokeWidth = 16 }) => {
   );
 };
 
+// 일반 A/S와 고객불만을 비교하여 %와 건수 모두를 보여주는 도넛 차트
 const DonutChart = ({ normal, complaint, size = 180, strokeWidth = 16 }) => {
   const total = normal + complaint;
   const radius = 50 - strokeWidth / 2;
@@ -429,6 +436,7 @@ const DonutChart = ({ normal, complaint, size = 180, strokeWidth = 16 }) => {
   );
 };
 
+// 납기 준수 및 지연을 보여주는 도넛 차트
 const ComplianceDonutChart = ({ onTime, delayed, size = 180, strokeWidth = 16 }) => {
   const total = onTime + delayed;
   const radius = 50 - strokeWidth / 2;
@@ -497,6 +505,7 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
   return (
     <div className={`w-full flex justify-center items-center ${heightClass}`}>
       <svg viewBox={`0 0 ${w} ${h}`} className="w-full max-w-full h-full font-sans">
+        {/* Background grid */}
         {[0, 0.25, 0.5, 0.75, 1].map(ratio => {
           const yPos = py + ch * ratio;
           return (
@@ -508,6 +517,7 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
 
         {type === 'mixed' ? (
           <>
+            {/* Bars for Total */}
             {data.map((d, i) => {
               const barH = (d.total / maxVal) * ch;
               const xPos = getX(i);
@@ -519,6 +529,8 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
                 </g>
               );
             })}
+
+            {/* Line and Dots for Complaint */}
             {data.length > 1 && <polyline points={complaintPoints} fill="none" stroke="#ef4444" strokeWidth="3" />}
             {data.map((d, i) => (
               <g key={`dot-${i}`}>
@@ -529,6 +541,7 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
           </>
         ) : (
           <>
+            {/* Line and Dots for Total */}
             {data.length > 1 && <polyline points={totalPoints} fill="none" stroke="#b91c1c" strokeWidth="2.5" />}
             {data.map((d, i) => (
               <g key={`total-dot-${i}`}>
@@ -537,6 +550,8 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
                 <text x={getX(i)} y={h - 15} textAnchor="middle" fontSize="13" fill="#6b7280" fontWeight="bold">{d.year}년</text>
               </g>
             ))}
+
+            {/* Line and Dots for Complaint */}
             {data.length > 1 && <polyline points={complaintPoints} fill="none" stroke="#fca5a5" strokeWidth="2.5" />}
             {data.map((d, i) => (
               <g key={`comp-dot-${i}`}>
@@ -547,6 +562,7 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
           </>
         )}
 
+        {/* Legend */}
         <g transform={`translate(${w/2 - 80}, ${h - 2})`}>
           {type === 'mixed' ? (
             <>
@@ -561,6 +577,7 @@ const YearlyTrendChart = ({ data, heightClass = 'h-[220px]', type = 'mixed' }) =
               <polyline points="0,-5 20,-5" fill="none" stroke="#b91c1c" strokeWidth="2" />
               <circle cx="10" cy="-5" r="4" fill="#b91c1c" />
               <text x="26" y="-2" fontSize="12" fill="#4b5563" fontWeight="bold">A/S접수건수</text>
+              
               <polyline points="95,-5 115,-5" fill="none" stroke="#fca5a5" strokeWidth="2" />
               <circle cx="105" cy="-5" r="4" fill="#fca5a5" />
               <text x="120" y="-2" fontSize="12" fill="#4b5563" fontWeight="bold">고객불만</text>
@@ -596,6 +613,7 @@ const HorizontalBarChart = ({ data, color }) => {
 
 const ModelHorizontalBarChart = ({ data }) => {
   if (!data || data.length === 0) return <div className="text-sm text-gray-400 flex items-center justify-center h-full w-full">데이터가 없습니다.</div>;
+
   const maxVal = Math.max(...data.map(d => d.total));
 
   return (
@@ -678,15 +696,15 @@ export default function App() {
 
   const [itemToDelete, setItemToDelete] = useState(null);
   const [itemToPermanentDelete, setItemToPermanentDelete] = useState(null);
-  const [noticeMessage, setNoticeMessage] = useState('');
+  const [alertMessage, setAlertMessage] = useState('');
   
-  // 지연 사유 모달 상태
-  const [isDelayModalOpen, setIsDelayModalOpen] = useState(false);
-  const [delayReasonType, setDelayReasonType] = useState('수리 지연');
-  const [customDelayReason, setCustomDelayReason] = useState('');
+  const [pendingUploadData, setPendingUploadData] = useState(null);
+  const [showPtBoardModal, setShowPtBoardModal] = useState(false);
   
   const fileInputRef = useRef(null);
+  const pdfInputRef = useRef(null);
 
+  const customAlert = (message) => setAlertMessage(message);
   const isQM = currentUserRole?.name === '품질경영팀';
 
   const todayStr = useMemo(() => {
@@ -744,15 +762,35 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // PDF.js 동적 로드 (CDN 방식)
+  useEffect(() => {
+    if (!window.pdfjsLib) {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js';
+      script.async = true;
+      script.onload = () => {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+      };
+      document.body.appendChild(script);
+    }
+  }, []);
+
   useEffect(() => {
     if (!user) return;
     const colRef = collection(db, getCollectionPath());
     
     const unsubscribe = onSnapshot(colRef, (snapshot) => {
       const records = [];
+      const now = Date.now();
+      const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+
       snapshot.forEach(docSnap => {
         const d = docSnap.data();
-        records.push({ id: docSnap.id, ...d });
+        if (d.deletedAt && (now - d.deletedAt > THREE_DAYS_MS)) {
+          deleteDoc(doc(db, getCollectionPath(), docSnap.id)).catch(console.error);
+        } else {
+          records.push({ id: docSnap.id, ...d });
+        }
       });
       
       const mappedRecords = records.map(d => {
@@ -1003,7 +1041,7 @@ export default function App() {
     const normalStats = {};
     const complaintStats = {};
 
-    const groups = ['설치조건', '취급부주의', '품질보증기간', '영업 검토 미흡', '설계 미흡', '생산 불량', '품질 검사 미흡', '공급자 불량', '운송 중 충격', '원인분석 불가', '정상', '연구 및 개선', '기타'];
+    const groups = ['설치조건', '취급부주의', '품질보증기간', '영업 검토 미흡', '설계 미흡', '생산 불량', '품질 검사 미흡', '공급자 불량', '운송 기 충격', '원인분석 불가', '정상', '연구 및 개선', '기타'];
     groups.forEach(g => {
       normalStats[g] = 0;
       complaintStats[g] = 0;
@@ -1177,18 +1215,6 @@ export default function App() {
     });
   }, [tabFilteredData, activeTab, filterAgency, filterModel, filterExcludeReport, searchQuery, selectedDashboardStatus]);
 
-  const paginatedData = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredData.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredData, currentPage]);
-
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage) || 1;
-  const maxVisiblePages = 5;
-  const currentBlock = Math.ceil(currentPage / maxVisiblePages) || 1;
-  const startPage = (currentBlock - 1) * maxVisiblePages + 1;
-  const endPage = Math.min(startPage + maxVisiblePages - 1, totalPages);
-  const visiblePages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
-
   const renderStatusBadge = (row) => {
     const status = row.currentStatus || '접수 대기';
     const config = DASHBOARD_CONFIG.find(c => c.status === status);
@@ -1242,16 +1268,10 @@ export default function App() {
       const newAsNumber = generateNextAsNumber(data);
       const defaultBU = (currentUserRole.tabs !== 'ALL' && currentUserRole.tabs.length > 0) ? currentUserRole.tabs[0] : 'PMD';
       
-      const today = new Date();
-      const yy = String(today.getFullYear()).slice(-2);
-      const mm = String(today.getMonth() + 1).padStart(2, '0');
-      const dd = String(today.getDate()).padStart(2, '0');
-      const todayStrFormatted = `${yy}.${mm}.${dd}`;
-
       setFormData({
         id: Date.now(),
         asNumber: newAsNumber, orderNumber: '', originalOrderNumber: '',
-        receiptDate: todayStrFormatted, reqDeliveryDate: addBusinessDays(todayStrFormatted, 5), processDate: '',
+        receiptDate: '', reqDeliveryDate: '', processDate: '',
         businessUnit: defaultBU, agencyName: '', companyName: '',
         model: '', qtyDefect: 1, serialNo: '', releaseDate: '',
         defectContent: '', causeAnalysis: '', processDetails: '',
@@ -1273,35 +1293,8 @@ export default function App() {
       finalValue = `${y.slice(2)}.${m}.${d}`;
     }
 
-    let triggersDelay = false;
-
-    // 데이터를 업데이트하기 전에 바깥에서 먼저 지연 여부를 즉시 계산합니다.
-    if (name === 'processDate' || name === 'reqDeliveryDate') {
-      const checkReqDate = name === 'reqDeliveryDate' ? finalValue : formData.reqDeliveryDate;
-      const checkProcDate = name === 'processDate' ? finalValue : formData.processDate;
-      
-      if (checkProcDate) {
-        const comp = calculateCompliance(checkReqDate, checkProcDate);
-        if (comp === '지연' && !formData.delayReason) {
-          triggersDelay = true;
-        }
-      }
-    }
-
     setFormData(prev => {
       const newData = { ...prev, [name]: finalValue };
-
-      if (name === 'processDate' || name === 'reqDeliveryDate') {
-        const checkReqDate = name === 'reqDeliveryDate' ? finalValue : newData.reqDeliveryDate;
-        const checkProcDate = name === 'processDate' ? finalValue : newData.processDate;
-        
-        if (checkProcDate) {
-          const comp = calculateCompliance(checkReqDate, checkProcDate);
-          if (comp !== '지연') {
-            newData.delayReason = ''; // 지연이 아니게 되면 사유 초기화
-          }
-        }
-      }
 
       if (name === 'asNumber') {
         const existingRecord = data.find(d => d.asNumber === finalValue);
@@ -1360,12 +1353,6 @@ export default function App() {
 
       return newData;
     });
-
-    if (triggersDelay) {
-      setIsDelayModalOpen(true);
-      setDelayReasonType('수리 지연');
-      setCustomDelayReason('');
-    }
   };
 
   const handleCauseCheckbox = (id) => {
@@ -1382,23 +1369,13 @@ export default function App() {
   const handleFormSubmitInternal = async (e) => {
     e.preventDefault();
     if (!user) {
-      setNoticeMessage('데이터베이스에 연결 중입니다. 잠시 후 다시 시도해주세요.');
+      customAlert('데이터베이스에 연결 중입니다. 잠시 후 다시 시도해주세요.');
       return;
-    }
-
-    // 지연 사유 필수 입력 체크
-    const comp = calculateCompliance(formData.reqDeliveryDate, formData.processDate);
-    if (comp === '지연' && !formData.delayReason) {
-      setIsDelayModalOpen(true);
-      setDelayReasonType('수리 지연');
-      setCustomDelayReason('');
-      return; // 저장을 일시 중지하고 지연사유 모달을 띄움
     }
 
     const docId = String(formData.id || Date.now());
     await setDoc(doc(db, getCollectionPath(), docId), { ...formData, id: docId });
     setIsFormOpen(false);
-    setNoticeMessage('데이터가 성공적으로 저장되었습니다.');
   };
 
   const handleDeletePrepare = (id, e) => {
@@ -1430,7 +1407,227 @@ export default function App() {
     if (!user || !isQM) return;
     await updateDoc(doc(db, getCollectionPath(), String(id)), { deletedAt: null });
     setSelectedRow(null);
-    setNoticeMessage('데이터가 성공적으로 복원되었습니다.');
+    customAlert('데이터가 성공적으로 복구되었습니다.');
+  };
+
+  const handlePtBoardTypeChange = (id, newType) => {
+    setPendingUploadData(prev => 
+      prev.map(item => item.id === id ? { ...item, ptBoardType: newType } : item)
+    );
+  };
+
+  const executeUpload = (records) => {
+    if (!user) {
+      customAlert('데이터베이스 연결이 안되어 업로드할 수 없습니다.');
+      return;
+    }
+    records.forEach(async (record) => {
+      await setDoc(doc(db, getCollectionPath(), String(record.id)), record);
+    });
+    customAlert(`${records.length}건의 데이터를 성공적으로 업로드 중입니다.`);
+  };
+
+  // --- PDF 파싱 기능 (Y좌표 기반 구조화 + Regex 혼합 엔진) ---
+  const parsePDF = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !window.pdfjsLib) {
+      customAlert('PDF 파싱 모듈이 로드 중입니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      
+      let allItems = [];
+      
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        allItems = allItems.concat(textContent.items);
+      }
+
+      allItems.sort((a, b) => {
+          if (Math.abs(b.transform[5] - a.transform[5]) > 6) {
+              return b.transform[5] - a.transform[5];
+          }
+          return a.transform[4] - b.transform[4];
+      });
+
+      const allWords = allItems.map(i => i.str.trim()).filter(s => s !== '' && s !== '|');
+      const fullText = allWords.join(' ');
+
+      const asNumber = file.name.replace(/\.[^/.]+$/, "");
+      
+      let orderNumber = '';
+      const orderMatch = fullText.match(/\[생산의뢰서\]\s*([A-Za-z0-9]+)/);
+      if (orderMatch) orderNumber = orderMatch[1];
+
+      const processType = fullText.includes('NX06000920') ? '견적 후 착수' : '선조치';
+
+      let agencyName = '';
+      const agencyMatch = fullText.match(/대리점명\s+([^\s]+)/);
+      if (agencyMatch) agencyName = agencyMatch[1];
+
+      let companyName = '';
+      const companyMatch = fullText.match(/고객명\s+([^\s]+)/);
+      if (companyMatch) companyName = companyMatch[1];
+
+      const today = new Date();
+      const yy = String(today.getFullYear()).slice(-2);
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      const receiptDate = `${yy}.${mm}.${dd}`;
+      const reqDeliveryDate = addBusinessDays(receiptDate, 5);
+
+      let businessUnit = 'PMD';
+      const orderNumUpper = orderNumber.toUpperCase();
+      if (orderNumUpper.startsWith('P1')) businessUnit = 'PMD';
+      else if (orderNumUpper.startsWith('UHP') || orderNumUpper.startsWith('P3')) businessUnit = 'PG';
+      else if (orderNumUpper.startsWith('P4')) businessUnit = 'PT';
+      else if (orderNumUpper.startsWith('T')) businessUnit = 'TMD';
+      else if (orderNumUpper.startsWith('F')) businessUnit = 'FLD';
+      else if (orderNumUpper.startsWith('SMT')) businessUnit = 'SMT';
+
+      let lines = [];
+      let currentLine = [];
+      let lastY = -1;
+
+      allItems.forEach(item => {
+          const str = item.str.trim();
+          if (!str || str === '|') return; 
+          
+          if (lastY === -1 || Math.abs(lastY - item.transform[5]) <= 6) {
+              currentLine.push(str);
+              lastY = item.transform[5];
+          } else {
+              lines.push(currentLine);
+              currentLine = [str];
+              lastY = item.transform[5];
+          }
+      });
+      if (currentLine.length > 0) lines.push(currentLine);
+
+      let extractedRows = [];
+      let inTable = false;
+      let currentRow = null;
+
+      for (let i = 0; i < lines.length; i++) {
+          const lineStrs = lines[i];
+          const lineText = lineStrs.join(' ');
+
+          if (lineText.includes('제품명') || lineText.includes('Model')) {
+              inTable = true;
+              continue;
+          }
+          if (inTable && (lineText.includes('처리 방법') || lineText.includes('견적 후 착수') || lineText.includes('선조치'))) {
+              inTable = false;
+              break;
+          }
+
+          if (inTable) {
+              if (/^\d+$/.test(lineStrs[0])) {
+                  currentRow = {
+                      model: '', qtyDefect: 1, serialNo: '', releaseDate: '', originalOrderNumber: '', defectContent: ''
+                  };
+                  
+                  let qtyIdx = lineStrs.findIndex((t, idx) => idx > 0 && /^\d+$/.test(t));
+                  if (qtyIdx !== -1) {
+                      currentRow.model = lineStrs.slice(1, qtyIdx).join(' ').replace(/EA|SET/ig, '').trim();
+                      currentRow.qtyDefect = parseInt(lineStrs[qtyIdx], 10);
+                  } else {
+                      currentRow.model = lineStrs[1] || '';
+                  }
+
+                  for (let j = 1; j < lineStrs.length; j++) {
+                      const t = lineStrs[j];
+                      
+                      if (/^(P1|P3|P4|UHP|SAZ|AGZ|AHZ)[A-Z0-9]{4,}/i.test(t)) {
+                           currentRow.originalOrderNumber = t;
+                      } 
+                      else if (!currentRow.serialNo && /^[A-Z0-9]{8,}$/i.test(t) && /^[A-Z]/i.test(t) && t !== currentRow.model && t !== orderNumber) {
+                           currentRow.serialNo = t;
+                      } 
+                      else if (!currentRow.releaseDate && /\d{2,4}[-.]\d{1,2}([-.]\d{1,2})?/.test(t)) {
+                           currentRow.releaseDate = formatDisplayDate(t);
+                      } 
+                      else if (qtyIdx !== -1 && j > qtyIdx && !['EA', 'SET'].includes(t.toUpperCase())) {
+                           currentRow.defectContent += t + ' ';
+                      }
+                  }
+                  
+                  if (lineText.includes('성적서')) currentRow.defectContent = '성적서 발행 요청';
+
+                  currentRow.defectContent = currentRow.defectContent.trim();
+                  extractedRows.push(currentRow);
+              } else if (currentRow) {
+                  if (lineText.includes('성적서')) currentRow.defectContent = '성적서 발행 요청';
+                  else currentRow.defectContent += ' ' + lineText;
+              }
+          }
+      }
+      
+      if (extractedRows.length === 0) {
+          extractedRows.push({
+              model: '',
+              qtyDefect: 1,
+              serialNo: '',
+              releaseDate: '',
+              originalOrderNumber: '',
+              defectContent: fullText.includes('성적서') ? '성적서 발행 요청' : ''
+          });
+      }
+
+      const buildRecord = (rowData, index) => {
+          const isReport = rowData.defectContent.includes('성적서');
+          return {
+              id: Date.now() + index,
+              asNumber: asNumber,
+              orderNumber: orderNumber,
+              agencyName: agencyName,
+              companyName: companyName,
+              model: rowData.model,
+              qtyDefect: rowData.qtyDefect || 1,
+              serialNo: rowData.serialNo || '',
+              releaseDate: rowData.releaseDate || '',
+              originalOrderNumber: rowData.originalOrderNumber || '',
+              defectContent: rowData.defectContent || '',
+              processType: processType,
+              receiptDate: receiptDate,
+              reqDeliveryDate: reqDeliveryDate,
+              processDate: '',
+              businessUnit: businessUnit,
+              currentStatus: '접수 완료', 
+              ptBoardType: businessUnit === 'PT' ? 'N' : '',
+              claimType: '일반 A/S',
+              repairMethod: isReport ? '유상수리' : '',
+              causeAnalysisTypes: [],
+              processDetailType: '',
+              causeAnalysis: '',
+              processDetails: '',
+              cost: isReport ? (rowData.qtyDefect || 1) * 1000 : ''
+          };
+      };
+
+      const firstRecord = buildRecord(extractedRows[0], 0);
+      setFormData(firstRecord);
+      setIsFormOpen(true);
+
+      if (extractedRows.length > 1) {
+          for (let j = 1; j < extractedRows.length; j++) {
+              const extraRecord = buildRecord(extractedRows[j], j);
+              await setDoc(doc(db, getCollectionPath(), String(extraRecord.id)), extraRecord);
+          }
+          customAlert(`총 ${extractedRows.length}건의 데이터가 추출되었습니다. 1건은 폼에 세팅되고 나머지는 리스트에 자동 등록되었습니다.`);
+      } else {
+          customAlert('PDF 데이터가 성공적으로 추출되었습니다. 내용을 확인 후 저장해주세요.');
+      }
+
+    } catch (error) {
+      console.error("PDF Parsing Error:", error);
+      customAlert('PDF 파일 분석 중 오류가 발생했습니다. 수기로 작성해주세요.');
+    }
+    e.target.value = null;
   };
 
   const parseCSVText = (text) => {
@@ -1470,28 +1667,25 @@ export default function App() {
     return rows;
   };
 
-  const executeUpload = (records) => {
-    if (!user) {
-      setNoticeMessage('데이터베이스 연결이 안되어 업로드할 수 없습니다.');
-      return;
-    }
-    records.forEach(async (record) => {
-      await setDoc(doc(db, getCollectionPath(), String(record.id)), record);
-    });
-    setNoticeMessage(`축하합니다!\n총 ${records.length}건의 데이터가 성공적으로 업로드되었습니다.`);
-  };
-
   const importFromCSV = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    const processCSV = (text) => {
+    const fileName = file.name.toUpperCase();
+    let defaultPtBoard = 'N';
+    if (fileName.includes('ZMDI')) defaultPtBoard = 'ZMDI';
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target.result;
+      
       const rows = parseCSVText(text);
-      if (rows.length < 3) return setNoticeMessage('유효한 데이터가 부족합니다.\n(헤더 2줄 포함 필요)');
+      if (rows.length < 3) return customAlert('유효한 데이터가 부족합니다. (헤더 2줄 포함 필요)');
       
       const newRecords = [];
       const hasBUColumnAt2 = rows[0][2] && rows[0][2].replace(/\s/g, '').includes('사업부');
       const offset = hasBUColumnAt2 ? 1 : 0;
+      let hasPT = false;
 
       for (let i = 2; i < rows.length; i++) {
         const cols = rows[i];
@@ -1510,8 +1704,6 @@ export default function App() {
           else repairMethod = '';
 
           let claimType = '일반 A/S'; 
-          if (cols[22 + offset] && cols[22 + offset].includes('●')) claimType = '고객불만';
-          else if (cols[21 + offset] && cols[21 + offset].includes('●')) claimType = '일반 A/S';
 
           let costRaw = (cols[20 + offset] || '').replace(/[₩\s,\-]/g, '');
           let cost = (costRaw && !isNaN(costRaw)) ? Number(costRaw) : null;
@@ -1532,14 +1724,16 @@ export default function App() {
             else if (orderNum.startsWith('F')) bu = 'FLD'; 
           }
 
+          if (bu === 'PT') hasPT = true;
+
           let ptBoard = '';
           if (!hasBUColumnAt2 && cols[26]) ptBoard = cols[26].trim();
-          if (!ptBoard) ptBoard = (bu === 'PT' ? 'N' : 'N');
+          if (!ptBoard) ptBoard = (bu === 'PT' ? defaultPtBoard : 'N');
 
           let defectContent = cols[6 + offset] ? cols[6 + offset].trim() : '';
           let qtyDefect = parseInt(cols[5 + offset]) || 1;
 
-          if (defectContent.includes('성적서 발행') || defectContent.includes('성적서발행')) {
+          if (defectContent.includes('성적서 발행') || defectContent.includes('성적서발행') || defectContent.includes('성적서')) {
             if (cost === null || cost === 0) cost = qtyDefect * 1000;
             if (!repairMethod || repairMethod === '') repairMethod = '유상수리';
           }
@@ -1553,8 +1747,7 @@ export default function App() {
             reqDeliveryDate = addBusinessDays(receiptDate, 5);
           }
           
-          let currentStatus = '접수 완료';
-          if (processDate) currentStatus = '종결';
+          let currentStatus = '접수 완료'; 
 
           newRecords.push({
             id: Date.now() + i,
@@ -1587,25 +1780,19 @@ export default function App() {
       }
       
       if(newRecords.length > 0) {
-         executeUpload(newRecords);
+         if (hasPT) {
+           setPendingUploadData(newRecords);
+           setShowPtBoardModal(true);
+         } else {
+           executeUpload(newRecords);
+         }
       } else {
-         setNoticeMessage('업로드할 유효한 데이터 항목을 찾지 못했습니다.\n양식을 다시 확인해주세요.');
+         customAlert('업로드할 유효한 데이터 항목을 찾지 못했습니다.');
       }
     };
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target.result;
-      if (text.includes('')) { // UTF-8 디코딩 실패(한글 깨짐) 시 EUC-KR 재시도
-         const eucReader = new FileReader();
-         eucReader.onload = (e) => processCSV(e.target.result);
-         eucReader.readAsText(file, 'euc-kr');
-      } else {
-         processCSV(text);
-      }
-    };
-    reader.readAsText(file, 'utf-8');
-    e.target.value = null; // 초기화
+    
+    reader.readAsText(file, 'euc-kr');
+    e.target.value = null;
   };
 
   const handleCopyChart = (containerId) => {
@@ -1628,7 +1815,7 @@ export default function App() {
           'text/plain': textBlob
         });
         navigator.clipboard.write([item]).then(() => {
-          setNoticeMessage('그래프가 클립보드에 복사되었습니다.');
+          customAlert('그래프가 클립보드에 복사되었습니다.');
         }).catch(() => fallbackCopy(text));
       } catch (e) {
         fallbackCopy(text);
@@ -1645,25 +1832,26 @@ export default function App() {
     textArea.select();
     try {
       document.execCommand('copy');
-      setNoticeMessage('그래프가 클립보드에 텍스트로 복사되었습니다.');
+      customAlert('그래프가 클립보드에 텍스트로 복사되었습니다.');
     } catch (err) {}
     document.body.removeChild(textArea);
   };
 
+  const paginatedData = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredData.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredData, currentPage]);
+
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage) || 1;
+  const maxVisiblePages = 5;
+  const currentBlock = Math.ceil(currentPage / maxVisiblePages) || 1;
+  const startPage = (currentBlock - 1) * maxVisiblePages + 1;
+  const endPage = Math.min(startPage + maxVisiblePages - 1, totalPages);
+  const visiblePages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
+
   const exportToExcel = async () => {
     try {
-      if (!window.XLSX) {
-        setNoticeMessage('엑셀 변환 모듈을 불러오고 있습니다.\n잠시만 기다려주세요...');
-        await new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        });
-      }
-      
-      const XLSX = window.XLSX;
+      const XLSX = await import('https://esm.sh/xlsx-js-style');
       const targetData = activeTab === '집계' || activeTab === '보고서' ? allowedProcessedData : filteredData;
       
       const wsData = [
@@ -1765,15 +1953,15 @@ export default function App() {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "AS 접수대장");
       XLSX.writeFile(wb, `AS관리대장_${new Date().toISOString().slice(0,10)}.xlsx`);
-      setNoticeMessage("색상과 서식이 유지된 엑셀 파일이\n성공적으로 다운로드되었습니다!");
+      customAlert("색상과 서식이 유지된 엑셀 파일이 다운로드되었습니다!");
 
     } catch (error) {
       console.error(error);
-      setNoticeMessage("엑셀 변환 중 오류가 발생했습니다.\n인터넷 연결 상태를 확인하고 다시 시도해주세요.");
+      customAlert("엑셀 변환 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
     }
   };
 
-  const exportToCSV = () => {
+  const exportToCSV = async () => {
     const header1 = '접수번호,수주번호,대리점명,업체명,MODEL,불량수량,하자내용,SERIAL No.,출고일자,기존주문번호,처리 방법,,,접수일,납기요구일,처리완료일,처리,,,,비용,원인 분석,,제품 원인,처리내역,사업부(시스템용),PT보드구분(시스템용)\n';
     const header2 = ',,,,,,,,,,견적 후 착수,선 조치,출장,,,,무상,유상,수리 불가,수리 취소,,일반 A/S,고객 불만,,,,\n';
     
@@ -1798,16 +1986,27 @@ export default function App() {
       csvContent += rowData.join(',') + '\n';
     });
 
-    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `AS관리대장_${new Date().toISOString().slice(0,10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const triggerDownload = (blob, filename) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
 
-    setNoticeMessage("CSV 파일이 성공적으로 다운로드되었습니다!\n(엑셀 파일로 열어보시면 한글 깨짐 없이 정상 출력됩니다.)");
+    try {
+      const iconvModule = await import('https://esm.sh/iconv-lite');
+      const iconv = iconvModule.default || iconvModule;
+      const encodedBuffer = iconv.encode(csvContent, 'euc-kr');
+      const blob = new Blob([encodedBuffer], { type: 'text/csv;charset=euc-kr;' });
+      triggerDownload(blob, `AS관리대장_${new Date().toISOString().slice(0,10)}_EUC-KR.csv`);
+    } catch (error) {
+      console.warn("EUC-KR 인코딩 모듈 로드 실패", error);
+      const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+      triggerDownload(blob, `AS관리대장_${new Date().toISOString().slice(0,10)}.csv`);
+    }
   };
 
   const exportToHTML = () => {
@@ -1933,7 +2132,6 @@ export default function App() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    setNoticeMessage("HTML 보고서가 성공적으로 생성 및 다운로드되었습니다.");
   };
 
   const exportToASReportHTML = (lang = 'ko') => {
@@ -2074,7 +2272,6 @@ export default function App() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    setNoticeMessage(`요약 보고서(${lang.toUpperCase()})가 다운로드 되었습니다.`);
   };
 
   const handleCapsLockCheck = (e) => {
@@ -2185,6 +2382,7 @@ export default function App() {
         </div>
 
         {/* 메인 내용: 집계 화면 또는 데이터 테이블 */}
+        {}
         {activeTab === '집계' ? (
           <div className="space-y-6 animate-in fade-in duration-500">
             {/* 집계 서브 탭 */}
@@ -2331,6 +2529,7 @@ export default function App() {
               </div>
             )}
 
+            {}
             {dashboardTab === '원인별 분석' && (
               <div className="space-y-6">
                 <div id="grouped-cause-chart" className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
@@ -2417,7 +2616,7 @@ export default function App() {
              <h2 className="text-2xl font-bold text-gray-900 mb-2">데이터 백업 및 내보내기</h2>
              <p className="text-gray-500 mb-8">현재 필터 조건에 맞는 <span className="font-bold text-blue-600">{filteredData.length}건</span>의 데이터를 백업할 수 있습니다.</p>
              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                <div onClick={() => fileInputRef.current?.click()} className="py-8 px-6 border rounded-2xl hover:border-blue-500 hover:shadow-lg cursor-pointer bg-white group flex flex-col items-center">
+                <div onClick={() => fileInputRef.current.click()} className="py-8 px-6 border rounded-2xl hover:border-blue-500 hover:shadow-lg cursor-pointer bg-white group flex flex-col items-center">
                   <div className="w-14 h-14 bg-blue-50 rounded-full flex items-center justify-center mb-3"><Upload className="w-6 h-6 text-blue-600" /></div>
                   <h3 className="font-bold">CSV 업로드</h3>
                 </div>
@@ -2555,7 +2754,6 @@ export default function App() {
                </table>
              </div>
              
-             {/* 페이지네이션 */}
              {filteredData.length > 0 && (
                <div className="p-4 bg-white border-t flex items-center justify-between text-sm">
                   <span className="text-gray-500">총 <strong>{filteredData.length}</strong>건</span>
@@ -2641,14 +2839,6 @@ export default function App() {
                   <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100">
                     <DetailItem label="처리 내역 및 대책" value={selectedRow.processDetails} isMultiline />
                   </div>
-                  
-                  {/* 지연 사유 표시 (상세정보에서만 보임) */}
-                  {selectedRow.complianceStatus === '지연' && selectedRow.delayReason && (
-                    <div className="bg-red-50 p-4 rounded-lg border border-red-100 mt-4">
-                      <DetailItem label="지연 사유" value={selectedRow.delayReason} isMultiline />
-                    </div>
-                  )}
-
                   <div className="mt-4 flex items-center justify-between bg-gray-50 border border-gray-200 p-4 rounded-lg">
                     <div className="text-sm font-bold text-gray-800">처리 결과: <span className="text-blue-700 ml-2">{selectedRow.repairMethod || '-'}</span></div>
                     {selectedRow.repairMethod === '유상수리' && <div className="text-sm font-bold text-gray-900 bg-white px-3 py-1.5 rounded border border-gray-200 shadow-sm">청구 금액: ₩ {selectedRow.cost != null && selectedRow.cost !== '' ? Number(selectedRow.cost).toLocaleString() : '0'}</div>}
@@ -2676,6 +2866,7 @@ export default function App() {
         </div>
       )}
 
+      {}
       {/* 2. 추가/수정 폼 모달 */}
       {isFormOpen && formData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -2704,25 +2895,9 @@ export default function App() {
                           disabled={isDisabled}
                           onClick={() => {
                             if (isDisabled) return;
-                            let triggersDelay = false;
-
-                            let tempProcessDate = formData.processDate;
-                            if (status === '종결' && !tempProcessDate) {
-                              const today = new Date();
-                              const yy = String(today.getFullYear()).slice(-2);
-                              const mm = String(today.getMonth() + 1).padStart(2, '0');
-                              const dd = String(today.getDate()).padStart(2, '0');
-                              tempProcessDate = `${yy}.${mm}.${dd}`;
-
-                              const comp = calculateCompliance(formData.reqDeliveryDate, tempProcessDate);
-                              if (comp === '지연' && !formData.delayReason) {
-                                triggersDelay = true;
-                              }
-                            }
-
                             setFormData(prev => {
                               const newData = { ...prev, currentStatus: status };
-                              if (status === '종결' && !prev.processDate) {
+                              if (status === '종결' && !newData.processDate) {
                                 const today = new Date();
                                 const yy = String(today.getFullYear()).slice(-2);
                                 const mm = String(today.getMonth() + 1).padStart(2, '0');
@@ -2738,12 +2913,6 @@ export default function App() {
                               }
                               return newData;
                             });
-
-                            if (triggersDelay) {
-                              setIsDelayModalOpen(true);
-                              setDelayReasonType('수리 지연');
-                              setCustomDelayReason('');
-                            }
                           }}
                           className={`px-4 py-2 text-sm font-bold rounded-lg transition-all border ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                           style={{
@@ -2816,6 +2985,7 @@ export default function App() {
                  <textarea name="serialNo" value={formData.serialNo} onChange={handleFormChange} className="form-input h-16" disabled={!isQM} />
                </FormGroup>
 
+               {}
                <div className="border-t border-gray-200 pt-6 space-y-4">
                  <div className="flex gap-6 mb-2">
                     <label className="flex items-center gap-2 font-bold cursor-pointer text-sm"><input type="radio" name="claimType" value="일반 A/S" checked={formData.claimType === '일반 A/S'} onChange={handleFormChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" disabled={!isQM} /> 일반 A/S</label>
@@ -2895,7 +3065,12 @@ export default function App() {
                  </div>
                </div>
             </form>
-            <div className="p-6 border-t flex items-center justify-end bg-gray-50 rounded-b-2xl">
+            <div className="p-6 border-t flex items-center justify-between bg-gray-50 rounded-b-2xl">
+               <div>
+                 <input type="file" accept=".pdf" ref={pdfInputRef} onChange={parsePDF} className="hidden" />
+                 <button type="button" onClick={() => pdfInputRef.current.click()} className="px-6 py-2 border border-blue-200 rounded-lg font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 transition-colors flex items-center gap-2 shadow-sm"><Upload className="w-4 h-4" /> PDF 등록</button>
+               </div>
+               
                <div className="flex gap-3">
                  <button type="button" onClick={() => setIsFormOpen(false)} className="px-6 py-2 border rounded-lg font-bold bg-white hover:bg-gray-100 transition-colors">취소</button>
                  {isQM && <button type="button" onClick={handleFormSubmitInternal} className="px-8 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md hover:bg-blue-700 transition-all flex items-center gap-2"><Save className="w-4 h-4" /> 저장하기</button>}
@@ -2905,71 +3080,8 @@ export default function App() {
         </div>
       )}
 
-      {/* 3. 지연 사유 입력 모달 */}
-      {isDelayModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 animate-in zoom-in-95 duration-200">
-            <div className="flex items-center gap-2 mb-4">
-              <AlertCircle className="w-6 h-6 text-red-500" />
-              <h3 className="text-lg font-bold text-gray-900">지연 사유 입력</h3>
-            </div>
-            <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-              처리완료일이 납기요구일보다 늦습니다.<br/>
-              정확한 지연 사유를 선택하거나 입력해주세요.
-            </p>
-
-            <select
-              value={delayReasonType}
-              onChange={(e) => {
-                setDelayReasonType(e.target.value);
-                if (e.target.value !== '직접 입력') setCustomDelayReason('');
-              }}
-              className="w-full p-3 border border-gray-300 rounded-xl mb-3 text-sm font-medium focus:ring-2 focus:ring-red-500 outline-none transition-all"
-            >
-              <option value="수리 지연">수리 지연</option>
-              <option value="부품 수급 지연">부품 수급 지연</option>
-              <option value="고품 회수 지연">고품 회수 지연</option>
-              <option value="직접 입력">직접 입력 (하단 작성)</option>
-            </select>
-
-            {delayReasonType === '직접 입력' && (
-              <input
-                type="text"
-                placeholder="지연 사유를 상세히 입력하세요..."
-                value={customDelayReason}
-                onChange={(e) => setCustomDelayReason(e.target.value)}
-                className="w-full p-3 border border-gray-300 rounded-xl mb-4 text-sm focus:ring-2 focus:ring-red-500 outline-none transition-all"
-                autoFocus
-              />
-            )}
-
-            <div className="flex justify-end gap-2 mt-6">
-              <button
-                onClick={() => setIsDelayModalOpen(false)}
-                className="px-5 py-2.5 border rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors"
-              >
-                닫기
-              </button>
-              <button
-                onClick={() => {
-                  const reason = delayReasonType === '직접 입력' ? customDelayReason : delayReasonType;
-                  if (!reason.trim()) {
-                    setNoticeMessage('지연 사유를 입력해주세요.');
-                    return;
-                  }
-                  setFormData(prev => ({ ...prev, delayReason: reason }));
-                  setIsDelayModalOpen(false);
-                }}
-                className="px-6 py-2.5 bg-red-500 text-white rounded-xl text-sm font-bold hover:bg-red-600 shadow-md transition-colors"
-              >
-                사유 저장
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 4. 삭제 확인 모달 */}
+      {}
+      {/* 삭제 확인 모달 */}
       {itemToDelete && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
            <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center animate-in zoom-in-95 duration-200">
@@ -2984,34 +3096,10 @@ export default function App() {
         </div>
       )}
 
-      {/* 5. 영구 삭제 확인 모달 */}
-      {itemToPermanentDelete && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-           <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center animate-in zoom-in-95 duration-200">
-              <AlertCircle className="w-16 h-16 text-red-600 mx-auto mb-4" />
-              <h3 className="text-xl font-bold mb-2 text-red-600">영구 삭제하시겠습니까?</h3>
-              <p className="text-gray-500 text-sm mb-6">이 작업은 되돌릴 수 없으며, 데이터베이스에서 완전히 삭제됩니다.</p>
-              <div className="flex gap-3">
-                 <button onClick={() => setItemToPermanentDelete(null)} className="flex-1 py-3 border rounded-xl font-bold hover:bg-gray-50">취소</button>
-                 <button onClick={executePermanentDelete} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg hover:bg-red-700">영구 삭제</button>
-              </div>
-           </div>
-        </div>
-      )}
-
-      {/* 6. 공통 알림 모달 */}
-      {noticeMessage && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-           <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center animate-in zoom-in-95 duration-200">
-              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                 <Activity className="w-8 h-8 text-blue-600" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">시스템 알림</h3>
-              <p className="text-gray-600 mb-8 whitespace-pre-wrap leading-relaxed">{noticeMessage}</p>
-              <button onClick={() => setNoticeMessage('')} className="w-full py-3.5 bg-blue-600 text-white rounded-xl font-bold shadow-md hover:bg-blue-700 transition-colors">
-                 확인
-              </button>
-           </div>
+      {alertMessage && (
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] bg-gray-900 text-white px-6 py-3 rounded-full shadow-2xl animate-in slide-in-from-bottom-5 duration-300 flex items-center gap-3">
+           <CheckCircle className="text-green-400 w-5 h-5" /> {alertMessage}
+           <button onClick={() => setAlertMessage('')} className="ml-2 hover:text-gray-300"><X className="w-4 h-4" /></button>
         </div>
       )}
 
