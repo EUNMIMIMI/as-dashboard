@@ -698,9 +698,6 @@ export default function App() {
   const [itemToPermanentDelete, setItemToPermanentDelete] = useState(null);
   const [alertMessage, setAlertMessage] = useState('');
   
-  const [pendingUploadData, setPendingUploadData] = useState(null);
-  const [showPtBoardModal, setShowPtBoardModal] = useState(false);
-  
   const fileInputRef = useRef(null);
   const pdfInputRef = useRef(null);
 
@@ -1041,7 +1038,7 @@ export default function App() {
     const normalStats = {};
     const complaintStats = {};
 
-    const groups = ['설치조건', '취급부주의', '품질보증기간', '영업 검토 미흡', '설계 미흡', '생산 불량', '품질 검사 미흡', '공급자 불량', '운송 기 충격', '원인분석 불가', '정상', '연구 및 개선', '기타'];
+    const groups = ['설치조건', '취급부주의', '품질보증기간', '영업 검토 미흡', '설계 미흡', '생산 불량', '품질 검사 미흡', '공급자 불량', '운송 중 충격', '원인분석 불가', '정상', '연구 및 개선', '기타'];
     groups.forEach(g => {
       normalStats[g] = 0;
       complaintStats[g] = 0;
@@ -1410,12 +1407,6 @@ export default function App() {
     customAlert('데이터가 성공적으로 복구되었습니다.');
   };
 
-  const handlePtBoardTypeChange = (id, newType) => {
-    setPendingUploadData(prev => 
-      prev.map(item => item.id === id ? { ...item, ptBoardType: newType } : item)
-    );
-  };
-
   const executeUpload = (records) => {
     if (!user) {
       customAlert('데이터베이스 연결이 안되어 업로드할 수 없습니다.');
@@ -1685,7 +1676,6 @@ export default function App() {
       const newRecords = [];
       const hasBUColumnAt2 = rows[0][2] && rows[0][2].replace(/\s/g, '').includes('사업부');
       const offset = hasBUColumnAt2 ? 1 : 0;
-      let hasPT = false;
 
       for (let i = 2; i < rows.length; i++) {
         const cols = rows[i];
@@ -1724,8 +1714,6 @@ export default function App() {
             else if (orderNum.startsWith('F')) bu = 'FLD'; 
           }
 
-          if (bu === 'PT') hasPT = true;
-
           let ptBoard = '';
           if (!hasBUColumnAt2 && cols[26]) ptBoard = cols[26].trim();
           if (!ptBoard) ptBoard = (bu === 'PT' ? defaultPtBoard : 'N');
@@ -1733,7 +1721,7 @@ export default function App() {
           let defectContent = cols[6 + offset] ? cols[6 + offset].trim() : '';
           let qtyDefect = parseInt(cols[5 + offset]) || 1;
 
-          if (defectContent.includes('성적서 발행') || defectContent.includes('성적서발행') || defectContent.includes('성적서')) {
+          if (defectContent.includes('성적서 발행') || defectContent.includes('성적서발행')) {
             if (cost === null || cost === 0) cost = qtyDefect * 1000;
             if (!repairMethod || repairMethod === '') repairMethod = '유상수리';
           }
@@ -1747,7 +1735,8 @@ export default function App() {
             reqDeliveryDate = addBusinessDays(receiptDate, 5);
           }
           
-          let currentStatus = '접수 완료'; 
+          let currentStatus = '접수 완료';
+          if (processDate) currentStatus = '종결';
 
           newRecords.push({
             id: Date.now() + i,
@@ -1780,12 +1769,8 @@ export default function App() {
       }
       
       if(newRecords.length > 0) {
-         if (hasPT) {
-           setPendingUploadData(newRecords);
-           setShowPtBoardModal(true);
-         } else {
-           executeUpload(newRecords);
-         }
+         // 불필요해진 모달 검증을 제거하고 즉시 데이터 업로드
+         executeUpload(newRecords);
       } else {
          customAlert('업로드할 유효한 데이터 항목을 찾지 못했습니다.');
       }
@@ -2382,7 +2367,6 @@ export default function App() {
         </div>
 
         {/* 메인 내용: 집계 화면 또는 데이터 테이블 */}
-        {}
         {activeTab === '집계' ? (
           <div className="space-y-6 animate-in fade-in duration-500">
             {/* 집계 서브 탭 */}
@@ -2529,7 +2513,6 @@ export default function App() {
               </div>
             )}
 
-            {}
             {dashboardTab === '원인별 분석' && (
               <div className="space-y-6">
                 <div id="grouped-cause-chart" className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col relative group">
@@ -2754,6 +2737,7 @@ export default function App() {
                </table>
              </div>
              
+             {/* 페이지네이션 */}
              {filteredData.length > 0 && (
                <div className="p-4 bg-white border-t flex items-center justify-between text-sm">
                   <span className="text-gray-500">총 <strong>{filteredData.length}</strong>건</span>
@@ -2774,7 +2758,6 @@ export default function App() {
         )}
       </div>
 
-      {}
       {/* 1. 상세 정보 모달 */}
       {selectedRow && !isFormOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -2866,7 +2849,6 @@ export default function App() {
         </div>
       )}
 
-      {}
       {/* 2. 추가/수정 폼 모달 */}
       {isFormOpen && formData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -2985,7 +2967,6 @@ export default function App() {
                  <textarea name="serialNo" value={formData.serialNo} onChange={handleFormChange} className="form-input h-16" disabled={!isQM} />
                </FormGroup>
 
-               {}
                <div className="border-t border-gray-200 pt-6 space-y-4">
                  <div className="flex gap-6 mb-2">
                     <label className="flex items-center gap-2 font-bold cursor-pointer text-sm"><input type="radio" name="claimType" value="일반 A/S" checked={formData.claimType === '일반 A/S'} onChange={handleFormChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" disabled={!isQM} /> 일반 A/S</label>
@@ -3080,7 +3061,6 @@ export default function App() {
         </div>
       )}
 
-      {}
       {/* 삭제 확인 모달 */}
       {itemToDelete && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
